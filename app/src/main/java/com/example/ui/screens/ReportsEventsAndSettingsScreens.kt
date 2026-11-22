@@ -686,7 +686,9 @@ fun ReportsAndChatScreen(
                     rightPillIcon = Icons.Filled.Campaign,
                     leftPillText = "مراسلة فورية",
                     leftPillIcon = Icons.Filled.Forum,
-                    illustrationType = ThreeDIllustrationType.DIRECT_CHAT_ENVELOPE_3D
+                    customTrailingContent = {
+                        ReportsAndChatSpotlightCard()
+                    }
                 )
             }
 
@@ -845,18 +847,21 @@ fun ReportsAndChatScreen(
                                 )
                             )
 
-                            val indexTabs = listOf(
-                                Triple(0, "مفهرس حسب التاريخ", Icons.Filled.CalendarMonth),
-                                Triple(1, "مفهرس حسب الطالب", Icons.Filled.PersonSearch),
-                                Triple(2, "غير المقروءة بعد ($unreadCount)", Icons.Filled.Schedule),
-                                Triple(3, "تمت قراءتها ($readCount)", Icons.Filled.DoneAll)
+                            // Primary Equal-Width Index Row: "حسب التاريخ" & "حسب الطالب" (Never clips on any screen)
+                            val primarySortTabs = listOf(
+                                Triple(0, "حسب التاريخ", Icons.Filled.CalendarMonth),
+                                Triple(1, "حسب الطالب", Icons.Filled.PersonSearch)
+                            )
+                            val readStatusTabs = listOf(
+                                Triple(2, "غير المقروءة ($unreadCount)", Icons.Filled.Schedule),
+                                Triple(3, "المقروءة ($readCount)", Icons.Filled.DoneAll)
                             )
 
-                            LazyRow(
+                            Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                items(indexTabs, key = { it.first }) { (modeIdx, label, iconVec) ->
+                                primarySortTabs.forEach { (modeIdx, label, iconVec) ->
                                     val isSelected = reportIndexMode == modeIdx
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
@@ -865,16 +870,68 @@ fun ReportsAndChatScreen(
                                             1.dp,
                                             if (isSelected) Color(0xFFA7F3D0) else Color(0xFFCBD5E1)
                                         ),
-                                        shadowElevation = if (isSelected) 4.dp else 1.dp,
+                                        shadowElevation = if (isSelected) 3.dp else 0.dp,
                                         modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 42.dp)
                                             .clip(RoundedCornerShape(12.dp))
                                             .clickable { reportIndexMode = modeIdx }
                                             .testTag("reports_index_chip_$modeIdx")
                                     ) {
                                         Row(
-                                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = iconVec,
+                                                contentDescription = null,
+                                                tint = if (isSelected) Color.White else Color(0xFF059669),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = label,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                readStatusTabs.forEach { (modeIdx, label, iconVec) ->
+                                    val isSelected = reportIndexMode == modeIdx
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) Color(0xFF059669) else Color(0xFFF8FAFC),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) Color(0xFFA7F3D0) else Color(0xFFCBD5E1)
+                                        ),
+                                        shadowElevation = if (isSelected) 3.dp else 0.dp,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 40.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { reportIndexMode = modeIdx }
+                                            .testTag("reports_index_chip_$modeIdx")
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 8.dp, vertical = 7.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
                                         ) {
                                             Icon(
                                                 imageVector = iconVec,
@@ -882,11 +939,12 @@ fun ReportsAndChatScreen(
                                                 tint = if (isSelected) Color.White else Color(0xFF059669),
                                                 modifier = Modifier.size(15.dp)
                                             )
+                                            Spacer(modifier = Modifier.width(5.dp))
                                             Text(
                                                 text = label,
                                                 fontSize = 11.5.sp,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                                color = if (isSelected) Color.White else Color(0xFF334155),
                                                 maxLines = 1,
                                                 softWrap = false
                                             )
@@ -931,90 +989,107 @@ fun ReportsAndChatScreen(
                 }
 
                 items(displayedReports, key = { it.id }) { rep ->
-                    val badgeColor = when (rep.reportType) {
-                        ReportType.APPRECIATION -> SuccessGreen
-                        ReportType.ACADEMIC_NOTE -> InfoBlue
-                        ReportType.BEHAVIOR_ALERT -> WarningAmber
-                        ReportType.PARENT_SUMMONS -> DangerRed
+                    val semanticAccent = when (rep.reportType) {
+                        ReportType.PARENT_SUMMONS -> Color(0xFFDC2626) // Soft coral-red
+                        ReportType.BEHAVIOR_ALERT -> Color(0xFFD97706) // Warm amber
+                        ReportType.ACADEMIC_NOTE -> Color(0xFF047857)  // Official emerald
+                        ReportType.APPRECIATION -> Color(0xFF059669)   // Rich emerald
+                    }
+                    val semanticBg = when (rep.reportType) {
+                        ReportType.PARENT_SUMMONS -> Color(0xFFFEF2F2)
+                        ReportType.BEHAVIOR_ALERT -> Color(0xFFFFFBEB)
+                        ReportType.ACADEMIC_NOTE -> Color(0xFFECFDF5)
+                        ReportType.APPRECIATION -> Color(0xFFECFDF5)
+                    }
+                    val semanticBorder = when (rep.reportType) {
+                        ReportType.PARENT_SUMMONS -> Color(0xFFFECACA)
+                        ReportType.BEHAVIOR_ALERT -> Color(0xFFFDE68A)
+                        ReportType.ACADEMIC_NOTE -> Color(0xFFA7F3D0)
+                        ReportType.APPRECIATION -> Color(0xFFA7F3D0)
                     }
                     val badgeIcon = when (rep.reportType) {
                         ReportType.APPRECIATION -> Icons.Filled.EmojiEvents
-                        ReportType.ACADEMIC_NOTE -> Icons.Filled.MenuBook
+                        ReportType.ACADEMIC_NOTE -> Icons.Filled.Description
                         ReportType.BEHAVIOR_ALERT -> Icons.Filled.Warning
                         ReportType.PARENT_SUMMONS -> Icons.Filled.NotificationImportant
                     }
-                    val studentReportsCount = remember(visibleReports, rep.studentId) {
-                        visibleReports.count { it.studentId == rep.studentId }
+                    val cleanCreatedAt = remember(rep.createdAt) { formatCleanDateTime(rep.createdAt) }
+                    val cleanReadAt = remember(rep.readAtTimestamp) { formatCleanDateTime(rep.readAtTimestamp) }
+                    val targetStudentRec = remember(students, rep.studentId) {
+                        students.firstOrNull { it.id == rep.studentId }
+                    }
+                    val studentPersona = remember(targetStudentRec?.gender, schoolConfig.schoolGenderType, rep.studentName) {
+                        resolveSmartAvatarPersona(
+                            role = UserRole.STUDENT,
+                            gender = targetStudentRec?.gender,
+                            schoolGenderType = schoolConfig.schoolGenderType,
+                            fullName = rep.studentName
+                        )
+                    }
+                    val neutralStudentRing = remember {
+                        DailyStatusBadgeSpec(
+                            label = "",
+                            ringColors = listOf(Color(0xFF6EE7B7), Color(0xFF059669), Color(0xFFFDE68A)),
+                            pillBackground = Color(0xFF065F46),
+                            pillBorder = Color(0xFF6EE7B7),
+                            pillTextColor = Color.White
+                        )
                     }
 
-                    // بطاقة البلاغ الرسمي المفهرسة مع شارة تأكيد قراءة ولي الأمر
+                    // Executive 3-Part Official Letter / Report Card (Zero clutter, zero clipping, clean dates)
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(
+                                elevation = 3.dp,
+                                shape = RoundedCornerShape(20.dp),
+                                ambientColor = Color(0xFF064E3B).copy(alpha = 0.08f),
+                                spotColor = Color(0xFF064E3B).copy(alpha = 0.12f)
+                            )
+                            .testTag("executive_report_card_${rep.id}"),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        border = BorderStroke(1.dp, semanticBorder.copy(alpha = 0.90f))
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // شريط الفهرس العلوي (حسب التاريخ أو حسب الطالب)
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color(0xFFECFDF5),
-                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.30f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (reportIndexMode == 1) Icons.Filled.Person else Icons.Filled.EventNote,
-                                            contentDescription = null,
-                                            tint = Color(0xFF059669),
-                                            modifier = Modifier.size(15.dp)
-                                        )
-                                        Text(
-                                            text = if (reportIndexMode == 1) {
-                                                "فهرس الطالب: ${rep.studentName} • (${rep.gradeClass}) • ($studentReportsCount بلاغ)"
-                                            } else {
-                                                "فهرس تاريخ البلاغ: ${rep.createdAt}"
-                                            },
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = DeepForestGreen,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    Text(
-                                        text = "المرسل: ${rep.senderName}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF047857)
-                                    )
-                                }
-                            }
-
+                            // Part 1: Card Header — Semantic Report Type Pill (Start/Right) + Clean Date (End/Left)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                NoWrapBadge(
-                                    text = rep.reportType.arabicLabel,
-                                    icon = badgeIcon,
-                                    containerColor = badgeColor.copy(alpha = 0.15f),
-                                    contentColor = badgeColor
-                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = semanticBg,
+                                    border = BorderStroke(1.dp, semanticBorder)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = badgeIcon,
+                                            contentDescription = null,
+                                            tint = semanticAccent,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = rep.reportType.arabicLabel,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = semanticAccent,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1022,19 +1097,126 @@ fun ReportsAndChatScreen(
                                     Icon(
                                         imageVector = Icons.Filled.Schedule,
                                         contentDescription = null,
-                                        tint = DeepEmerald,
-                                        modifier = Modifier.size(14.dp)
+                                        tint = Color(0xFF64748B),
+                                        modifier = Modifier.size(13.5.dp)
                                     )
                                     Text(
-                                        text = rep.createdAt,
-                                        style = MaterialTheme.typography.labelMedium,
+                                        text = cleanCreatedAt,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepEmerald
+                                        color = Color(0xFF475569),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
 
-                            // شارة زجاجية موحدة ونظيفة لحالة اطلاع ولي الأمر (بدون أيقونة الساعة الرملية وبدون تكرار)
+                            // Part 2: Compact Calm Sender & Target Student Strip (Zero truncation)
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    SmartWelcomeProfileAvatar(
+                                        photoSource = targetStudentRec?.photoBase64,
+                                        contentDescription = rep.studentName,
+                                        persona = studentPersona,
+                                        statusBadge = neutralStudentRing,
+                                        onClick = {
+                                            val photo = targetStudentRec?.photoBase64.orEmpty()
+                                            if (photo.isNotBlank()) {
+                                                GlobalImageLightboxController.open(photo, rep.studentName)
+                                            }
+                                        },
+                                        avatarSize = 38.dp,
+                                        showStatusBadge = false
+                                    )
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Text(
+                                            text = "${rep.studentName} • ${rep.gradeClass}",
+                                            fontSize = 12.8.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF0F172A),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.VerifiedUser,
+                                                contentDescription = null,
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = rep.senderName,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF047857),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Part 3: Official Letter Title + Side-Accented Details Body + Quiet Read-Status Footer
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = rep.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontSize = 15.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF0F172A)
+                                )
+
+                                Surface(
+                                    color = Color(0xFFF8FAFC),
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(IntrinsicSize.Min)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(4.dp)
+                                                .fillMaxHeight()
+                                                .background(semanticAccent)
+                                        )
+                                        Text(
+                                            text = rep.details,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontSize = 13.5.sp,
+                                            lineHeight = 21.sp,
+                                            color = Color(0xFF1E293B),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(horizontal = 12.dp, vertical = 11.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Quiet Sleek Read-Receipt Footer Line
                             val pulseTransition = rememberInfiniteTransition(label = "parent_read_pulse_${rep.id}")
                             val dotAlpha by pulseTransition.animateFloat(
                                 initialValue = 0.35f,
@@ -1045,107 +1227,48 @@ fun ReportsAndChatScreen(
                                 ),
                                 label = "amber_dot_alpha"
                             )
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = if (rep.isReadByParent) {
-                                    Color(0xFFECFDF5)
-                                } else {
-                                    Color(0xFFFFFBEB)
-                                },
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (rep.isReadByParent) Color(0xFF10B981).copy(alpha = 0.50f) else Color(0xFFF59E0B).copy(alpha = 0.48f)
-                                ),
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("report_read_receipt_${rep.id}")
+                                    .padding(top = 2.dp)
+                                    .testTag("report_read_receipt_${rep.id}"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        modifier = Modifier.weight(1f)
-                                    ) {
-                                        if (!rep.isReadByParent) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(9.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Color(0xFFF59E0B).copy(alpha = dotAlpha))
-                                            )
-                                        }
-                                        Text(
-                                            text = if (rep.isReadByParent) {
-                                                "تمت القراءة من ولي الأمر"
-                                            } else {
-                                                "بانتظار اطلاع ولي الأمر"
-                                            },
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = if (rep.isReadByParent) Color(0xFF065F46) else Color(0xFF92400E)
-                                        )
-                                    }
-                                    if (rep.isReadByParent && rep.readAtTimestamp.isNotBlank()) {
-                                        Text(
-                                            text = rep.readAtTimestamp,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF047857)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // اسم الطالب والصف وولي الأمر بوضوح تام
-                            Surface(
-                                color = DeepEmerald.copy(alpha = 0.07f),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
+                                if (rep.isReadByParent) {
                                     Icon(
-                                        imageVector = Icons.Filled.Person,
+                                        imageVector = Icons.Filled.DoneAll,
                                         contentDescription = null,
-                                        tint = DeepEmerald,
-                                        modifier = Modifier.size(18.dp)
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    val readLabel = if (cleanReadAt.isNotBlank()) {
+                                        "تمت القراءة من ولي الأمر • $cleanReadAt"
+                                    } else {
+                                        "تمت القراءة من ولي الأمر"
+                                    }
+                                    Text(
+                                        text = readLabel,
+                                        fontSize = 11.2.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF047857),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFF59E0B).copy(alpha = dotAlpha))
                                     )
                                     Text(
-                                        text = "الطالب: ${rep.studentName} (${rep.gradeClass})  •  ولي الأمر: ${rep.parentName}",
-                                        style = MaterialTheme.typography.labelLarge,
+                                        text = "بانتظار اطلاع ولي الأمر",
+                                        fontSize = 11.2.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = DeepForestGreen
+                                        color = Color(0xFFB45309)
                                     )
                                 }
-                            }
-
-                            Text(
-                                text = rep.title,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = DeepForestGreen
-                            )
-
-                            Surface(
-                                color = Color(0xFFF8FAFC),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.14f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = rep.details,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color(0xFF1E293B),
-                                    modifier = Modifier.padding(12.dp)
-                                )
                             }
 
                             if (canSendReport) {
@@ -1724,6 +1847,7 @@ fun EventsAndNewsScreen(
 ) {
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val accounts by viewModel.accounts.collectAsState()
     val rawEvents by viewModel.events.collectAsState()
     val events = remember(rawEvents, schoolConfig.schoolId) {
         val activeSid = schoolConfig.schoolId.trim()
@@ -1746,7 +1870,7 @@ fun EventsAndNewsScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
         item {
@@ -1757,7 +1881,9 @@ fun EventsAndNewsScreen(
                 rightPillIcon = Icons.Filled.PhotoLibrary,
                 leftPillText = schoolConfig.academicYear,
                 leftPillIcon = Icons.Filled.Newspaper,
-                illustrationType = ThreeDIllustrationType.MEGAPHONE,
+                customTrailingContent = {
+                    EventsAndNewsSpotlightCard()
+                },
                 bottomActionText = if (canPublish) "نشر فعالية أو خبر مدرسي مع صورة" else null,
                 bottomActionIcon = Icons.Filled.AddAPhoto,
                 bottomActionTestTag = "publish_event_button",
@@ -1773,28 +1899,50 @@ fun EventsAndNewsScreen(
                 ImageCompressor.decodeBase64ToImageBitmap(ev.imageBase64)
             }
             val isLikedByMe = currentUser?.id != null && currentUser?.id in ev.likedByUserIds
+            val cleanEventDate = remember(ev.date) { formatCleanDate(ev.date) }
+            val publisherAccount = remember(accounts, ev.authorName) {
+                accounts.firstOrNull { it.fullName.equals(ev.authorName.trim(), ignoreCase = true) }
+                    ?: accounts.firstOrNull { it.role == UserRole.ADMIN }
+            }
+            val publisherPersona = remember(publisherAccount?.gender, schoolConfig.schoolGenderType, ev.authorName) {
+                resolveSmartAvatarPersona(
+                    role = publisherAccount?.role ?: UserRole.ADMIN,
+                    gender = publisherAccount?.gender,
+                    schoolGenderType = schoolConfig.schoolGenderType,
+                    fullName = ev.authorName
+                )
+            }
+            val publisherRingSpec = remember {
+                DailyStatusBadgeSpec(
+                    label = "",
+                    ringColors = listOf(Color(0xFF34D399), Color(0xFFFDE68A), Color(0xFF059669)),
+                    pillBackground = Color(0xFF065F46),
+                    pillBorder = Color(0xFF6EE7B7),
+                    pillTextColor = Color.White
+                )
+            }
 
+            // Editorial News Card
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = RoundedCornerShape(22.dp),
+                        ambientColor = Color(0xFF064E3B).copy(alpha = 0.09f),
+                        spotColor = Color(0xFF064E3B).copy(alpha = 0.14f)
+                    )
+                    .testTag("editorial_event_card_${ev.id}"),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFA7F3D0).copy(alpha = 0.85f))
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    // Editorial Cover Header (Real Photo OR Emerald-Mint Geometric Cover — Single Category & Date Overlay)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(175.dp)
-                            .background(
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        Color(0xFF064E3B),
-                                        Color(0xFF059669),
-                                        Color(0xFF1E3A8A)
-                                    )
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
+                            .height(186.dp)
                     ) {
                         if (decodedBitmap != null) {
                             Image(
@@ -1807,61 +1955,150 @@ fun EventsAndNewsScreen(
                                         GlobalImageLightboxController.open(ev.imageBase64, ev.title)
                                     }
                             )
+                            // Gentle bottom editorial scrim so floating pills remain crystal clear
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(78.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                Color(0xFF022C22).copy(alpha = 0.72f)
+                                            )
+                                        )
+                                    )
+                            )
                         } else {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Filled.Celebration,
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.85f),
-                                    modifier = Modifier.size(52.dp)
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                NoWrapBadge(
-                                    text = if (ev.location.isNotBlank()) "${ev.category} • ${ev.location}" else ev.category,
-                                    icon = Icons.Filled.LocationOn,
-                                    containerColor = Color.Black.copy(alpha = 0.3f),
-                                    contentColor = Color.White
-                                )
+                            EditorialEventFallbackCoverCanvas(
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        // Optional Location Pill (Top-Start) if provided
+                        if (ev.location.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFF022C22).copy(alpha = 0.56f),
+                                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.28f)),
+                                modifier = Modifier
+                                    .align(Alignment.TopStart)
+                                    .padding(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.LocationOn,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFEF08A),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = ev.location,
+                                        fontSize = 10.8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        // Single Category Pill + Clean Formatted Date Overlay (Never duplicated in body)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.BottomCenter)
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFF022C22).copy(alpha = 0.68f),
+                                border = BorderStroke(0.9.dp, Color(0xFF6EE7B7).copy(alpha = 0.55f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Label,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFEF08A),
+                                        modifier = Modifier.size(13.5.dp)
+                                    )
+                                    Text(
+                                        text = ev.category.ifBlank { "فعالية مدرسية" },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.92f),
+                                border = BorderStroke(0.8.dp, Color(0xFFA7F3D0))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Event,
+                                        contentDescription = null,
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(13.5.dp)
+                                    )
+                                    Text(
+                                        text = cleanEventDate,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                             }
                         }
                     }
 
+                    // Editorial Body: Title, Comfortable Description & Balanced Publisher / Like Footer
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            NoWrapBadge(
-                                text = ev.category,
-                                icon = Icons.Filled.Label,
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                            NoWrapBadge(
-                                text = "${ev.date} • ${ev.location}",
-                                icon = Icons.Filled.Event,
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
                         Text(
                             text = ev.title,
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface
+                            fontSize = 16.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0F172A),
+                            lineHeight = 23.sp
                         )
 
                         Text(
                             text = ev.description,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            fontSize = 13.5.sp,
+                            lineHeight = 21.5.sp,
+                            color = Color(0xFF475569)
                         )
 
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                        HorizontalDivider(color = Color(0xFFECFDF5))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1870,22 +2107,45 @@ fun EventsAndNewsScreen(
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Verified,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
+                                SmartWelcomeProfileAvatar(
+                                    photoSource = publisherAccount?.photoBase64,
+                                    contentDescription = ev.authorName,
+                                    persona = publisherPersona,
+                                    statusBadge = publisherRingSpec,
+                                    onClick = {},
+                                    avatarSize = 32.dp,
+                                    showStatusBadge = false
                                 )
-                                Text(
-                                    text = "الناشر: ${ev.authorName}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = ev.authorName.ifBlank { "إدارة المدرسة" },
+                                            fontSize = 12.2.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF065F46),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Filled.Verified,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "الناشر الرسمي",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFF64748B)
+                                    )
+                                }
                             }
 
                             HonorHeartReactionButton(

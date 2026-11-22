@@ -116,7 +116,9 @@ fun HonorRollScreen(
                 rightPillIcon = Icons.Filled.EmojiEvents,
                 leftPillText = schoolConfig.academicYear,
                 leftPillIcon = Icons.Filled.WorkspacePremium,
-                illustrationType = ThreeDIllustrationType.ROYAL_HONOR_SHIELD
+                customTrailingContent = {
+                    HonorRollSpotlightCard()
+                }
             )
         }
 
@@ -306,87 +308,110 @@ fun HonorRollScreen(
             val rank = index + 1
             val canEditThisStudent = canEdit && stu.id in scopedEditableStudents.map { it.id }
             val isLikedByMe = currentUser?.id != null && currentUser?.id in stu.likedByUserIds
+            val studentPersona = remember(stu.gender, schoolConfig.schoolGenderType, stu.fullNameWithFather) {
+                resolveSmartAvatarPersona(
+                    role = UserRole.STUDENT,
+                    gender = stu.gender,
+                    schoolGenderType = schoolConfig.schoolGenderType,
+                    fullName = stu.fullNameWithFather
+                )
+            }
+            val rankBadge = remember(rank) { rankAvatarBadgeSpec(rank) }
+            val cardBorderColor = when (rank) {
+                1 -> Color(0xFFD97706).copy(alpha = 0.42f)
+                2 -> Color(0xFF94A3B8).copy(alpha = 0.50f)
+                3 -> Color(0xFFEA580C).copy(alpha = 0.36f)
+                else -> Color(0xFFA7F3D0)
+            }
+            val pointsBgColor = if (rank == 1) Color(0xFFFFFBEB) else Color(0xFFECFDF5)
+            val pointsBorderColor = if (rank == 1) Color(0xFFF59E0B).copy(alpha = 0.45f) else Color(0xFFA7F3D0)
+            val pointsAccentColor = if (rank == 1) Color(0xFFB45309) else Color(0xFF065F46)
 
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(
-                        width = 1.5.dp,
-                        color = Color(0xFF059669).copy(alpha = 0.45f),
-                        shape = RoundedCornerShape(22.dp)
-                    ),
+                    .shadow(
+                        elevation = if (rank == 1) 6.dp else 3.dp,
+                        shape = RoundedCornerShape(22.dp),
+                        ambientColor = Color(0xFF064E3B).copy(alpha = 0.10f),
+                        spotColor = Color(0xFF064E3B).copy(alpha = 0.14f)
+                    )
+                    .testTag("honor_student_card_${stu.id}"),
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                border = BorderStroke(if (rank == 1) 1.4.dp else 1.dp, cardBorderColor)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val autoBadges = viewModel.getStudentAutoBadges(stu.id)
+                    // Header Row: SmartWelcomeProfileAvatar (with #1/#2/#3 rank badge) + Name & Class + Points Pill
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                        SmartWelcomeProfileAvatar(
+                            photoSource = stu.photoBase64,
+                            contentDescription = stu.fullNameWithFather,
+                            persona = studentPersona,
+                            statusBadge = rankBadge,
+                            onClick = {
+                                if (stu.photoBase64.isNotBlank()) {
+                                    GlobalImageLightboxController.open(stu.photoBase64, stu.fullNameWithFather)
+                                }
+                            },
+                            avatarSize = 60.dp,
+                            showStatusBadge = true
+                        )
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            GoldenVectorMedal(rank = rank)
-
-                            StudentAvatarWithOverlayBadge(
-                                base64Data = stu.photoBase64,
-                                contentDescription = stu.fullNameWithFather,
-                                badges = autoBadges,
-                                fallbackHonorTitle = stu.honorTitle,
-                                isOnHonorRoll = true,
-                                fallbackIcon = Icons.Filled.School,
-                                avatarSize = 56.dp,
-                                boxWidth = 64.dp,
-                                tint = Color(0xFF059669)
+                            Text(
+                                text = stu.fullNameWithFather,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF0F172A),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Text(
-                                    text = stu.fullNameWithFather,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = "الصف: ${stu.gradeClass} • شعبة (${stu.sectionName})",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                            Text(
+                                text = "${stu.gradeClass} • شعبة\u00A0(${stu.sectionName})",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 12.sp,
+                                color = Color(0xFF475569),
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
 
+                        // Calm Gold-Emerald Excellence Points Capsule
                         Surface(
                             shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFECFDF5),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                            modifier = Modifier.padding(start = 6.dp)
+                            color = pointsBgColor,
+                            border = BorderStroke(1.dp, pointsBorderColor)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.EmojiEvents,
                                     contentDescription = null,
-                                    tint = Color(0xFF059669),
-                                    modifier = Modifier.size(18.dp)
+                                    tint = if (rank == 1) Color(0xFFD97706) else Color(0xFF059669),
+                                    modifier = Modifier.size(16.dp)
                                 )
                                 Text(
                                     text = "${stu.excellencePoints} نقطة",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = Color(0xFF065F46),
+                                    fontSize = 12.sp,
+                                    color = pointsAccentColor,
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false
@@ -395,46 +420,68 @@ fun HonorRollScreen(
                         }
                     }
 
-                    // Full-width comfortable row for the Honor Reason so it never clips ("سبب التكريم")
+                    // Sleek Honor Reason Strip (Zero clutter or duplication)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFECFDF5),
-                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.dp, Color(0xFFD1FAE5)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                .height(IntrinsicSize.Min),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.MilitaryTech,
-                                contentDescription = null,
-                                tint = Color(0xFF059669),
-                                modifier = Modifier.size(18.dp)
+                            Box(
+                                modifier = Modifier
+                                    .width(4.dp)
+                                    .fillMaxHeight()
+                                    .background(
+                                        Brush.verticalGradient(
+                                            if (rank == 1) {
+                                                listOf(Color(0xFFF59E0B), Color(0xFF059669))
+                                            } else {
+                                                listOf(Color(0xFF10B981), Color(0xFF047857))
+                                            }
+                                        )
+                                    )
                             )
-                            Text(
-                                text = "سبب التكريم: ${stu.honorTitle.ifBlank { "التفوق والالتزام المثالي" }}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF047857),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.MilitaryTech,
+                                    contentDescription = null,
+                                    tint = if (rank == 1) Color(0xFFD97706) else Color(0xFF059669),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Text(
+                                    text = stu.honorTitle.ifBlank { "التفوق العلمي والالتزام المثالي" },
+                                    fontSize = 12.2.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF065F46),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
 
-                    HorizontalDivider(color = Color(0xFFD1FAE5))
+                    HorizontalDivider(color = Color(0xFFECFDF5))
 
+                    // Harmonious Congratulations & Elastic Reaction Row
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
+                            modifier = Modifier.weight(1f),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
@@ -442,12 +489,15 @@ fun HonorRollScreen(
                                 imageVector = Icons.Filled.WorkspacePremium,
                                 contentDescription = null,
                                 tint = Color(0xFF059669),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                             Text(
-                                text = "شارِك التهنئة والتشجيع للطالب المتفوق",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = "شارك التهنئة والتشجيع",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF475569),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
@@ -464,7 +514,7 @@ fun HonorRollScreen(
                             onClick = { editingStudent = stu },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.45f)),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF059669))
                         ) {
                             Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF059669))

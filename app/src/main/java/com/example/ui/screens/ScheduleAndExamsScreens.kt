@@ -280,7 +280,7 @@ fun ScheduleAndHomeworkScreen(
         contentPadding = PaddingValues(top = 10.dp, bottom = 110.dp)
     ) {
         item {
-            // 3D Wave Hero Header for Schedule, Homework & Study Library
+            // 3D Wave Hero Header with Layered Task Deck Glass Animation
             ThreeDHeroHeaderCard(
                 title = "الجدول والواجبات والمكتبة",
                 subtitle = "تنظيم جدول الحصص الأسبوعي والواجبات اليومية والملخصات الدراسية",
@@ -288,7 +288,10 @@ fun ScheduleAndHomeworkScreen(
                 rightPillIcon = Icons.Filled.MenuBook,
                 leftPillText = "الواجبات: ${filteredHomeworks.size}",
                 leftPillIcon = Icons.Filled.CalendarMonth,
-                illustrationType = ThreeDIllustrationType.SCHEDULE_BOOKS_3D
+                illustrationType = ThreeDIllustrationType.SCHEDULE_BOOKS_3D,
+                customTrailingContent = {
+                    LayeredTaskDeckHeaderWidget()
+                }
             )
         }
 
@@ -417,8 +420,8 @@ fun ScheduleAndHomeworkScreen(
             }
         }
 
-        item {
-            if (!isParentOrStudent) {
+        if (!isParentOrStudent) {
+            item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Class & Section Selector from Registered/Allowed lists
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -454,25 +457,6 @@ fun ScheduleAndHomeworkScreen(
                                 label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
                             )
                         }
-                    }
-                }
-            } else {
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Filled.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text(
-                            text = "جدول وتحضير الصف الخاص بالطالب: $selectedClass (شعبة $selectedSection)",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
                     }
                 }
             }
@@ -1316,7 +1300,7 @@ fun ScheduleAndHomeworkScreen(
                                                         )
                                                 )
                                                 Text(
-                                                    text = dateKey,
+                                                    text = formatCleanDate(dateKey),
                                                     style = MaterialTheme.typography.labelMedium,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = if (isDateSelected) Color.White else DeepForestGreen,
@@ -1390,24 +1374,71 @@ fun ScheduleAndHomeworkScreen(
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
+                            shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                // شريط فهرس التاريخ أعلى بطاقة الواجب (Date Index Header Strip)
+                                // 1) Clear Header: Subject, Teacher & Single Publish/Due Date Row (No Duplication)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f)),
+                                            modifier = Modifier.size(40.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AutoStories,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = "مادة ${hw.subjectName}",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "$staffTitleSingular: ${hw.teacherName} • ${hw.gradeClass} (${hw.sectionName})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextMutedGreen,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Single Clean Dates Strip (Publish Date + Due Date once only)
                                 Surface(
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = Color(0xFFECFDF5),
-                                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.30f)),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF3FBF7),
+                                    border = BorderStroke(0.9.dp, Color(0xFF10B981).copy(alpha = 0.28f)),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 7.dp),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -1418,82 +1449,119 @@ fun ScheduleAndHomeworkScreen(
                                             Icon(
                                                 imageVector = Icons.Filled.CalendarToday,
                                                 contentDescription = null,
-                                                tint = Color(0xFF059669),
-                                                modifier = Modifier.size(14.dp)
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(13.dp)
                                             )
                                             Text(
-                                                text = "تاريخ النشر: ${hw.createdAt.ifBlank { hw.dueDate }}",
+                                                text = "النشر: ${formatCleanDate(hw.createdAt.ifBlank { hw.dueDate })}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.ExtraBold,
+                                                fontWeight = FontWeight.Bold,
                                                 color = DeepForestGreen
                                             )
                                         }
-                                        Text(
-                                            text = "موعد التسليم: ${hw.dueDate}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFF047857)
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Event,
+                                                contentDescription = null,
+                                                tint = Color(0xFFB45309),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = "التسليم: ${formatCleanDate(hw.dueDate)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF92400E)
+                                            )
+                                        }
                                     }
                                 }
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    NoWrapBadge(
-                                        text = "مادة ${hw.subjectName}",
-                                        icon = Icons.Filled.AutoStories,
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    NoWrapBadge(
-                                        text = "التسليم: ${hw.dueDate}",
-                                        icon = Icons.Filled.Event,
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                                    )
-                                }
-
-                                Text(
-                                    text = "الصف: ${hw.gradeClass} (شعبة ${hw.sectionName}) • $staffTitleSingular: ${hw.teacherName}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-
-                                Surface(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "التحضير اليومي: ${hw.dailyPreparation}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                                        Text(
-                                            text = "الواجب البيتي: ${hw.homeworkDetails}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-
-                                // عرض الصورة التوضيحية المرفقة مع الواجب من قِبل الأستاذ (إن وُجدت) مع إمكانية التكبير
-                                if (hwAttachmentBitmap != null) {
+                                // 2) Two Cleanly Separated Boxes: Daily Preparation & Homework Details
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Surface(
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = Color(0xFFF0FDF4),
-                                        border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.40f)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF4FBF8),
+                                        border = BorderStroke(0.9.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MenuBook,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Text(
+                                                    text = "التحضير اليومي",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepEmerald
+                                                )
+                                            }
+                                            Text(
+                                                text = hw.dailyPreparation.ifBlank { "لا يوجد تحضير إضافي" },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = DeepForestGreen,
+                                                lineHeight = 21.sp
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = BorderStroke(0.9.dp, Color(0xFFCBD5E1).copy(alpha = 0.70f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.EditNote,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFB45309),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "الواجب البيتي",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF92400E)
+                                                )
+                                            }
+                                            Text(
+                                                text = hw.homeworkDetails.ifBlank { "لا يوجد واجب بيتي محدد" },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = DeepForestGreen,
+                                                lineHeight = 21.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 3) Attached Image Preview with Soft 14.dp Frame & Frosted-Glass Zoom Button
+                                if (hwAttachmentBitmap != null) {
+                                    Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
+                                            .height(180.dp)
                                             .clip(RoundedCornerShape(14.dp))
+                                            .background(Color(0xFFF0FDF4))
                                             .clickable {
                                                 GlobalImageLightboxController.open(
                                                     hw.attachmentImageBase64,
@@ -1502,48 +1570,46 @@ fun ScheduleAndHomeworkScreen(
                                             }
                                             .testTag("hw_attachment_preview_${hw.id}")
                                     ) {
-                                        Column(
-                                            modifier = Modifier.padding(10.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        Image(
+                                            bitmap = hwAttachmentBitmap,
+                                            contentDescription = "صورة توضيحية للواجب",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxSize(),
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = Color.Transparent,
+                                            border = BorderStroke(1.1.dp, DeepEmerald.copy(alpha = 0.30f))
+                                        ) {}
+                                        // Frosted-Glass Zoom Pill Overlay
+                                        Surface(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(10.dp),
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFF064E3B).copy(alpha = 0.78f),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
                                         ) {
                                             Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
                                             ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Image,
-                                                        contentDescription = null,
-                                                        tint = Color(0xFF059669),
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                    Text(
-                                                        text = "صورة الواجب المرفقة",
-                                                        style = MaterialTheme.typography.labelMedium,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = DeepForestGreen
-                                                    )
-                                                }
+                                                Icon(
+                                                    imageVector = Icons.Filled.ZoomIn,
+                                                    contentDescription = "تكبير الصورة",
+                                                    tint = Color(0xFFFEF08A),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
                                                 Text(
-                                                    text = "اضغط للتكبير",
+                                                    text = "تكبير الصورة",
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF059669)
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White
                                                 )
                                             }
-                                            Image(
-                                                bitmap = hwAttachmentBitmap,
-                                                contentDescription = "صورة توضيحية للواجب",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(175.dp)
-                                                    .clip(RoundedCornerShape(10.dp))
-                                            )
                                         }
                                     }
                                 }
@@ -1648,7 +1714,7 @@ fun ScheduleAndHomeworkScreen(
                                                 }
 
                                                 Text(
-                                                    text = "تاريخ التسليم: ${mySubmission.submittedAt}",
+                                                    text = "تاريخ التسليم: ${formatCleanDate(mySubmission.submittedAt)}",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )

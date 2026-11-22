@@ -71,9 +71,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Verified
 import com.example.model.SchoolStage
+import com.example.ui.components.GlowingCurriculumBookHeaderWidget
 import com.example.ui.components.ThreeDHeroHeaderCard
 import com.example.ui.components.ThreeDIllustrationType
 import com.example.ui.theme.AdaptiveSoftBorder
@@ -1521,14 +1523,29 @@ fun CurriculumBooksScreen(
                     )
                 }
             } else {
-                items(displayedBooks, key = { it.id }) { book ->
-                    CurriculumBookOfficialCard(
-                        book = book,
-                        isDarkMode = isDarkMode,
-                        onDirectOpenBook = {
-                            activeBookInViewer = book
+                val bookRows = displayedBooks.chunked(2)
+                items(
+                    items = bookRows,
+                    key = { pair -> pair.joinToString("_") { it.id } }
+                ) { rowBooks ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        rowBooks.forEach { book ->
+                            CurriculumBookOfficialCard(
+                                book = book,
+                                isDarkMode = isDarkMode,
+                                onDirectOpenBook = {
+                                    activeBookInViewer = book
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
                         }
-                    )
+                        if (rowBooks.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
                 }
             }
         }
@@ -1667,114 +1684,170 @@ private fun InteractiveSmartLibraryStageView(
     }
 }
 
+private fun resolveBookSpineAccentColor(subjectTitle: String): Color {
+    val s = subjectTitle.trim()
+    return when {
+        s.contains("إسلام") || s.contains("قرآن") -> Color(0xFF059669)
+        s.contains("قراءة") || s.contains("عربي") || s.contains("قواعد") || s.contains("أدب") -> Color(0xFF0D9488)
+        s.contains("رياضيات") -> Color(0xFF2563EB)
+        s.contains("علوم") || s.contains("أحياء") || s.contains("كيمياء") || s.contains("فيزياء") -> Color(0xFF15803D)
+        s.contains("انكليز") || s.contains("إنجليز") || s.contains("English", ignoreCase = true) -> Color(0xFF0284C7)
+        s.contains("اجتماع") || s.contains("تاريخ") || s.contains("جغراف") || s.contains("وطني") -> Color(0xFFD97706)
+        s.contains("حاسوب") || s.contains("أخلاق") -> Color(0xFF4F46E5)
+        else -> DeepEmerald
+    }
+}
+
 /**
- * Clean Interactive Curriculum Book Card:
- * - Contains ONLY:
- *   1. Animated Subject Canvas Vector Icon (`AnimatedBookSubjectCanvasIcon`)
- *   2. Book Title (`book.subjectTitle`)
- *   3. Stage & Grade (`${book.stage.shortBadge} • ${book.gradeClass}`)
- *   4. Full-width green button ("فتح مباشر") that opens the book inside the app.
+ * Digital Book Cover Grid Card (غلاف كتاب رقمي أنيق في شبكة عمودين):
+ * - Clean 18.dp rounded card with subtle elevation and distinct calm subject spine bar.
+ * - Custom animated Canvas vector icon (zero emojis), clear title, stage/grade subtitle,
+ *   and compact bottom "تصفّح الكتاب" button with directional arrow (whole card is clickable).
  */
 @Composable
 private fun CurriculumBookOfficialCard(
     book: CurriculumBookItem,
     isDarkMode: Boolean,
-    onDirectOpenBook: () -> Unit
+    onDirectOpenBook: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "book_card_pulse_${book.id}")
-    val badgeGlow by infiniteTransition.animateFloat(
-        initialValue = 0.30f,
-        targetValue = 0.65f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "book_badge_glow"
-    )
+    val spineColor = remember(book.subjectTitle) {
+        resolveBookSpineAccentColor(book.subjectTitle)
+    }
 
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
+        onClick = onDirectOpenBook,
+        modifier = modifier
+            .height(198.dp)
             .testTag("curriculum_book_card_${book.id}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = if (isDarkMode) Color(0xFF334155) else Color(0xFFA7F3D0).copy(alpha = 0.75f)
+            color = if (isDarkMode) Color(0xFF334155) else spineColor.copy(alpha = 0.24f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Row(modifier = Modifier.fillMaxSize()) {
+            // Distinct Calm Subject Book Spine Strip (Start edge = Right in RTL)
+            Box(
+                modifier = Modifier
+                    .width(6.dp)
+                    .fillMaxHeight()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                spineColor,
+                                spineColor.copy(alpha = 0.65f)
+                            )
+                        )
+                    )
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
-                    border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = badgeGlow)),
-                    modifier = Modifier.size(52.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        AnimatedBookSubjectCanvasIcon(
-                            subjectTitle = book.subjectTitle,
-                            accentColor = if (isDarkMode) Color(0xFF34D399) else DeepEmerald,
-                            modifier = Modifier.size(30.dp)
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Vector Subject Crest Badge (Zero Emojis)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isDarkMode) spineColor.copy(alpha = 0.22f) else spineColor.copy(alpha = 0.11f),
+                            border = BorderStroke(1.dp, spineColor.copy(alpha = 0.30f)),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                AnimatedBookSubjectCanvasIcon(
+                                    subjectTitle = book.subjectTitle,
+                                    accentColor = if (isDarkMode) Color(0xFF6EE7B7) else spineColor,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (isDarkMode) Color(0xFF0F172A) else Color(0xFFF3F8F6)
+                        ) {
+                            Text(
+                                text = book.stage.shortBadge,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color(0xFF94A3B8) else spineColor,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    // Book Title & Grade Class
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            text = book.subjectTitle,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 14.sp,
+                                lineHeight = 19.sp
+                            ),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkMode) Color.White else DeepForestGreen,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = book.gradeClass,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF64748B),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                // Sleek Compact Bottom Action Pill ("تصفّح الكتاب" + directional arrow)
+                Surface(
+                    shape = RoundedCornerShape(11.dp),
+                    color = if (isDarkMode) Color(0xFF064E3B) else Color(0xFFECFDF5),
+                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .testTag("open_book_btn_${book.id}")
                 ) {
-                    Text(
-                        text = book.subjectTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                    )
-                    Text(
-                        text = "${book.stage.shortBadge} • ${book.gradeClass}",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isDarkMode) Color(0xFF94A3B8) else Color(0xFF475569)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "تصفّح الكتاب",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = "تصفح ${book.subjectTitle}",
+                            tint = if (isDarkMode) Color(0xFFFDE68A) else DeepEmerald,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
-            }
-
-            // Wide Green Direct Open Button ("فتح مباشر") — Opens exclusively inside the app
-            Button(
-                onClick = onDirectOpenBook,
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = DeepEmerald,
-                    contentColor = Color.White
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("open_book_btn_${book.id}")
-            ) {
-                AnimatedCurriculumCrestCanvasIcon(
-                    accentColor = GoldAccent,
-                    secondaryColor = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "فتح مباشر",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.ExtraBold
-                )
             }
         }
     }
@@ -2224,11 +2297,8 @@ fun CurriculumHeroBannerWithOpenBookAnimation(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Left side of the Emerald Banner: Floating Knowledge Platform Vector Animation
-                OpeningAndClosing3DBookVectorAnimation(
-                    modifier = Modifier.size(108.dp),
-                    isDarkMode = true
-                )
+                // Left side of the Emerald Banner: Glowing Open Book with Golden Page Shimmer Sweep
+                GlowingCurriculumBookHeaderWidget()
             }
         }
     }

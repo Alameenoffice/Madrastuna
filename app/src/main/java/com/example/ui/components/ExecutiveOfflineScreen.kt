@@ -1,7 +1,7 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -10,6 +10,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -36,10 +41,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -48,7 +57,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -57,7 +65,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,17 +72,18 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.reading.ReadingMascotCanvas
 import com.example.ui.theme.DeepEmerald
 import com.example.ui.theme.EmeraldAccent
 import com.example.ui.theme.GoldAccent
+import kotlinx.coroutines.delay
 
 /**
- * Platform-Unified Offline / No Internet Screen:
- * Fully synchronized with MaterialTheme.colorScheme (Light & Dark modes) using the school platform's
- * Royal Emerald & Gold visual identity — zero forced dark overlays, custom Canvas radar & icons.
+ * شاشة انقطاع الإنترنت بهوية المنصة الزمردية الزجاجية:
+ * البصمة الخاصة: موجات اتصال زمردية هادئة (3 أقواس إشارة متدرجة) + كبسولة حالة حية
+ * + بطاقة واحة القراءة الذكية الحية التي تعرض أنيميشن الواحة الحي بـ Canvas وتفتحها بدون إنترنت.
  */
 @Composable
 fun ExecutiveOfflineScreen(
@@ -107,7 +115,7 @@ fun ExecutiveOfflineScreen(
     val retryInteraction = remember { MutableInteractionSource() }
     val isRetryPressed by retryInteraction.collectIsPressedAsState()
     val retryScale by animateFloatAsState(
-        targetValue = if (isRetryPressed) 0.95f else 1f,
+        targetValue = if (isRetryPressed) 0.94f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
@@ -126,15 +134,32 @@ fun ExecutiveOfflineScreen(
         label = "offline_oasis_spring"
     )
 
-    val statusTransition = rememberInfiniteTransition(label = "offline_probe_status")
-    val probeDotAlpha by statusTransition.animateFloat(
-        initialValue = 0.38f,
+    val statusPhrases = remember {
+        listOf(
+            "جارٍ فحص الاتصال تلقائياً",
+            "وضع العمل بدون إنترنت جاهز"
+        )
+    }
+    var statusPhraseIdx by remember { mutableIntStateOf(0) }
+    LaunchedEffect(isCheckingNow) {
+        if (isCheckingNow) {
+            statusPhraseIdx = 0
+        }
+        while (true) {
+            delay(2800L)
+            statusPhraseIdx = if (isCheckingNow) 0 else (statusPhraseIdx + 1) % statusPhrases.size
+        }
+    }
+
+    val statusDotTransition = rememberInfiniteTransition(label = "offline_probe_dot")
+    val probeDotAlpha by statusDotTransition.animateFloat(
+        initialValue = 0.35f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1050, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "offline_probe_dot"
+        label = "offline_probe_dot_alpha"
     )
 
     Box(
@@ -146,57 +171,33 @@ fun ExecutiveOfflineScreen(
             }
             .testTag("network_connectivity_guard_banner")
     ) {
-        // Luminous subtle geometric grid + soft primary/gold atmospheric glow synced with active theme
+        // Subtle luminous atmospheric background synced with active platform theme
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            val step = 38.dp.toPx()
-            val gridColor = primaryColor.copy(alpha = 0.055f)
-
-            var x = 0f
-            while (x <= w) {
-                drawLine(
-                    color = gridColor,
-                    start = Offset(x, 0f),
-                    end = Offset(x, h),
-                    strokeWidth = 1f
-                )
-                x += step
-            }
-            var y = 0f
-            while (y <= h) {
-                drawLine(
-                    color = gridColor,
-                    start = Offset(0f, y),
-                    end = Offset(w, y),
-                    strokeWidth = 1f
-                )
-                y += step
-            }
-
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        primaryColor.copy(alpha = 0.12f),
+                        primaryColor.copy(alpha = 0.13f),
                         tertiaryColor.copy(alpha = 0.05f),
                         Color.Transparent
                     ),
-                    center = Offset(w * 0.5f, h * 0.30f),
-                    radius = w * 0.72f
+                    center = Offset(w * 0.5f, h * 0.24f),
+                    radius = w * 0.78f
                 ),
-                radius = w * 0.72f,
-                center = Offset(w * 0.5f, h * 0.30f)
+                radius = w * 0.78f,
+                center = Offset(w * 0.5f, h * 0.24f)
             )
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        tertiaryColor.copy(alpha = 0.09f),
+                        tertiaryColor.copy(alpha = 0.10f),
                         Color.Transparent
                     ),
                     center = Offset(w * 0.85f, h * 0.86f),
-                    radius = w * 0.52f
+                    radius = w * 0.56f
                 ),
-                radius = w * 0.52f,
+                radius = w * 0.56f,
                 center = Offset(w * 0.85f, h * 0.86f)
             )
         }
@@ -206,7 +207,7 @@ fun ExecutiveOfflineScreen(
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 28.dp),
+                .padding(horizontal = 22.dp, vertical = 24.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -214,28 +215,70 @@ fun ExecutiveOfflineScreen(
                     .fillMaxWidth()
                     .widthIn(max = 440.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                // Interactive Theme-Synced Radar & Signal Pulse Graphic
-                OfflineRadarSignalCanvas(
-                    isCheckingNow = isCheckingNow,
-                    primaryColor = primaryColor,
-                    accentGoldColor = tertiaryColor,
-                    coreSurfaceColor = surfaceColor,
-                    modifier = Modifier.size(214.dp)
-                )
+                // 1) Top Frosted Glass Signal Wave Ripple Unit (3 smooth graduated emerald signal arcs)
+                Surface(
+                    modifier = Modifier
+                        .size(164.dp)
+                        .shadow(
+                            elevation = 14.dp,
+                            shape = RoundedCornerShape(36.dp),
+                            ambientColor = primaryColor.copy(alpha = 0.22f),
+                            spotColor = primaryColor.copy(alpha = 0.18f)
+                        ),
+                    shape = RoundedCornerShape(36.dp),
+                    color = surfaceColor.copy(alpha = 0.94f),
+                    border = BorderStroke(
+                        width = 1.4.dp,
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                primaryColor.copy(alpha = 0.45f),
+                                GoldAccent.copy(alpha = 0.48f),
+                                primaryColor.copy(alpha = 0.25f)
+                            )
+                        )
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        primaryContainerColor.copy(alpha = 0.45f),
+                                        surfaceColor.copy(alpha = 0.95f)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        OfflineCalmSignalWavesCanvas(
+                            isCheckingNow = isCheckingNow,
+                            primaryColor = primaryColor,
+                            goldColor = GoldAccent,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(18.dp)
+                        )
+                    }
+                }
 
-                // Live Automatic Probe Status Pill
+                // 2) Live Animated Status Capsule ("جارٍ فحص الاتصال تلقائياً" <-> "وضع العمل بدون إنترنت جاهز")
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = if (isCheckingNow) {
-                        colorScheme.tertiaryContainer.copy(alpha = 0.78f)
+                    color = if (statusPhraseIdx == 0) {
+                        primaryContainerColor.copy(alpha = 0.80f)
                     } else {
-                        primaryContainerColor.copy(alpha = 0.72f)
+                        colorScheme.tertiaryContainer.copy(alpha = 0.78f)
                     },
                     border = BorderStroke(
                         width = 1.dp,
-                        color = if (isCheckingNow) tertiaryColor.copy(alpha = 0.45f) else primaryColor.copy(alpha = 0.35f)
+                        color = if (statusPhraseIdx == 0) {
+                            primaryColor.copy(alpha = 0.38f)
+                        } else {
+                            tertiaryColor.copy(alpha = 0.46f)
+                        }
                     )
                 ) {
                     Row(
@@ -248,43 +291,48 @@ fun ExecutiveOfflineScreen(
                                 .size(9.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    (if (isCheckingNow) tertiaryColor else primaryColor).copy(alpha = probeDotAlpha)
+                                    (if (statusPhraseIdx == 0) primaryColor else tertiaryColor)
+                                        .copy(alpha = probeDotAlpha)
                                 )
                         )
-                        Text(
-                            text = if (isCheckingNow) {
-                                "جارٍ فحص الاتصال بالشبكة الآن..."
-                            } else {
-                                "الفحص التلقائي للشبكة قيد التشغيل"
+                        AnimatedContent(
+                            targetState = statusPhraseIdx,
+                            transitionSpec = {
+                                (slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it / 2 } + fadeIn(tween(320))) togetherWith
+                                    (slideOutVertically(tween(300)) { -it / 2 } + fadeOut(tween(240)))
                             },
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isCheckingNow) colorScheme.onTertiaryContainer else onPrimaryContainerColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                            label = "offline_status_pill_text"
+                        ) { idx ->
+                            Text(
+                                text = statusPhrases[idx],
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (idx == 0) onPrimaryContainerColor else colorScheme.onTertiaryContainer,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
 
-                // Clean Platform-Surface Info Card
+                // 3) Clear Title & Concise Message + Spring Retry Button
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
                             elevation = 8.dp,
                             shape = RoundedCornerShape(24.dp),
-                            ambientColor = primaryColor.copy(alpha = 0.14f),
-                            spotColor = primaryColor.copy(alpha = 0.12f)
+                            ambientColor = primaryColor.copy(alpha = 0.14f)
                         ),
                     shape = RoundedCornerShape(24.dp),
                     color = surfaceColor,
                     border = BorderStroke(
-                        width = 1.2.dp,
+                        width = 1.1.dp,
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                primaryColor.copy(alpha = 0.36f),
-                                tertiaryColor.copy(alpha = 0.28f),
-                                outlineColor.copy(alpha = 0.35f)
+                                primaryColor.copy(alpha = 0.30f),
+                                GoldAccent.copy(alpha = 0.28f),
+                                outlineColor.copy(alpha = 0.30f)
                             )
                         )
                     )
@@ -292,14 +340,14 @@ fun ExecutiveOfflineScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 22.dp),
+                            .padding(horizontal = 20.dp, vertical = 20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "تعذّر الاتصال بالشبكة حالياً",
+                            text = "انقطع الاتصال بالإنترنت",
                             style = MaterialTheme.typography.headlineSmall.copy(
-                                fontSize = 21.sp,
+                                fontSize = 22.sp,
                                 lineHeight = 30.sp
                             ),
                             fontWeight = FontWeight.ExtraBold,
@@ -308,111 +356,112 @@ fun ExecutiveOfflineScreen(
                         )
 
                         Text(
-                            text = "يجري فحص الاتصال تلقائياً؛ ستعود جميع خدمات المنصة فور استقرار الإنترنت.",
+                            text = "ستعود خدمات المنصة تلقائياً فور استقرار الشبكة",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontSize = 14.5.sp,
-                                lineHeight = 24.sp
+                                lineHeight = 23.sp
                             ),
                             fontWeight = FontWeight.Medium,
                             color = onSurfaceVariantColor,
                             textAlign = TextAlign.Center
                         )
-                    }
-                }
 
-                // Primary Emerald Gradient Retry Button with Spring Bounce & Custom Refresh Vector
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp)
-                        .graphicsLayer {
-                            scaleX = retryScale
-                            scaleY = retryScale
-                        }
-                        .shadow(
-                            elevation = 10.dp,
-                            shape = RoundedCornerShape(18.dp),
-                            ambientColor = primaryColor.copy(alpha = 0.28f),
-                            spotColor = primaryColor.copy(alpha = 0.22f)
-                        )
-                        .clip(RoundedCornerShape(18.dp))
-                        .clickable(
-                            interactionSource = retryInteraction,
-                            indication = null
-                        ) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            retrySpinCount += 1
-                            onRetryConnection()
-                        }
-                        .testTag("network_retry_sync_button"),
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color.Transparent,
-                    border = BorderStroke(
-                        width = 1.2.dp,
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                EmeraldAccent.copy(alpha = 0.85f),
-                                GoldAccent.copy(alpha = 0.72f),
-                                EmeraldAccent.copy(alpha = 0.85f)
-                            )
-                        )
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(
-                                Brush.horizontalGradient(
+                        Spacer(modifier = Modifier.height(2.dp))
+
+                        // Primary Emerald Gradient Retry Button with Spring Bounce
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                                .graphicsLayer {
+                                    scaleX = retryScale
+                                    scaleY = retryScale
+                                }
+                                .shadow(
+                                    elevation = 8.dp,
+                                    shape = RoundedCornerShape(16.dp),
+                                    ambientColor = primaryColor.copy(alpha = 0.28f)
+                                )
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable(
+                                    interactionSource = retryInteraction,
+                                    indication = null
+                                ) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    retrySpinCount += 1
+                                    onRetryConnection()
+                                }
+                                .testTag("network_retry_sync_button"),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.Transparent,
+                            border = BorderStroke(
+                                width = 1.2.dp,
+                                brush = Brush.horizontalGradient(
                                     colors = listOf(
-                                        primaryColor,
-                                        DeepEmerald,
-                                        primaryColor
+                                        EmeraldAccent.copy(alpha = 0.80f),
+                                        GoldAccent.copy(alpha = 0.72f),
+                                        EmeraldAccent.copy(alpha = 0.80f)
                                     )
                                 )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            )
                         ) {
-                            OfflineRefreshVectorCanvas(
-                                tint = Color.White,
+                            Box(
                                 modifier = Modifier
-                                    .size(21.dp)
-                                    .graphicsLayer {
-                                        rotationZ = retryRotation
-                                    }
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "إعادة المحاولة الآن",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                softWrap = false
-                            )
+                                    .fillMaxSize()
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF059669),
+                                                DeepEmerald,
+                                                Color(0xFF065F46)
+                                            )
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    OfflineRefreshVectorCanvas(
+                                        tint = Color.White,
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .graphicsLayer {
+                                                rotationZ = retryRotation
+                                            }
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = "إعادة المحاولة الآن",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
-                // Smart Touch: Direct Access to Offline Reading Oasis for Signed-In Users
+                // 4) Creative Bottom Interactive Card: Live Reading Oasis Card with Real Reading Oasis Canvas Animation
                 if (isUserLoggedIn) {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(54.dp)
                             .graphicsLayer {
                                 scaleX = oasisScale
                                 scaleY = oasisScale
                             }
                             .shadow(
-                                elevation = 4.dp,
-                                shape = RoundedCornerShape(16.dp),
-                                ambientColor = tertiaryColor.copy(alpha = 0.14f)
+                                elevation = 12.dp,
+                                shape = RoundedCornerShape(24.dp),
+                                ambientColor = Color(0xFF047857).copy(alpha = 0.30f),
+                                spotColor = Color(0xFF064E3B).copy(alpha = 0.35f)
                             )
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(24.dp))
                             .clickable(
                                 interactionSource = oasisInteraction,
                                 indication = null
@@ -421,44 +470,232 @@ fun ExecutiveOfflineScreen(
                                 onOpenOfflineReadingOasis()
                             }
                             .testTag("offline_open_reading_oasis_button"),
-                        shape = RoundedCornerShape(16.dp),
-                        color = surfaceColor,
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color.Transparent,
                         border = BorderStroke(
-                            width = 1.3.dp,
-                            brush = Brush.horizontalGradient(
+                            width = 1.4.dp,
+                            brush = Brush.linearGradient(
                                 colors = listOf(
-                                    primaryColor.copy(alpha = 0.55f),
-                                    tertiaryColor.copy(alpha = 0.65f)
+                                    Color(0xFF6EE7B7).copy(alpha = 0.78f),
+                                    GoldAccent.copy(alpha = 0.85f),
+                                    Color(0xFF34D399).copy(alpha = 0.70f)
                                 )
                             )
                         )
                     ) {
-                        Row(
+                        Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                                .fillMaxWidth()
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFF059669),
+                                            Color(0xFF047857),
+                                            Color(0xFF064E3B)
+                                        )
+                                    )
+                                )
                         ) {
-                            OfflineOasisBookBadgeCanvas(
-                                primaryColor = primaryColor,
-                                goldColor = tertiaryColor,
-                                modifier = Modifier.size(26.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "الدخول إلى واحة القراءة (تعمل بدون إنترنت)",
-                                style = MaterialTheme.typography.labelLarge.copy(fontSize = 13.5.sp),
-                                fontWeight = FontWeight.Bold,
-                                color = onSurfaceColor,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            // Subtle emerald & gold internal light wave
+                            Canvas(modifier = Modifier.matchParentSize()) {
+                                val w = size.width
+                                val h = size.height
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            Color(0xFFFEF08A).copy(alpha = 0.22f),
+                                            Color.Transparent
+                                        ),
+                                        center = Offset(w * 0.86f, h * 0.45f),
+                                        radius = w * 0.42f
+                                    ),
+                                    radius = w * 0.42f,
+                                    center = Offset(w * 0.86f, h * 0.45f)
+                                )
+                                val wavePath = Path().apply {
+                                    moveTo(0f, h * 0.74f)
+                                    cubicTo(w * 0.32f, h * 0.56f, w * 0.68f, h * 0.92f, w, h * 0.68f)
+                                    lineTo(w, h)
+                                    lineTo(0f, h)
+                                    close()
+                                }
+                                drawPath(
+                                    path = wavePath,
+                                    color = Color(0xFF34D399).copy(alpha = 0.14f)
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Live Reading Oasis Canvas Animation (Exact mascot & floating book animation from Reading Oasis)
+                                Surface(
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = Color.White.copy(alpha = 0.15f),
+                                    border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.55f)),
+                                    modifier = Modifier.size(66.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        ReadingMascotCanvas(
+                                            modifier = Modifier.fillMaxSize(),
+                                            isCelebrating = true
+                                        )
+                                    }
+                                }
+
+                                // Completely Unclipped Title & Subtitle
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "واحة القراءة الذكية",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "تعلّم وتدرّب الآن • تعمل بدون إنترنت",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontSize = 12.5.sp,
+                                            lineHeight = 18.sp
+                                        ),
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFEF9C3)
+                                    )
+                                }
+
+                                // Sleek Frosted Entry Arrow
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.65f)),
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                            contentDescription = "دخول واحة القراءة الذكية",
+                                            tint = Color(0xFFFEF08A),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * 3 أقواس إشارة/موجات زمردية متدرجة تنبض بانسيابية هادئة (Calm Wave Ripple via rememberInfiniteTransition).
+ */
+@Composable
+private fun OfflineCalmSignalWavesCanvas(
+    isCheckingNow: Boolean,
+    primaryColor: Color,
+    goldColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "offline_calm_signal_waves")
+    val wavePhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = if (isCheckingNow) 1500 else 2500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "signal_wave_phase"
+    )
+    val coreBreath by transition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "signal_core_breath"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.50f
+        val originY = h * 0.78f
+        val maxR = size.minDimension * 0.70f
+
+        // Soft glowing aura behind arcs
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    primaryColor.copy(alpha = 0.18f * coreBreath),
+                    goldColor.copy(alpha = 0.08f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, originY - maxR * 0.25f),
+                radius = maxR * 0.95f
+            ),
+            radius = maxR * 0.95f,
+            center = Offset(cx, originY - maxR * 0.25f)
+        )
+
+        // 3 graduated emerald signal arcs pulsing sequentially from inner -> middle -> outer
+        val arcRadii = listOf(maxR * 0.34f, maxR * 0.58f, maxR * 0.82f)
+        arcRadii.forEachIndexed { idx, r ->
+            val phaseWindow = ((wavePhase * 3f) - idx).let { delta ->
+                val wrapped = ((delta % 3f) + 3f) % 3f
+                when {
+                    wrapped < 1f -> kotlin.math.sin(wrapped * Math.PI).toFloat()
+                    else -> 0f
+                }
+            }
+            val arcAlpha = (0.28f + 0.68f * phaseWindow).coerceIn(0.24f, 0.96f)
+            val arcWidth = (3.4.dp.toPx() + 1.4.dp.toPx() * phaseWindow)
+            val arcBrush = Brush.horizontalGradient(
+                colors = listOf(
+                    primaryColor.copy(alpha = arcAlpha * 0.85f),
+                    if (idx == 2) goldColor.copy(alpha = arcAlpha) else EmeraldAccent.copy(alpha = arcAlpha),
+                    primaryColor.copy(alpha = arcAlpha * 0.85f)
+                )
+            )
+            drawArc(
+                brush = arcBrush,
+                startAngle = -140f,
+                sweepAngle = 100f,
+                useCenter = false,
+                topLeft = Offset(cx - r, originY - r),
+                size = Size(r * 2f, r * 2f),
+                style = Stroke(width = arcWidth, cap = StrokeCap.Round)
+            )
+        }
+
+        // Luminous emerald & gold signal anchor node at base
+        drawCircle(
+            color = primaryColor.copy(alpha = 0.24f),
+            radius = 12.dp.toPx() * coreBreath,
+            center = Offset(cx, originY)
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFFEF08A), primaryColor, DeepEmerald),
+                center = Offset(cx, originY),
+                radius = 7.dp.toPx()
+            ),
+            radius = 7.dp.toPx(),
+            center = Offset(cx, originY)
+        )
     }
 }
 
@@ -490,251 +727,6 @@ private fun OfflineRefreshVectorCanvas(
             path = arrowPath,
             color = tint,
             style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        )
-    }
-}
-
-@Composable
-private fun OfflineRadarSignalCanvas(
-    isCheckingNow: Boolean,
-    primaryColor: Color,
-    accentGoldColor: Color,
-    coreSurfaceColor: Color,
-    modifier: Modifier = Modifier
-) {
-    val transition = rememberInfiniteTransition(label = "offline_radar_signal")
-
-    val sweepAngle by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = if (isCheckingNow) 1400 else 3200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "radar_sweep_angle"
-    )
-
-    val waveProgress1 by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "radar_wave_1"
-    )
-
-    val waveProgress2 by transition.animateFloat(
-        initialValue = 0.5f,
-        targetValue = 1.5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "radar_wave_2"
-    )
-
-    val corePulse by transition.animateFloat(
-        initialValue = 0.88f,
-        targetValue = 1.12f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "radar_core_pulse"
-    )
-
-    Canvas(modifier = modifier) {
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        val maxR = size.minDimension * 0.47f
-
-        // 1. Soft translucent circular backing halo
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    primaryColor.copy(alpha = 0.14f),
-                    primaryColor.copy(alpha = 0.04f),
-                    Color.Transparent
-                ),
-                center = Offset(cx, cy),
-                radius = maxR
-            ),
-            radius = maxR,
-            center = Offset(cx, cy)
-        )
-
-        // 2. Crisp calibration rings
-        listOf(0.96f, 0.72f, 0.48f).forEachIndexed { idx, factor ->
-            drawCircle(
-                color = primaryColor.copy(alpha = if (idx == 0) 0.24f else 0.16f),
-                radius = maxR * factor,
-                center = Offset(cx, cy),
-                style = Stroke(width = if (idx == 0) 1.5.dp.toPx() else 1.dp.toPx())
-            )
-        }
-
-        // Axis guides
-        drawLine(
-            color = primaryColor.copy(alpha = 0.12f),
-            start = Offset(cx - maxR, cy),
-            end = Offset(cx + maxR, cy),
-            strokeWidth = 1.dp.toPx()
-        )
-        drawLine(
-            color = primaryColor.copy(alpha = 0.12f),
-            start = Offset(cx, cy - maxR),
-            end = Offset(cx, cy + maxR),
-            strokeWidth = 1.dp.toPx()
-        )
-
-        // 3. Expanding radar pulse waves
-        val p1 = waveProgress1.coerceIn(0f, 1f)
-        val p2 = (waveProgress2 % 1f).coerceIn(0f, 1f)
-        listOf(p1, p2).forEach { p ->
-            val waveR = maxR * (0.24f + p * 0.74f)
-            val alpha = (1f - p) * 0.58f
-            drawCircle(
-                color = primaryColor.copy(alpha = alpha),
-                radius = waveR,
-                center = Offset(cx, cy),
-                style = Stroke(width = (2.3f * (1f - p * 0.5f)).dp.toPx())
-            )
-        }
-
-        // 4. Rotating radar sweep cone & needle
-        rotate(degrees = sweepAngle, pivot = Offset(cx, cy)) {
-            drawArc(
-                brush = Brush.sweepGradient(
-                    0.0f to Color.Transparent,
-                    0.72f to Color.Transparent,
-                    0.92f to primaryColor.copy(alpha = 0.20f),
-                    1.0f to primaryColor.copy(alpha = 0.52f),
-                    center = Offset(cx, cy)
-                ),
-                startAngle = 0f,
-                sweepAngle = 360f,
-                useCenter = true,
-                topLeft = Offset(cx - maxR * 0.94f, cy - maxR * 0.94f),
-                size = Size(maxR * 1.88f, maxR * 1.88f)
-            )
-            drawLine(
-                brush = Brush.linearGradient(
-                    colors = listOf(primaryColor.copy(alpha = 0.35f), accentGoldColor.copy(alpha = 0.95f)),
-                    start = Offset(cx, cy),
-                    end = Offset(cx + maxR * 0.94f, cy)
-                ),
-                start = Offset(cx, cy),
-                end = Offset(cx + maxR * 0.94f, cy),
-                strokeWidth = 2.1.dp.toPx(),
-                cap = StrokeCap.Round
-            )
-        }
-
-        // 5. Curved signal search arcs
-        val arcStroke = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
-        listOf(0.36f to 0.88f, 0.52f to 0.56f).forEach { (factor, baseAlpha) ->
-            val r = maxR * factor
-            val pulsedAlpha = (baseAlpha * (0.65f + 0.35f * (corePulse - 0.88f) / 0.24f)).coerceIn(0.24f, 1f)
-            drawArc(
-                color = primaryColor.copy(alpha = pulsedAlpha),
-                startAngle = -132f,
-                sweepAngle = 84f,
-                useCenter = false,
-                topLeft = Offset(cx - r, cy - r),
-                size = Size(r * 2f, r * 2f),
-                style = arcStroke
-            )
-            drawArc(
-                color = accentGoldColor.copy(alpha = pulsedAlpha * 0.85f),
-                startAngle = 48f,
-                sweepAngle = 84f,
-                useCenter = false,
-                topLeft = Offset(cx - r, cy - r),
-                size = Size(r * 2f, r * 2f),
-                style = arcStroke
-            )
-        }
-
-        // 6. Luminous center beacon in Platform Surface + Emerald/Gold ring
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    primaryColor.copy(alpha = 0.30f),
-                    accentGoldColor.copy(alpha = 0.14f),
-                    Color.Transparent
-                ),
-                center = Offset(cx, cy),
-                radius = maxR * 0.34f * corePulse
-            ),
-            radius = maxR * 0.34f * corePulse,
-            center = Offset(cx, cy)
-        )
-
-        drawCircle(
-            color = coreSurfaceColor,
-            radius = maxR * 0.21f,
-            center = Offset(cx, cy)
-        )
-
-        drawCircle(
-            brush = Brush.sweepGradient(
-                colors = listOf(primaryColor, accentGoldColor, primaryColor),
-                center = Offset(cx, cy)
-            ),
-            radius = maxR * 0.21f,
-            center = Offset(cx, cy),
-            style = Stroke(width = 2.5.dp.toPx())
-        )
-
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color.White, accentGoldColor, primaryColor),
-                center = Offset(cx, cy),
-                radius = maxR * 0.09f * corePulse
-            ),
-            radius = maxR * 0.09f * corePulse,
-            center = Offset(cx, cy)
-        )
-    }
-}
-
-@Composable
-private fun OfflineOasisBookBadgeCanvas(
-    primaryColor: Color,
-    goldColor: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        val leftPage = Path().apply {
-            moveTo(w * 0.50f, h * 0.28f)
-            cubicTo(w * 0.36f, h * 0.20f, w * 0.20f, h * 0.22f, w * 0.12f, h * 0.30f)
-            lineTo(w * 0.12f, h * 0.78f)
-            cubicTo(w * 0.22f, h * 0.72f, w * 0.36f, h * 0.72f, w * 0.50f, h * 0.80f)
-            close()
-        }
-        val rightPage = Path().apply {
-            moveTo(w * 0.50f, h * 0.28f)
-            cubicTo(w * 0.64f, h * 0.20f, w * 0.80f, h * 0.22f, w * 0.88f, h * 0.30f)
-            lineTo(w * 0.88f, h * 0.78f)
-            cubicTo(w * 0.78f, h * 0.72f, w * 0.64f, h * 0.72f, w * 0.50f, h * 0.80f)
-            close()
-        }
-
-        drawPath(path = leftPage, color = primaryColor.copy(alpha = 0.16f))
-        drawPath(path = rightPage, color = goldColor.copy(alpha = 0.18f))
-        drawPath(path = leftPage, color = primaryColor, style = stroke)
-        drawPath(path = rightPage, color = goldColor, style = stroke)
-
-        drawRoundRect(
-            color = primaryColor,
-            topLeft = Offset(w * 0.45f, h * 0.08f),
-            size = Size(w * 0.10f, h * 0.10f),
-            cornerRadius = CornerRadius(4f, 4f)
         )
     }
 }

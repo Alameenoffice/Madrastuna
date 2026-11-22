@@ -55,8 +55,12 @@ import androidx.compose.ui.unit.sp
 import com.example.model.TeacherEvaluationSummary
 import com.example.model.UserAccount
 import com.example.model.UserRole
-import com.example.ui.components.ThreeDIllustrationBox
-import com.example.ui.components.ThreeDIllustrationType
+import com.example.ui.components.EliteTeacherExcellenceMedalCanvas
+import com.example.ui.components.GlobalImageLightboxController
+import com.example.ui.components.SmartWelcomeProfileAvatar
+import com.example.ui.components.TeacherEvaluationSpotlightCard
+import com.example.ui.components.rankAvatarBadgeSpec
+import com.example.ui.components.resolveSmartAvatarPersona
 import com.example.viewmodel.SchoolViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -133,12 +137,13 @@ fun TeacherEvaluationScreen(
         contentPadding = PaddingValues(top = 0.dp, bottom = 110.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1) Full-Width Seamless Connected Wave Header + #1 Top Teacher Podium (Zero Box Border, Zero White Gap)
+        // 1) Full-Width Seamless Deep Emerald Wave Header + Dynamic Spotlight + #1 Top Teacher Podium
         item {
             SeamlessEvaluationConnectedWaveHeader(
                 totalTeachersCount = summaries.size,
                 totalRatingsCount = teacherRatings.size,
-                topSummary = topSummary
+                topSummary = topSummary,
+                schoolGenderType = schoolConfig.schoolGenderType
             )
         }
 
@@ -369,9 +374,8 @@ fun TeacherEvaluationScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        ThreeDIllustrationBox(
-                            type = ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D,
-                            modifier = Modifier.size(88.dp)
+                        EliteTeacherExcellenceMedalCanvas(
+                            modifier = Modifier.size(84.dp)
                         )
                         Text(
                             text = "لا يوجد معلمون مسجلون حالياً في المدرسة",
@@ -394,6 +398,7 @@ fun TeacherEvaluationScreen(
                 ThreeDWaveTeacherEvaluationCard(
                     rank = index + 1,
                     summary = summary,
+                    schoolGenderType = schoolConfig.schoolGenderType,
                     isParent = isParent,
                     isEvaluationEnabled = featureSettings.teacherEvaluationEnabled,
                     onClickRate = {
@@ -448,9 +453,8 @@ fun TeacherEvaluationScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        ThreeDIllustrationBox(
-                            type = ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D,
-                            modifier = Modifier.size(88.dp)
+                        EliteTeacherExcellenceMedalCanvas(
+                            modifier = Modifier.size(82.dp)
                         )
 
                         Text(
@@ -469,7 +473,7 @@ fun TeacherEvaluationScreen(
                             color = Color(0xFF047857)
                         )
 
-                        // Animated 3D Expression Badge above the 5 Stars
+                        // Animated Expression Badge above the 5 Stars
                         AnimatedContent(
                             targetState = selectedStars,
                             transitionSpec = {
@@ -481,11 +485,11 @@ fun TeacherEvaluationScreen(
                             label = "star_expression_badge_anim"
                         ) { starVal ->
                             val badgeText = when (starVal) {
-                                5 -> "٥ نجوم — عطاء تربوي استثنائي ومُلهم ★"
-                                4 -> "٤ نجوم — أداء متميز وجهد مشكور ★"
-                                3 -> "٣ نجوم — أداء جيد ومقدر ★"
-                                2 -> "نجمتان — يحتاج لمزيد من المتابعة"
-                                else -> "نجمة واحدة — بحاجة لتحسين التواصل التربوي"
+                                5 -> "5 من 5 — عطاء تربوي استثنائي ومُلهم"
+                                4 -> "4 من 5 — أداء متميز وجهد مشكور"
+                                3 -> "3 من 5 — أداء جيد ومقدر"
+                                2 -> "2 من 5 — يحتاج لمزيد من المتابعة"
+                                else -> "1 من 5 — بحاجة لتحسين التواصل التربوي"
                             }
                             Surface(
                                 shape = RoundedCornerShape(50),
@@ -739,21 +743,22 @@ fun TeacherEvaluationScreen(
 }
 
 /**
- * Full-Width Seamless Connected Wave Header + #1 Top Teacher Podium
- * Zero yellow box border, zero white gap, edge-to-edge luxury 3D wave design.
+ * Full-Width Deep Harmonious Emerald Wave Header + Dynamic Spotlight + Frosted #1 Podium
+ * Matching the home screen aesthetic: soft bottom wave + thin luminous golden thread (no brownish/olive gradient).
  */
 @Composable
 private fun SeamlessEvaluationConnectedWaveHeader(
     totalTeachersCount: Int,
     totalRatingsCount: Int,
-    topSummary: TeacherEvaluationSummary?
+    topSummary: TeacherEvaluationSummary?,
+    schoolGenderType: String
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "eval_wave_header_aura")
     val auraAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.20f,
-        targetValue = 0.48f,
+        initialValue = 0.14f,
+        targetValue = 0.28f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
+            animation = tween(2400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "eval_aura_alpha"
@@ -768,10 +773,11 @@ private fun SeamlessEvaluationConnectedWaveHeader(
                     colors = listOf(
                         Color(0xFF059669),
                         Color(0xFF047857),
-                        Color(0xFF0F3D5E)
+                        Color(0xFF065F46),
+                        Color(0xFF022C22)
                     ),
                     start = Offset(0f, 0f),
-                    end = Offset(1000f, 800f)
+                    end = Offset(900f, 950f)
                 )
             )
             .testTag("top_teacher_spotlight_podium_card")
@@ -780,51 +786,57 @@ private fun SeamlessEvaluationConnectedWaveHeader(
             val w = size.width
             val h = size.height
 
+            // Soft emerald-mint ambient highlight behind spotlight widget
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(Color(0xFFFBBF24).copy(alpha = auraAlpha), Color.Transparent),
-                    center = Offset(w * 0.20f, h * 0.45f),
-                    radius = w * 0.52f
+                    listOf(
+                        Color(0xFF34D399).copy(alpha = auraAlpha),
+                        Color(0xFFFEF08A).copy(alpha = auraAlpha * 0.45f),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.22f, h * 0.40f),
+                    radius = w * 0.48f
                 ),
-                radius = w * 0.52f,
-                center = Offset(w * 0.20f, h * 0.45f)
+                radius = w * 0.48f,
+                center = Offset(w * 0.22f, h * 0.40f)
             )
 
-            val middleRibbon = Path().apply {
-                moveTo(0f, h * 0.52f)
-                cubicTo(w * 0.35f, h * 0.40f, w * 0.68f, h * 0.68f, w, h * 0.48f)
+            // Calm deep emerald bottom wave (zero brownish/olive tone)
+            val bottomEmeraldWave = Path().apply {
+                moveTo(0f, h * 0.72f)
+                cubicTo(w * 0.34f, h * 0.62f, w * 0.68f, h * 0.86f, w, h * 0.70f)
                 lineTo(w, h)
                 lineTo(0f, h)
                 close()
             }
             drawPath(
-                path = middleRibbon,
-                color = Color(0xFF064E3B).copy(alpha = 0.38f)
+                path = bottomEmeraldWave,
+                color = Color(0xFF022C22).copy(alpha = 0.34f)
             )
 
-            val bottomGoldWave = Path().apply {
-                moveTo(0f, h * 0.78f)
-                cubicTo(w * 0.30f, h * 0.64f, w * 0.70f, h * 0.94f, w, h * 0.72f)
-                lineTo(w, h)
-                lineTo(0f, h)
-                close()
+            // Thin luminous golden-emerald thread along the bottom wave contour (like Home screen)
+            val goldenThread = Path().apply {
+                moveTo(0f, h * 0.945f)
+                cubicTo(w * 0.32f, h * 0.865f, w * 0.68f, h * 0.995f, w, h * 0.925f)
             }
             drawPath(
-                path = bottomGoldWave,
+                path = goldenThread,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        Color(0xFFFBBF24).copy(alpha = 0.20f),
-                        Color(0xFF34D399).copy(alpha = 0.14f),
-                        Color(0xFFF59E0B).copy(alpha = 0.22f)
+                        Color(0xFF34D399).copy(alpha = 0.35f),
+                        Color(0xFFFEF08A).copy(alpha = 0.85f),
+                        Color(0xFFF59E0B).copy(alpha = 0.65f),
+                        Color(0xFF34D399).copy(alpha = 0.35f)
                     )
-                )
+                ),
+                style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
             )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 28.dp),
+                .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 30.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Top Pills Row
@@ -835,7 +847,8 @@ private fun SeamlessEvaluationConnectedWaveHeader(
             ) {
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.18f)
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.24f))
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -859,7 +872,8 @@ private fun SeamlessEvaluationConnectedWaveHeader(
 
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.18f)
+                    color = Color.White.copy(alpha = 0.16f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.24f))
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -882,7 +896,7 @@ private fun SeamlessEvaluationConnectedWaveHeader(
                 }
             }
 
-            // Main Hero Title + 3D Podium & Golden Star Award Illustration
+            // Main Hero Title + Dynamic Section Spotlight Card on Left (Trailing in RTL)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -895,69 +909,117 @@ private fun SeamlessEvaluationConnectedWaveHeader(
                     Text(
                         text = "تقييم وتميّز الكادر التدريسي",
                         style = MaterialTheme.typography.headlineSmall,
-                        fontSize = 21.sp,
+                        fontSize = 20.5.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White
                     )
                     Text(
                         text = "منصة شفافة لتقدير جهود الأساتذة المتميزين بتقييم مباشر وموثوق من أولياء الأمور",
-                        fontSize = 12.8.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = Color(0xFFD1FAE5)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-                ThreeDIllustrationBox(
-                    type = ThreeDIllustrationType.TEACHER_EXCELLENCE_CROWN_3D,
-                    modifier = Modifier.size(96.dp)
-                )
+                TeacherEvaluationSpotlightCard()
             }
 
-            // Integrated #1 Top Teacher Podium Wave Strip (Frameless inside the connected wave)
+            // Refined Frosted-Glass #1 Top Teacher Card with SmartWelcomeProfileAvatar & Thin Golden Vertical Accent
             if (topSummary != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.16f),
-                                    Color(0xFFFBBF24).copy(alpha = 0.18f),
-                                    Color.White.copy(alpha = 0.12f)
-                                )
-                            )
-                        )
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                val topPersona = remember(topSummary.teacher.gender, schoolGenderType, topSummary.teacher.fullName) {
+                    resolveSmartAvatarPersona(
+                        role = UserRole.TEACHER,
+                        gender = topSummary.teacher.gender,
+                        schoolGenderType = schoolGenderType,
+                        fullName = topSummary.teacher.fullName
+                    )
+                }
+                val topRankBadge = remember { rankAvatarBadgeSpec(1) }
+                val cleanTopRating = remember(topSummary.averageRating, topSummary.totalRatingsCount) {
+                    "${String.format(Locale.US, "%.1f", topSummary.averageRating)} من 5.0 • ${topSummary.totalRatingsCount} تقييم"
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        // Thin vertical golden accent strip
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFFFEF08A), Color(0xFFF59E0B), Color(0xFF6EE7B7))
+                                    )
+                                )
+                        )
+
+                        SmartWelcomeProfileAvatar(
+                            photoSource = topSummary.teacher.photoBase64,
+                            contentDescription = topSummary.teacher.fullName,
+                            persona = topPersona,
+                            statusBadge = topRankBadge,
+                            onClick = {
+                                if (topSummary.teacher.photoBase64.isNotBlank()) {
+                                    GlobalImageLightboxController.open(
+                                        topSummary.teacher.photoBase64,
+                                        topSummary.teacher.fullName
+                                    )
+                                }
+                            },
+                            avatarSize = 58.dp,
+                            showStatusBadge = true
+                        )
+
                         Column(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = Color(0xFFFBBF24).copy(alpha = 0.28f)
+                                color = Color(0xFFFEF08A).copy(alpha = 0.20f),
+                                border = BorderStroke(0.8.dp, Color(0xFFFEF08A).copy(alpha = 0.50f))
                             ) {
-                                Text(
-                                    text = if (topSummary.teacher.isFemale) "المتصدرة الأولى #1 • وسام التميز التربوي ★" else "المتصدر الأول #1 • وسام التميز التربوي ★",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFEF08A),
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.WorkspacePremium,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFEF08A),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = if (topSummary.teacher.isFemale) "المتصدرة الأولى • وسام التميز" else "المتصدر الأول • وسام التميز",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFEF08A),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
 
                             Text(
                                 text = "${topSummary.teacher.honorificTeacherTitle}: ${topSummary.teacher.fullName}",
                                 style = MaterialTheme.typography.titleMedium,
-                                fontSize = 17.5.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White,
                                 maxLines = 1,
@@ -966,8 +1028,8 @@ private fun SeamlessEvaluationConnectedWaveHeader(
 
                             Text(
                                 text = topSummary.teacher.specialty.ifBlank { "الكادر التدريسي المتميز" },
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFFD1FAE5),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -975,25 +1037,21 @@ private fun SeamlessEvaluationConnectedWaveHeader(
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.20f)
-                                ) {
-                                    Text(
-                                        text = String.format(Locale.US, "%.1f / 5.0 ★", topSummary.averageRating),
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFFEF08A),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFEF08A),
+                                    modifier = Modifier.size(15.dp)
+                                )
                                 Text(
-                                    text = "(${topSummary.totalRatingsCount} تقييم من أولياء الأمور)",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.92f)
+                                    text = cleanTopRating,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFFFFFBEB),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -1091,7 +1149,7 @@ private fun SweetRatingCelebrationView(teacherName: String) {
         )
 
         Text(
-            text = "تم تحديث سجل التميز التربوي للأستاذ(ة) $teacherName في السحابة فوراً ★",
+            text = "تم تحديث سجل التميز التربوي للأستاذ(ة) $teacherName في السحابة فوراً",
             fontSize = 12.5.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF475569),
@@ -1105,6 +1163,7 @@ private fun SweetRatingCelebrationView(teacherName: String) {
 private fun ThreeDWaveTeacherEvaluationCard(
     rank: Int,
     summary: TeacherEvaluationSummary,
+    schoolGenderType: String,
     isParent: Boolean,
     isEvaluationEnabled: Boolean,
     onClickRate: () -> Unit,
@@ -1118,34 +1177,49 @@ private fun ThreeDWaveTeacherEvaluationCard(
         animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing),
         label = "teacher_rating_progress_${teacher.id}"
     )
+    val teacherPersona = remember(teacher.gender, schoolGenderType, teacher.fullName) {
+        resolveSmartAvatarPersona(
+            role = UserRole.TEACHER,
+            gender = teacher.gender,
+            schoolGenderType = schoolGenderType,
+            fullName = teacher.fullName
+        )
+    }
+    val rankBadge = remember(rank) { rankAvatarBadgeSpec(rank) }
+    val isTopRanked = rank == 1 && summary.totalRatingsCount > 0
 
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(7.dp, RoundedCornerShape(22.dp))
+            .shadow(
+                elevation = if (isTopRanked) 6.dp else 3.dp,
+                shape = RoundedCornerShape(22.dp),
+                ambientColor = Color(0xFF064E3B).copy(alpha = 0.09f),
+                spotColor = Color(0xFF064E3B).copy(alpha = 0.13f)
+            )
             .testTag("teacher_eval_card_${teacher.id}"),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         border = BorderStroke(
-            width = if (rank == 1 && summary.totalRatingsCount > 0) 1.6.dp else 1.dp,
-            color = if (rank == 1 && summary.totalRatingsCount > 0) Color(0xFFF59E0B) else Color(0xFFE2E8F0)
+            width = if (isTopRanked) 1.4.dp else 1.dp,
+            color = if (isTopRanked) Color(0xFFD97706).copy(alpha = 0.36f) else Color(0xFFA7F3D0).copy(alpha = 0.85f)
         )
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {
-            // Subtle bottom mint wave inside card
+            // Very soft subtle mint corner sheen
             Canvas(modifier = Modifier.matchParentSize()) {
                 val w = size.width
                 val h = size.height
                 val wavePath = Path().apply {
-                    moveTo(0f, h * 0.78f)
-                    cubicTo(w * 0.35f, h * 0.68f, w * 0.70f, h * 0.92f, w, h * 0.75f)
+                    moveTo(0f, h * 0.84f)
+                    cubicTo(w * 0.35f, h * 0.76f, w * 0.70f, h * 0.94f, w, h * 0.82f)
                     lineTo(w, h)
                     lineTo(0f, h)
                     close()
                 }
                 drawPath(
                     path = wavePath,
-                    color = Color(0xFFD1FAE5).copy(alpha = 0.35f)
+                    color = Color(0xFFECFDF5).copy(alpha = 0.55f)
                 )
             }
 
@@ -1153,133 +1227,132 @@ private fun ThreeDWaveTeacherEvaluationCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Header Row: SmartWelcomeProfileAvatar (with refined rank badge) + Teacher Details + Score Pill
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // 3D Rank Badge
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        if (rank == 1 && summary.totalRatingsCount > 0) {
-                                            listOf(Color(0xFFF59E0B), Color(0xFFD97706))
-                                        } else {
-                                            listOf(Color(0xFF059669), Color(0xFF0F3D5E))
-                                        }
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "#$rank",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                        }
-
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = teacher.fullName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontSize = 15.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF0F172A),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = teacher.specialty.ifBlank { "الكادر التدريسي" },
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF059669),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            if (teacher.assignedClasses.isNotBlank()) {
-                                Text(
-                                    text = "الصفوف: ${teacher.assignedClasses}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF64748B),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                    SmartWelcomeProfileAvatar(
+                        photoSource = teacher.photoBase64,
+                        contentDescription = teacher.fullName,
+                        persona = teacherPersona,
+                        statusBadge = rankBadge,
+                        onClick = {
+                            if (teacher.photoBase64.isNotBlank()) {
+                                GlobalImageLightboxController.open(teacher.photoBase64, teacher.fullName)
                             }
+                        },
+                        avatarSize = 58.dp,
+                        showStatusBadge = true
+                    )
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = teacher.fullName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0F172A),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = teacher.specialty.ifBlank { "الكادر التدريسي" },
+                            fontSize = 12.2.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF047857),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (teacher.assignedClasses.isNotBlank()) {
+                            Text(
+                                text = "الصفوف: ${teacher.assignedClasses}",
+                                fontSize = 11.2.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF64748B),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
 
-                    // Score Pill formatted strictly as "4.8 / 5.0 ★"
+                    // Natural Arabic Score Capsule ("2.0 من 5.0")
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = if (summary.totalRatingsCount > 0) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
+                        color = if (summary.totalRatingsCount > 0) Color(0xFFFFFBEB) else Color(0xFFF8FAFC),
                         border = BorderStroke(
                             1.dp,
-                            if (summary.totalRatingsCount > 0) Color(0xFFF59E0B) else Color(0xFFCBD5E1)
+                            if (summary.totalRatingsCount > 0) Color(0xFFF59E0B).copy(alpha = 0.42f) else Color(0xFFCBD5E1)
                         )
                     ) {
                         Column(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Text(
-                                text = if (summary.totalRatingsCount > 0) {
-                                    String.format(Locale.US, "%.1f / 5.0 ★", summary.averageRating)
-                                } else {
-                                    "جديد"
-                                },
-                                fontSize = 12.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (summary.totalRatingsCount > 0) Color(0xFFB45309) else Color(0xFF64748B)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = if (summary.totalRatingsCount > 0) Color(0xFFD97706) else Color(0xFF94A3B8),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = if (summary.totalRatingsCount > 0) {
+                                        String.format(Locale.US, "%.1f من 5.0", summary.averageRating)
+                                    } else {
+                                        "جديد"
+                                    },
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (summary.totalRatingsCount > 0) Color(0xFF92400E) else Color(0xFF64748B),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                             Text(
                                 text = "${summary.totalRatingsCount} تقييم",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF475569)
+                                color = Color(0xFF64748B),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
                 }
 
-                // Animated Rating Bar
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Slim Platform-Gradient Progress Bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFFF1F5F9))
+                ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
+                            .fillMaxWidth(animatedProgress)
+                            .fillMaxHeight()
                             .clip(RoundedCornerShape(50))
-                            .background(Color(0xFFF1F5F9))
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(animatedProgress)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(Color(0xFF10B981), Color(0xFFF59E0B))
-                                    )
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFF059669), Color(0xFF10B981), Color(0xFFD97706))
                                 )
-                        )
-                    }
+                            )
+                    )
                 }
 
-                // Top Praise Tags (Clean without ✨)
+                // Clean Praise Chips
                 if (summary.topPraiseTags.isNotEmpty()) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1292,7 +1365,7 @@ private fun ThreeDWaveTeacherEvaluationCard(
                                 border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.5.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
@@ -1304,7 +1377,7 @@ private fun ThreeDWaveTeacherEvaluationCard(
                                     )
                                     Text(
                                         text = tag,
-                                        fontSize = 10.5.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF065F46)
                                     )
@@ -1339,7 +1412,7 @@ private fun ThreeDWaveTeacherEvaluationCard(
                                 Icon(
                                     imageVector = Icons.Filled.FormatQuote,
                                     contentDescription = null,
-                                    tint = Color(0xFFF59E0B),
+                                    tint = Color(0xFFD97706),
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
@@ -1355,12 +1428,12 @@ private fun ThreeDWaveTeacherEvaluationCard(
                     }
                 }
 
-                // Parent One-Time Rating Action / Locked State
+                // Parent One-Time Rating Status Strip or Rate CTA
                 if (myRating != null) {
                     Surface(
                         shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFECFDF5),
-                        border = BorderStroke(1.2.dp, Color(0xFF10B981)),
+                        color = Color(0xFFF0FDF4),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("teacher_already_rated_badge_${teacher.id}")
@@ -1368,8 +1441,8 @@ private fun ThreeDWaveTeacherEvaluationCard(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1378,26 +1451,29 @@ private fun ThreeDWaveTeacherEvaluationCard(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Verified,
                                         contentDescription = null,
                                         tint = Color(0xFF059669),
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
                                     Text(
-                                        text = "تم تقييم الأستاذ ✓",
-                                        fontSize = 12.5.sp,
+                                        text = "تم تقييم الأستاذ • تقييمك: ${myRating.stars}.0 من 5.0",
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF065F46)
+                                        color = Color(0xFF065F46),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                Text(
-                                    text = "تقييمك: ${myRating.stars}.0 / 5.0 ★",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFD97706)
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                             if (myRating.note.isNotBlank()) {
@@ -1416,7 +1492,7 @@ private fun ThreeDWaveTeacherEvaluationCard(
                             onClick = onClickRate,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(44.dp)
+                                .height(46.dp)
                                 .testTag("rate_teacher_btn_${teacher.id}"),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -1432,7 +1508,7 @@ private fun ThreeDWaveTeacherEvaluationCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "تقييم الأستاذ ★",
+                                text = "تقييم الأستاذ",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold
                             )

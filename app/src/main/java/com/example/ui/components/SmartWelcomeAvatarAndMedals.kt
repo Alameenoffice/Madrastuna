@@ -282,7 +282,8 @@ fun SmartWelcomeProfileAvatar(
     statusBadge: DailyStatusBadgeSpec,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    avatarSize: Dp = 86.dp
+    avatarSize: Dp = 86.dp,
+    showStatusBadge: Boolean = true
 ) {
     val imageBitmap = rememberSmartProfileImageBitmap(photoSource = photoSource, maxDimension = 360)
     val transition = rememberInfiniteTransition(label = "smart_welcome_avatar_anim")
@@ -298,7 +299,7 @@ fun SmartWelcomeProfileAvatar(
 
     Box(
         modifier = modifier
-            .minimumInteractiveComponentSize()
+            .then(if (showStatusBadge) Modifier.minimumInteractiveComponentSize() else Modifier)
             .clickable(onClick = onClick)
             .testTag("welcome_smart_profile_avatar"),
         contentAlignment = Alignment.TopCenter
@@ -306,22 +307,22 @@ fun SmartWelcomeProfileAvatar(
         // Outer circular frosted frame + daily status ring
         Box(
             modifier = Modifier
-                .padding(bottom = 12.dp)
+                .padding(bottom = if (showStatusBadge) 12.dp else 0.dp)
                 .size(avatarSize)
                 .shadow(
-                    elevation = 10.dp,
+                    elevation = if (avatarSize >= 56.dp) 8.dp else 3.dp,
                     shape = CircleShape,
-                    ambientColor = Color(0xFF022C22).copy(alpha = 0.40f),
-                    spotColor = Color(0xFF022C22).copy(alpha = 0.45f)
+                    ambientColor = Color(0xFF022C22).copy(alpha = 0.32f),
+                    spotColor = Color(0xFF022C22).copy(alpha = 0.36f)
                 )
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.16f))
                 .border(
-                    width = 2.6.dp,
+                    width = if (avatarSize >= 56.dp) 2.2.dp else 1.5.dp,
                     brush = Brush.sweepGradient(statusBadge.ringColors),
                     shape = CircleShape
                 )
-                .padding(4.dp)
+                .padding(if (avatarSize >= 56.dp) 3.5.dp else 2.dp)
                 .clip(CircleShape)
                 .background(
                     Brush.verticalGradient(
@@ -343,45 +344,47 @@ fun SmartWelcomeProfileAvatar(
             } else {
                 SmartVectorPortraitCanvas(
                     persona = persona,
-                    animateCalmly = true,
+                    animateCalmly = avatarSize >= 56.dp,
                     modifier = Modifier.fillMaxSize()
                 )
             }
         }
 
         // Overlapping bottom daily status capsule
-        Surface(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .offset(y = (-1).dp)
-                .testTag("welcome_avatar_daily_status_badge"),
-            shape = RoundedCornerShape(50),
-            color = statusBadge.pillBackground,
-            border = BorderStroke(1.dp, statusBadge.pillBorder),
-            shadowElevation = 4.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+        if (showStatusBadge) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = (-1).dp)
+                    .testTag("welcome_avatar_daily_status_badge"),
+                shape = RoundedCornerShape(50),
+                color = statusBadge.pillBackground,
+                border = BorderStroke(1.dp, statusBadge.pillBorder),
+                shadowElevation = 4.dp
             ) {
-                if (statusBadge.dotColor != null) {
-                    val effectiveAlpha = if (statusBadge.pulseDot) dotPulseAlpha else 1f
-                    Box(
-                        modifier = Modifier
-                            .size(6.5.dp)
-                            .clip(CircleShape)
-                            .background(statusBadge.dotColor.copy(alpha = effectiveAlpha))
+                Row(
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (statusBadge.dotColor != null) {
+                        val effectiveAlpha = if (statusBadge.pulseDot) dotPulseAlpha else 1f
+                        Box(
+                            modifier = Modifier
+                                .size(6.5.dp)
+                                .clip(CircleShape)
+                                .background(statusBadge.dotColor.copy(alpha = effectiveAlpha))
+                        )
+                    }
+                    Text(
+                        text = statusBadge.label,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = statusBadge.pillTextColor,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
-                Text(
-                    text = statusBadge.label,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = statusBadge.pillTextColor,
-                    maxLines = 1,
-                    softWrap = false
-                )
             }
         }
     }
