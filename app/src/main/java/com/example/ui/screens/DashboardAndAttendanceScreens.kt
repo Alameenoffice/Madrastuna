@@ -3955,11 +3955,11 @@ private fun ParentStudentLiveBusAlertBannerCard(
 
     val dailyQrStatusLine = when {
         returnDepartedTime.isNotBlank() ->
-            "حالة الباركود اليوم: صعد صباحاً (${morningBoardedTime.ifBlank { "مسجل" }}) ✓ • غادر في رحلة العودة ($returnDepartedTime) ✓"
+            "متابعة الركوب اليوم: صعد للمركبة صباحاً (${morningBoardedTime.ifBlank { "مسجل" }}) ✓ • وصل بأمان ($returnDepartedTime) ✓"
         morningBoardedTime.isNotBlank() ->
-            "حالة الباركود اليوم: صعد صباحاً ($morningBoardedTime) ✓ • بانتظار رحلة العودة"
+            "متابعة الركوب اليوم: صعد للمركبة صباحاً ($morningBoardedTime) ✓ • بانتظار رحلة العودة"
         else ->
-            "حالة الباركود اليوم: بانتظار مسح باركود الصعود الصباحي • آخر تحديث: $formattedStamp"
+            "متابعة الركوب اليوم: بانتظار تسجيل الصعود الصباحي • آخر تحديث: $formattedStamp"
     }
 
     Surface(
@@ -4778,16 +4778,49 @@ private fun SchoolBusQuickAlertsCard(
         }
     }
 
-    val resolvedStatus = remember(
+    // Immediate reactive Compose state (Optimistic UI Update) so tapping any trip button
+    // glides the bus smoothly on the track without waiting for Firebase or leaving the screen.
+    var localBusEvent by remember { mutableStateOf(schoolConfig.activeBusEvent) }
+    var localBusTimestampText by remember { mutableStateOf(schoolConfig.activeBusEventTimestamp) }
+    var localLastUpdatedTimestamp by remember { mutableStateOf(schoolConfig.lastUpdatedTimestamp) }
+    var localLastUpdatedDate by remember { mutableStateOf(schoolConfig.lastUpdatedDate) }
+    var localHolidayOverride by remember { mutableStateOf(schoolConfig.isHolidayOverrideActive) }
+    var localManualOverride by remember { mutableStateOf(schoolConfig.isManualOverrideActive) }
+
+    LaunchedEffect(
         schoolConfig.activeBusEvent,
-        schoolConfig.activeBusEventDateIso,
-        schoolConfig.lastUpdatedDate,
+        schoolConfig.activeBusEventTimestamp,
         schoolConfig.lastUpdatedTimestamp,
+        schoolConfig.lastUpdatedDate,
         schoolConfig.isHolidayOverrideActive,
+        schoolConfig.isManualOverrideActive
+    ) {
+        localBusEvent = schoolConfig.activeBusEvent
+        localBusTimestampText = schoolConfig.activeBusEventTimestamp
+        localLastUpdatedTimestamp = schoolConfig.lastUpdatedTimestamp
+        localLastUpdatedDate = schoolConfig.lastUpdatedDate
+        localHolidayOverride = schoolConfig.isHolidayOverrideActive
+        localManualOverride = schoolConfig.isManualOverrideActive
+        clockTickMillis = System.currentTimeMillis()
+    }
+
+    val resolvedStatus = remember(
+        localBusEvent,
+        localLastUpdatedDate,
+        localLastUpdatedTimestamp,
+        localHolidayOverride,
+        localManualOverride,
+        schoolConfig.activeBusEventDateIso,
         todayHolidayLabel,
         clockTickMillis
     ) {
-        schoolConfig.resolveTransportStatus(
+        resolveTransportStatus(
+            activeBusEvent = localBusEvent,
+            activeBusEventDateIso = localLastUpdatedDate.ifBlank { schoolConfig.activeBusEventDateIso },
+            lastUpdatedDate = localLastUpdatedDate,
+            lastUpdatedTimestamp = localLastUpdatedTimestamp,
+            isHolidayOverrideActive = localHolidayOverride,
+            isManualOverrideActive = localManualOverride,
             holidayLabel = todayHolidayLabel,
             nowMillis = clockTickMillis
         )
@@ -4885,7 +4918,7 @@ private fun SchoolBusQuickAlertsCard(
             FullWidthBezierWaveRoadTrack(
                 resolvedStatus = resolvedStatus,
                 lastUpdatedTimestamp = if (resolvedStatus.isActivelyRunning) {
-                    formatBusTimestampPretty(schoolConfig.activeBusEventTimestamp)
+                    formatBusTimestampPretty(localBusTimestampText)
                 } else {
                     ""
                 }
@@ -4895,8 +4928,31 @@ private fun SchoolBusQuickAlertsCard(
             if (canControlTrip) {
                 CompactTransportControlButtonsRow(
                     resolvedStatus = resolvedStatus,
-                    onActivateEvent = onSendBusAlert,
-                    onEndTrip = onEndBusTrip,
+                    onActivateEvent = { eventType, isHolidayOverride ->
+                        val nowMs = System.currentTimeMillis()
+                        val nowDate = java.util.Date(nowMs)
+                        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(nowDate)
+                        val stampStr = java.text.SimpleDateFormat("yyyy/MM/dd hh:mm a", java.util.Locale("ar")).format(nowDate)
+                        localBusEvent = eventType.name
+                        localBusTimestampText = stampStr
+                        localLastUpdatedTimestamp = nowMs
+                        localLastUpdatedDate = todayStr
+                        localHolidayOverride = isHolidayOverride
+                        localManualOverride = true
+                        clockTickMillis = nowMs
+                        onSendBusAlert(eventType, isHolidayOverride)
+                    },
+                    onEndTrip = {
+                        val nowMs = System.currentTimeMillis()
+                        localBusEvent = ""
+                        localBusTimestampText = ""
+                        localLastUpdatedTimestamp = 0L
+                        localLastUpdatedDate = ""
+                        localHolidayOverride = false
+                        localManualOverride = false
+                        clockTickMillis = nowMs
+                        onEndBusTrip()
+                    },
                     testTagPrefix = "bus_alert_btn_",
                     modifier = Modifier.padding(horizontal = 14.dp)
                 )
@@ -4924,21 +4980,22 @@ private fun FullWidthBezierWaveRoadTrack(
         null -> 0
     }
 
-    // Target normalized X along the panoramic Bezier track:
-    // Station 0 (منزل الطالب - Right): 0.82f
-    // Station 1 (في الطريق السريع - Center): 0.50f
-    // Station 2 (بوابة المدرسة - Left): 0.18f
-    val targetT = when {
-        !isActive -> 0.82f
-        activeStationIndex == 0 -> 0.82f
-        activeStationIndex == 1 -> 0.50f
-        else -> 0.18f
+    // Target route progress (0f = منزل الطالب, 0.5f = في الطريق السريع, 1f = بوابة المدرسة)
+    val targetProgress = when {
+        !isActive -> 0f
+        activeBusState == BusEventType.MORNING_DEPARTURE -> 0.5f
+        activeBusState == BusEventType.ARRIVED_AT_SCHOOL -> 1f
+        activeBusState == BusEventType.RETURN_HOME_DEPARTURE -> 0f
+        else -> 0f
     }
-    val animatedBusT by animateFloatAsState(
-        targetValue = targetT,
-        animationSpec = tween(durationMillis = 1100, easing = FastOutSlowInEasing),
-        label = "panoramic_bus_position_t"
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+        label = "panoramic_bus_route_progress"
     )
+    // Map route progress [0f..1f] to RTL track X [0.82f (Right/Home) -> 0.50f (Road) -> 0.18f (Left/School)]
+    val animatedBusT = 0.82f - animatedProgress * 0.64f
+    val isBusGliding = kotlin.math.abs(animatedProgress - targetProgress) > 0.005f
 
     val infiniteTransition = rememberInfiniteTransition(label = "bezier_wave_road_track_anim")
     val busSuspensionFloat by infiniteTransition.animateFloat(
@@ -4954,7 +5011,7 @@ private fun FullWidthBezierWaveRoadTrack(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600, easing = LinearEasing),
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "bus_wheel_spin_deg"
@@ -4969,8 +5026,8 @@ private fun FullWidthBezierWaveRoadTrack(
         label = "station_node_pulse"
     )
 
-    val effectiveSuspension = if (isActive) busSuspensionFloat else 0f
-    val effectiveWheelSpin = if (isActive) wheelSpinDeg else 0f
+    val effectiveSuspension = if (isActive || isBusGliding) busSuspensionFloat else 0f
+    val effectiveWheelSpin = if (isActive || isBusGliding) wheelSpinDeg else 0f
 
     val statusDotColor = when (resolvedStatus.operationalState) {
         TransportOperationalState.ACTIVE -> Color(0xFFFBBF24)
@@ -5107,6 +5164,30 @@ private fun FullWidthBezierWaveRoadTrack(
                     style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
                 )
 
+                // Progressive glowing trail behind the bus as it glides along the curve
+                if (isActive && animatedProgress > 0.01f) {
+                    val glowTrailPath = Path().apply {
+                        val trailSteps = 24
+                        val startNx = 0.82f
+                        val endNx = animatedBusT
+                        moveTo(w * startNx, roadYAt(startNx))
+                        for (i in 1..trailSteps) {
+                            val frac = i.toFloat() / trailSteps.toFloat()
+                            val nx = startNx + (endNx - startNx) * frac
+                            lineTo(w * nx, roadYAt(nx))
+                        }
+                    }
+                    drawPath(
+                        path = glowTrailPath,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFFFDE68A), Color(0xFF34D399)),
+                            startX = w * animatedBusT,
+                            endX = w * 0.82f
+                        ),
+                        style = Stroke(width = 4.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                }
+
                 // 2) Three Station Anchors on the Wavy Track
                 val stationNormXs = listOf(0.82f, 0.50f, 0.18f)
                 stationNormXs.forEachIndexed { idx, nx ->
@@ -5141,7 +5222,7 @@ private fun FullWidthBezierWaveRoadTrack(
                     )
                 }
 
-                // 3) 3D Vector School Bus (glides when active, parked calmly when standby/holiday)
+                // 3) 3D Vector School Bus (glides smoothly when active, turns around on return trip)
                 val busX = w * animatedBusT
                 val busRoadY = roadYAt(animatedBusT)
                 val busY = busRoadY - 12.dp.toPx() + effectiveSuspension
@@ -10474,16 +10555,49 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
         viewModel.getHolidayLabelForDate(todayIso)
     }
 
-    val fleetResolvedStatus = remember(
+    // Immediate Optimistic Compose State for the Full Transport Section so bus movement
+    // reacts instantaneously on button tap before Firebase sync round-trip completes.
+    var localFleetBusEvent by remember { mutableStateOf(schoolConfig.activeBusEvent) }
+    var localFleetBusTimestampText by remember { mutableStateOf(schoolConfig.activeBusEventTimestamp) }
+    var localFleetLastUpdatedTs by remember { mutableStateOf(schoolConfig.lastUpdatedTimestamp) }
+    var localFleetLastUpdatedDate by remember { mutableStateOf(schoolConfig.lastUpdatedDate) }
+    var localFleetHolidayOverride by remember { mutableStateOf(schoolConfig.isHolidayOverrideActive) }
+    var localFleetManualOverride by remember { mutableStateOf(schoolConfig.isManualOverrideActive) }
+
+    LaunchedEffect(
         schoolConfig.activeBusEvent,
-        schoolConfig.activeBusEventDateIso,
-        schoolConfig.lastUpdatedDate,
+        schoolConfig.activeBusEventTimestamp,
         schoolConfig.lastUpdatedTimestamp,
+        schoolConfig.lastUpdatedDate,
         schoolConfig.isHolidayOverrideActive,
+        schoolConfig.isManualOverrideActive
+    ) {
+        localFleetBusEvent = schoolConfig.activeBusEvent
+        localFleetBusTimestampText = schoolConfig.activeBusEventTimestamp
+        localFleetLastUpdatedTs = schoolConfig.lastUpdatedTimestamp
+        localFleetLastUpdatedDate = schoolConfig.lastUpdatedDate
+        localFleetHolidayOverride = schoolConfig.isHolidayOverrideActive
+        localFleetManualOverride = schoolConfig.isManualOverrideActive
+        fleetClockTickMillis = System.currentTimeMillis()
+    }
+
+    val fleetResolvedStatus = remember(
+        localFleetBusEvent,
+        localFleetLastUpdatedDate,
+        localFleetLastUpdatedTs,
+        localFleetHolidayOverride,
+        localFleetManualOverride,
+        schoolConfig.activeBusEventDateIso,
         todayHolidayLabel,
         fleetClockTickMillis
     ) {
-        schoolConfig.resolveTransportStatus(
+        resolveTransportStatus(
+            activeBusEvent = localFleetBusEvent,
+            activeBusEventDateIso = localFleetLastUpdatedDate.ifBlank { schoolConfig.activeBusEventDateIso },
+            lastUpdatedDate = localFleetLastUpdatedDate,
+            lastUpdatedTimestamp = localFleetLastUpdatedTs,
+            isHolidayOverrideActive = localFleetHolidayOverride,
+            isManualOverrideActive = localFleetManualOverride,
             holidayLabel = todayHolidayLabel,
             nowMillis = fleetClockTickMillis
         )
@@ -10719,7 +10833,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             text = when (fleetResolvedStatus.operationalState) {
                                 TransportOperationalState.HOLIDAY_STOPPED -> "الخط متوقف • عطلة رسمية"
                                 TransportOperationalState.STANDBY_OFF_HOURS -> "وضع الاستعداد"
-                                TransportOperationalState.ACTIVE -> formatBusTimestampPretty(schoolConfig.activeBusEventTimestamp)
+                                TransportOperationalState.ACTIVE -> formatBusTimestampPretty(localFleetBusTimestampText)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
@@ -10734,7 +10848,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                     FullWidthBezierWaveRoadTrack(
                         resolvedStatus = fleetResolvedStatus,
                         lastUpdatedTimestamp = if (fleetResolvedStatus.isActivelyRunning) {
-                            schoolConfig.activeBusEventTimestamp
+                            localFleetBusTimestampText
                         } else {
                             ""
                         }
@@ -11136,12 +11250,12 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                         }
                                     }
 
-                                    // 5) حالة الطالب اليومية بالباركود وتوقيتها الدقيق (هل صعد صباحاً؟ / هل غادر في رحلة العودة؟)
+                                    // 5) متابعة ركوب الطالب اليوم وتوقيتها الدقيق (هل صعد صباحاً؟ / هل وصل بأمان في رحلة العودة؟)
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(14.dp),
-                                        color = Color(0xFF042F24),
-                                        border = BorderStroke(1.2.dp, Color(0xFFFBBF24))
+                                        color = Color(0xFFF0FDF4),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                                     ) {
                                         Column(
                                             modifier = Modifier
@@ -11150,10 +11264,10 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Text(
-                                                text = "حالة الطالب اليومية بالباركود وتوقيتها الدقيق ($todayIso):",
+                                                text = "متابعة ركوب الطالب اليوم ($todayIso):",
                                                 style = MaterialTheme.typography.labelMedium,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFFFDE68A)
+                                                color = Color(0xFF065F46)
                                             )
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
@@ -11164,22 +11278,22 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                                     text = "رحلة الصعود الصباحي إلى المدرسة:",
                                                     fontSize = 11.5.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFA7F3D0),
+                                                    color = Color(0xFF0F172A),
                                                     modifier = Modifier.weight(1f)
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
                                                     text = when {
                                                         isTodayHoliday -> "متوقفة اليوم (عطلة رسمية)"
-                                                        morningTimeToday.isNotBlank() -> "صعد صباحاً ✓ ($morningTimeToday)"
-                                                        else -> "لم يُمسح بعد اليوم"
+                                                        morningTimeToday.isNotBlank() -> "صعد للمركبة ✓ ($morningTimeToday)"
+                                                        else -> "في الانتظار"
                                                     },
                                                     fontSize = 11.5.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = when {
-                                                        isTodayHoliday -> Color(0xFFFDE68A)
-                                                        morningTimeToday.isNotBlank() -> Color(0xFF6EE7B7)
-                                                        else -> Color.White.copy(alpha = 0.78f)
+                                                        isTodayHoliday -> Color(0xFFB45309)
+                                                        morningTimeToday.isNotBlank() -> Color(0xFF047857)
+                                                        else -> Color(0xFF64748B)
                                                     }
                                                 )
                                             }
@@ -11192,22 +11306,22 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                                     text = "رحلة المغادرة والعودة للمنازل:",
                                                     fontSize = 11.5.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFA7F3D0),
+                                                    color = Color(0xFF0F172A),
                                                     modifier = Modifier.weight(1f)
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
                                                     text = when {
                                                         isTodayHoliday -> "متوقفة اليوم (عطلة رسمية)"
-                                                        returnTimeToday.isNotBlank() -> "غادر بسلام ✓ ($returnTimeToday)"
-                                                        else -> "لم يُمسح بعد اليوم"
+                                                        returnTimeToday.isNotBlank() -> "وصل بأمان ✓ ($returnTimeToday)"
+                                                        else -> "في الانتظار"
                                                     },
                                                     fontSize = 11.5.sp,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = when {
-                                                        isTodayHoliday -> Color(0xFFFDE68A)
-                                                        returnTimeToday.isNotBlank() -> Color(0xFFFDE68A)
-                                                        else -> Color.White.copy(alpha = 0.78f)
+                                                        isTodayHoliday -> Color(0xFFB45309)
+                                                        returnTimeToday.isNotBlank() -> Color(0xFF047857)
+                                                        else -> Color(0xFF64748B)
                                                     }
                                                 )
                                             }
@@ -11261,7 +11375,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                 val adminTransportTabs = remember(isAdmin) {
                     buildList {
                         add(Triple(0, "التحكم بالرحلات", Icons.Filled.DirectionsBus))
-                        add(Triple(1, "مراقبة المركبات والباركود", Icons.Filled.QrCodeScanner))
+                        add(Triple(1, "متابعة المركبات والطلبة", Icons.Filled.Commute))
                         if (isAdmin) {
                             add(Triple(2, "إدارة الخطوط والسائقين", Icons.Filled.Badge))
                         }
@@ -11481,6 +11595,17 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             CompactTransportControlButtonsRow(
                                 resolvedStatus = selectionResolvedStatus,
                                 onActivateEvent = { busEvent, isHolidayOverride ->
+                                    val nowMs = System.currentTimeMillis()
+                                    val nowDate = java.util.Date(nowMs)
+                                    val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(nowDate)
+                                    val stampStr = java.text.SimpleDateFormat("yyyy/MM/dd hh:mm a", java.util.Locale("ar")).format(nowDate)
+                                    localFleetBusEvent = busEvent.name
+                                    localFleetBusTimestampText = stampStr
+                                    localFleetLastUpdatedTs = nowMs
+                                    localFleetLastUpdatedDate = todayStr
+                                    localFleetHolidayOverride = isHolidayOverride
+                                    localFleetManualOverride = true
+                                    fleetClockTickMillis = nowMs
                                     viewModel.sendBusTrackingAlert(
                                         eventType = busEvent,
                                         targetRouteId = selectedTripTargetRouteId,
@@ -11488,6 +11613,14 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                     )
                                 },
                                 onEndTrip = {
+                                    val nowMs = System.currentTimeMillis()
+                                    localFleetBusEvent = ""
+                                    localFleetBusTimestampText = ""
+                                    localFleetLastUpdatedTs = 0L
+                                    localFleetLastUpdatedDate = ""
+                                    localFleetHolidayOverride = false
+                                    localFleetManualOverride = false
+                                    fleetClockTickMillis = nowMs
                                     viewModel.endBusTrip(targetRouteId = selectedTripTargetRouteId)
                                 },
                                 testTagPrefix = "fleet_control_btn_"
@@ -11604,7 +11737,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                         color = Color(0xFF065F46)
                                     )
                                     Text(
-                                        text = "إضافة الخط والمركبة وربطها مباشرة باسم السائق وحساب دخوله الخاص (User & Password) لمسح الباركود",
+                                        text = "إضافة الخط والمركبة وربطها مباشرة باسم السائق وحساب دخوله الخاص لمتابعة ركوب الطلبة",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         fontWeight = FontWeight.SemiBold
@@ -11818,7 +11951,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                                     color = Color.White
                                                 )
                                                 Text(
-                                                    text = "عند تسجيل السائق دخوله بهذا اليوزر تفتح له مركبته وطلاب خطه فقط لمسح الباركود",
+                                                    text = "عند تسجيل السائق دخوله بهذا الحساب تفتح له مركبته وطلبة خطه لمتابعة صعودهم ووصولهم",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = Color(0xFFA7F3D0),
                                                     fontWeight = FontWeight.SemiBold
@@ -12192,13 +12325,13 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                     }
                                     Column {
                                         Text(
-                                            text = "المركبات المسجلة وحركة صعود ونزول الطلبة اللحظية",
+                                            text = "متابعة المركبات وحركة الطلبة اليوم",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = Color(0xFF065F46)
                                         )
                                         Text(
-                                            text = "مراقبة حية فورية بالعدادات لحركة مسح الباركود في كل مركبة ليوم ($todayIso)",
+                                            text = "متابعة يومية منظمة لحالة كل مركبة وصعود ووصول الطلبة ليوم ($todayIso)",
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontWeight = FontWeight.SemiBold
@@ -12238,355 +12371,452 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                 )
                                 val currentVehicleStatusLabel = when {
                                     vehicleResolvedStatus.operationalState == TransportOperationalState.HOLIDAY_STOPPED ->
-                                        "الخط متوقف • عطلة رسمية"
+                                        "عطلة رسمية"
                                     vehicleResolvedStatus.operationalState == TransportOperationalState.STANDBY_OFF_HOURS ->
-                                        "في وضع الاستعداد • خارج أوقات الدوام"
+                                        "وضع الاستعداد"
                                     vehicleResolvedStatus.activeEvent == BusEventType.MORNING_DEPARTURE ->
-                                        "في الانطلاق الصباحي"
+                                        "في الطريق"
                                     vehicleResolvedStatus.activeEvent == BusEventType.ARRIVED_AT_SCHOOL ->
                                         "وصلت للمدرسة"
                                     vehicleResolvedStatus.activeEvent == BusEventType.RETURN_HOME_DEPARTURE ->
                                         "في رحلة العودة"
-                                    else -> "في وضع الاستعداد"
+                                    else -> "وضع الاستعداد"
                                 }
-                                val currentVehicleStatusColor = when {
+                                val statusBadgeBg = when {
                                     vehicleResolvedStatus.operationalState == TransportOperationalState.HOLIDAY_STOPPED ->
-                                        Color(0xFFF59E0B)
+                                        Color(0xFFFEF3C7)
                                     vehicleResolvedStatus.operationalState == TransportOperationalState.STANDBY_OFF_HOURS ->
-                                        Color(0xFF94A3B8)
-                                    vehicleResolvedStatus.activeEvent == BusEventType.MORNING_DEPARTURE ->
-                                        Color(0xFF10B981)
+                                        Color.White.copy(alpha = 0.20f)
                                     vehicleResolvedStatus.activeEvent == BusEventType.ARRIVED_AT_SCHOOL ->
-                                        Color(0xFF059669)
+                                        Color(0xFFD1FAE5)
                                     vehicleResolvedStatus.activeEvent == BusEventType.RETURN_HOME_DEPARTURE ->
-                                        Color(0xFFF59E0B)
-                                    else -> Color(0xFF94A3B8)
+                                        Color(0xFFFEF3C7)
+                                    else -> Color(0xFFD1FAE5)
+                                }
+                                val statusBadgeTextColor = when {
+                                    vehicleResolvedStatus.operationalState == TransportOperationalState.HOLIDAY_STOPPED ->
+                                        Color(0xFF92400E)
+                                    vehicleResolvedStatus.operationalState == TransportOperationalState.STANDBY_OFF_HOURS ->
+                                        Color.White
+                                    vehicleResolvedStatus.activeEvent == BusEventType.RETURN_HOME_DEPARTURE ->
+                                        Color(0xFF92400E)
+                                    else -> Color(0xFF065F46)
                                 }
 
-                                Surface(
+                                // Clean Light-Surface Vehicle Monitoring Card matching Dashboard identity
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .testTag("live_vehicle_monitor_card_${vehicleItem.id}"),
-                                    shape = RoundedCornerShape(18.dp),
-                                    color = Color(0xFF042F24),
-                                    border = BorderStroke(1.5.dp, Color(0xFFFBBF24))
+                                    shape = RoundedCornerShape(20.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                                 ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(14.dp),
-                                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
-                                        // 1) شارة حالة المركبة في سطر علوي مستقل بعرض كامل لمنع انضغاط النصوص
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = currentVehicleStatusColor.copy(alpha = 0.22f),
-                                            border = BorderStroke(1.dp, currentVehicleStatusColor)
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        // 1) Sleek Emerald Gradient Header Strip: Route Name + Status Pill in one tidy row
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(
+                                                    Brush.horizontalGradient(
+                                                        colors = listOf(Color(0xFF059669), Color(0xFF047857))
+                                                    )
+                                                )
+                                                .padding(horizontal = 14.dp, vertical = 11.dp)
                                         ) {
                                             Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                                                modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.weight(1f)
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Filled.DirectionsBus,
                                                         contentDescription = null,
                                                         tint = Color(0xFFFDE68A),
-                                                        modifier = Modifier.size(16.dp)
+                                                        modifier = Modifier.size(19.dp)
                                                     )
                                                     Text(
-                                                        text = "حالة المركبة الآن:",
-                                                        fontSize = 11.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFFA7F3D0)
+                                                        text = "خط: ${vehicleItem.routeAreaName.ifBlank { "الخط الصباحي والمسائي المعتمد" }}",
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color.White,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
                                                     )
                                                 }
-                                                Text(
-                                                    text = currentVehicleStatusLabel,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color(0xFFFDE68A)
-                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = statusBadgeBg
+                                                ) {
+                                                    Text(
+                                                        text = currentVehicleStatusLabel,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = statusBadgeTextColor,
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                                    )
+                                                }
                                             }
                                         }
 
-                                        // 2) اسم الخط ونوع المركبة ورقم اللوحة بعرض البطاقة الكامل (fillMaxWidth)
                                         Column(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = "الخط: ${vehicleItem.routeAreaName.ifBlank { "الخط الصباحي والمسائي المعتمد" }}",
-                                                modifier = Modifier.fillMaxWidth(),
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFFFDE68A)
-                                            )
-                                            Text(
-                                                text = "${vehicleItem.vehicleTypeAndColor.ifBlank { "باص مدرسي حديث" }} • لوحة: (${vehicleItem.vehiclePlateNumber.ifBlank { "معتمدة" }})",
-                                                modifier = Modifier.fillMaxWidth(),
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontSize = 13.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color.White
-                                            )
-                                            // 3) بيانات السائق ومعرف دخوله في أسطر أفقية مريحة بعرض كامل
-                                            Text(
-                                                text = "السائق: ${vehicleItem.driverName.ifBlank { "السائق المعتمد" }} • هاتف: ${vehicleItem.driverPhone.ifBlank { "مسجل لدى الإدارة" }}",
-                                                modifier = Modifier.fillMaxWidth(),
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFA7F3D0)
-                                            )
-                                            Text(
-                                                text = "معرف دخول السائق: $linkedDriverUser",
-                                                modifier = Modifier.fillMaxWidth(),
-                                                fontSize = 11.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFF6EE7B7)
-                                            )
-                                        }
-
-                                        // 2) عدادات المسح الضوئي اللحظية (3 صناديق عدادات حية داخل بطاقة كل مركبة)
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            // الصندوق الأول: إجمالي طلاب المركبة
-                                            Surface(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .testTag("vehicle_total_students_counter_${vehicleItem.id}"),
-                                                shape = RoundedCornerShape(14.dp),
-                                                color = Color(0xFF064E3B),
-                                                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.65f))
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "إجمالي طلاب المركبة",
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color(0xFFA7F3D0),
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    Text(
-                                                        text = "$totalVehicleStudents طالب",
-                                                        fontSize = 15.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color.White,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                }
-                                            }
-
-                                            // الصندوق الثاني (عداد الصعود بالباركود - أخضر زمردي نابض): صعدوا بالباركود
-                                            Surface(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .testTag("vehicle_boarded_qr_counter_${vehicleItem.id}"),
-                                                shape = RoundedCornerShape(14.dp),
-                                                color = Color(0xFF059669),
-                                                border = BorderStroke(1.3.dp, Color(0xFF6EE7B7))
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "صعدوا بالباركود",
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color(0xFFFDE68A),
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    Text(
-                                                        text = "$boardedByQrCount من $totalVehicleStudents طالب",
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color.White,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                }
-                                            }
-
-                                            // الصندوق الثالث (عداد النزول والمغادرة بالباركود - ذهبي/كهرماني): نزلوا بالباركود
-                                            Surface(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .testTag("vehicle_alighted_qr_counter_${vehicleItem.id}"),
-                                                shape = RoundedCornerShape(14.dp),
-                                                color = Color(0xFF78350F),
-                                                border = BorderStroke(1.3.dp, Color(0xFFFBBF24))
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "نزلوا بالباركود",
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color(0xFFFDE68A),
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                    Text(
-                                                        text = "$alightedByQrCount من $totalVehicleStudents طالب",
-                                                        fontSize = 13.5.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = Color.White,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        // 3) قائمة طلاب المركبة التفصيلية (قابلة للطي والفتح داخل بطاقة المركبة)
-                                        Surface(
-                                            onClick = {
-                                                expandedVehicleIds = if (isExpanded) {
-                                                    expandedVehicleIds - vehicleItem.id
-                                                } else {
-                                                    expandedVehicleIds + vehicleItem.id
-                                                }
-                                            },
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .testTag("toggle_vehicle_students_list_${vehicleItem.id}"),
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = Color(0xFF065F46),
-                                            border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.5f))
+                                                .padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
+                                            // 2) Compact Structured Vehicle & Driver Info Chips
+                                            Column(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Surface(
+                                                        modifier = Modifier.weight(1f),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color(0xFFF8FAFC),
+                                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.DirectionsBus,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF059669),
+                                                                modifier = Modifier.size(15.dp)
+                                                            )
+                                                            Text(
+                                                                text = "${vehicleItem.vehicleTypeAndColor.ifBlank { "باص مدرسي" }} • ${vehicleItem.vehiclePlateNumber.ifBlank { "معتمدة" }}",
+                                                                fontSize = 11.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = MaterialTheme.colorScheme.onSurface,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Surface(
+                                                        modifier = Modifier.weight(1f),
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color(0xFFF0FDF4),
+                                                        border = BorderStroke(1.dp, Color(0xFFD1FAE5))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.Person,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF047857),
+                                                                modifier = Modifier.size(14.dp)
+                                                            )
+                                                            Text(
+                                                                text = vehicleItem.driverName.ifBlank { "السائق المعتمد" },
+                                                                fontSize = 11.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFF065F46),
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                    Surface(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color(0xFFF8FAFC),
+                                                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Filled.Phone,
+                                                                contentDescription = null,
+                                                                tint = Color(0xFF047857),
+                                                                modifier = Modifier.size(13.dp)
+                                                            )
+                                                            Text(
+                                                                text = vehicleItem.driverPhone.ifBlank { linkedDriverUser },
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                maxLines = 1,
+                                                                softWrap = false
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 3) 3 Symmetrical Fixed-Height KPI Boxes (76.dp, Calm Platform Tints, Zero Brown)
                                             Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                // Box 1: إجمالي الطلبة
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(76.dp)
+                                                        .testTag("vehicle_total_students_counter_${vehicleItem.id}"),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    color = Color(0xFFF0FDF4),
+                                                    border = BorderStroke(1.dp, Color(0xFFBBF7D0))
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "إجمالي الطلبة",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF047857),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        Text(
+                                                            text = "$totalVehicleStudents طالب",
+                                                            fontSize = 15.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF064E3B),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
+                                                }
+
+                                                // Box 2: صعدوا للمركبة
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(76.dp)
+                                                        .testTag("vehicle_boarded_qr_counter_${vehicleItem.id}"),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    color = Color(0xFFECFDF5),
+                                                    border = BorderStroke(1.dp, Color(0xFF6EE7B7))
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "صعدوا للمركبة",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF047857),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        Text(
+                                                            text = "$boardedByQrCount من $totalVehicleStudents",
+                                                            fontSize = 15.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF059669),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
+                                                }
+
+                                                // Box 3: وصلوا بأمان
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(76.dp)
+                                                        .testTag("vehicle_alighted_qr_counter_${vehicleItem.id}"),
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    color = Color(0xFFFFFBEB),
+                                                    border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "وصلوا بأمان",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFFB45309),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                        Text(
+                                                            text = "$alightedByQrCount من $totalVehicleStudents",
+                                                            fontSize = 15.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF92400E),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            // 4) Expandable Daily Student Boarding List ("متابعة ركوب الطلبة اليوم")
+                                            Surface(
+                                                onClick = {
+                                                    expandedVehicleIds = if (isExpanded) {
+                                                        expandedVehicleIds - vehicleItem.id
+                                                    } else {
+                                                        expandedVehicleIds + vehicleItem.id
+                                                    }
+                                                },
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
+                                                    .testTag("toggle_vehicle_students_list_${vehicleItem.id}"),
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color(0xFFF0FDF4),
+                                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                                             ) {
-                                                Text(
-                                                    text = "قائمة طلاب المركبة وحالة الباركود اللحظية ($totalVehicleStudents طالب)",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = Color(0xFFFDE68A)
-                                                )
-                                                Icon(
-                                                    imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFFFDE68A)
-                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "متابعة ركوب الطلبة اليوم ($totalVehicleStudents طالب)",
+                                                        fontSize = 12.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = Color(0xFF065F46)
+                                                    )
+                                                    Icon(
+                                                        imageVector = if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFF047857)
+                                                    )
+                                                }
                                             }
-                                        }
 
-                                        if (isExpanded) {
-                                            if (vehicleStudents.isEmpty()) {
-                                                Text(
-                                                    text = "لا يوجد طلاب مسجلون في هذه المركبة حالياً • يمكنك شمول الطلاب بالخط من القائمة أدناه.",
-                                                    fontSize = 11.5.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFFA7F3D0),
-                                                    modifier = Modifier.padding(vertical = 4.dp)
-                                                )
-                                            } else {
-                                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    vehicleStudents.forEach { stu ->
-                                                        val isBoardedToday = stu.isBoardedMorningToday(todayIso)
-                                                        val isDepartedToday = stu.isDepartedReturnToday(todayIso)
-                                                        val morningScanTime = stu.getMorningBoardedTimeToday(todayIso)
-                                                        val returnScanTime = stu.getReturnDepartedTimeToday(todayIso)
-                                                        val liveStatusBadgeText = when {
-                                                            isDepartedToday -> "نزل ${formatBusTimestampPretty(returnScanTime)}"
-                                                            isBoardedToday -> "صعد ${formatBusTimestampPretty(morningScanTime)}"
-                                                            else -> "لم يصعد بعد"
-                                                        }
-                                                        val liveStatusBadgeBg = when {
-                                                            isDepartedToday -> Color(0xFFF59E0B)
-                                                            isBoardedToday -> Color(0xFF10B981)
-                                                            else -> Color(0xFF334155)
-                                                        }
-                                                        val liveStatusTextColor = when {
-                                                            isDepartedToday -> Color(0xFF042F24)
-                                                            isBoardedToday -> Color(0xFF042F24)
-                                                            else -> Color(0xFFE2E8F0)
-                                                        }
+                                            if (isExpanded) {
+                                                if (vehicleStudents.isEmpty()) {
+                                                    Text(
+                                                        text = "لا يوجد طلبة مسجلون في هذه المركبة حالياً • يمكنك شمول الطلبة بالخط من تبويب طلاب النقل المدرسي.",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.padding(vertical = 4.dp)
+                                                    )
+                                                } else {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        vehicleStudents.forEach { stu ->
+                                                            val isBoardedToday = stu.isBoardedMorningToday(todayIso)
+                                                            val isDepartedToday = stu.isDepartedReturnToday(todayIso)
+                                                            val morningScanTime = stu.getMorningBoardedTimeToday(todayIso)
+                                                            val returnScanTime = stu.getReturnDepartedTimeToday(todayIso)
+                                                            val liveStatusBadgeText = when {
+                                                                isDepartedToday -> "وصل بأمان${if (returnScanTime.isNotBlank()) " • ${formatBusTimestampPretty(returnScanTime)}" else ""}"
+                                                                isBoardedToday -> "في المركبة${if (morningScanTime.isNotBlank()) " • ${formatBusTimestampPretty(morningScanTime)}" else ""}"
+                                                                else -> "في الانتظار"
+                                                            }
+                                                            val liveStatusBadgeBg = when {
+                                                                isDepartedToday -> Color(0xFFFEF3C7)
+                                                                isBoardedToday -> Color(0xFFD1FAE5)
+                                                                else -> Color(0xFFF1F5F9)
+                                                            }
+                                                            val liveStatusTextColor = when {
+                                                                isDepartedToday -> Color(0xFF92400E)
+                                                                isBoardedToday -> Color(0xFF065F46)
+                                                                else -> Color(0xFF475569)
+                                                            }
+                                                            val rowBorderColor = when {
+                                                                isDepartedToday -> Color(0xFFFCD34D)
+                                                                isBoardedToday -> Color(0xFF6EE7B7)
+                                                                else -> Color(0xFFE2E8F0)
+                                                            }
 
-                                                        Surface(
-                                                            modifier = Modifier
-                                                                .fillMaxWidth()
-                                                                .testTag("vehicle_live_student_row_${vehicleItem.id}_${stu.id}"),
-                                                            shape = RoundedCornerShape(10.dp),
-                                                            color = Color(0xFF064E3B).copy(alpha = 0.85f),
-                                                            border = BorderStroke(
-                                                                1.dp,
-                                                                when {
-                                                                    isDepartedToday -> Color(0xFFFBBF24)
-                                                                    isBoardedToday -> Color(0xFF34D399)
-                                                                    else -> Color(0xFF047857)
-                                                                }
-                                                            )
-                                                        ) {
-                                                            Row(
+                                                            Surface(
                                                                 modifier = Modifier
                                                                     .fillMaxWidth()
-                                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically
+                                                                    .testTag("vehicle_live_student_row_${vehicleItem.id}_${stu.id}"),
+                                                                shape = RoundedCornerShape(12.dp),
+                                                                color = Color(0xFFFAFFFD),
+                                                                border = BorderStroke(1.dp, rowBorderColor)
                                                             ) {
-                                                                Column(modifier = Modifier.weight(1f)) {
-                                                                    Text(
-                                                                        text = stu.fullNameWithFather,
-                                                                        fontSize = 12.5.sp,
-                                                                        fontWeight = FontWeight.ExtraBold,
-                                                                        color = Color.White
-                                                                    )
-                                                                    Text(
-                                                                        text = "${ArabicTextNormalizer.cleanPureClassName(stu.gradeClass)} - شعبة ${ArabicTextNormalizer.cleanPureSectionName(stu.sectionName)}",
-                                                                        fontSize = 10.5.sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        color = Color(0xFFA7F3D0)
-                                                                    )
-                                                                }
-
                                                                 Row(
-                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                                                    horizontalArrangement = Arrangement.SpaceBetween,
                                                                     verticalAlignment = Alignment.CenterVertically
                                                                 ) {
-                                                                    if (isBoardedToday && isDepartedToday) {
-                                                                        Surface(
-                                                                            shape = RoundedCornerShape(50),
-                                                                            color = Color(0xFF10B981).copy(alpha = 0.25f),
-                                                                            border = BorderStroke(1.dp, Color(0xFF34D399))
-                                                                        ) {
-                                                                            Text(
-                                                                                text = "صعد ${formatBusTimestampPretty(morningScanTime)}",
-                                                                                fontSize = 10.sp,
-                                                                                fontWeight = FontWeight.ExtraBold,
-                                                                                color = Color(0xFFA7F3D0),
-                                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                                            )
-                                                                        }
+                                                                    Column(modifier = Modifier.weight(1f)) {
+                                                                        Text(
+                                                                            text = stu.fullNameWithFather,
+                                                                            fontSize = 13.sp,
+                                                                            fontWeight = FontWeight.ExtraBold,
+                                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                                            maxLines = 1,
+                                                                            overflow = TextOverflow.Ellipsis
+                                                                        )
+                                                                        Text(
+                                                                            text = "${ArabicTextNormalizer.cleanPureClassName(stu.gradeClass)} - شعبة ${ArabicTextNormalizer.cleanPureSectionName(stu.sectionName)}",
+                                                                            fontSize = 11.sp,
+                                                                            fontWeight = FontWeight.SemiBold,
+                                                                            color = Color(0xFF047857)
+                                                                        )
                                                                     }
+
+                                                                    Spacer(modifier = Modifier.width(8.dp))
+
                                                                     Surface(
                                                                         shape = RoundedCornerShape(50),
-                                                                        color = liveStatusBadgeBg
+                                                                        color = liveStatusBadgeBg,
+                                                                        border = BorderStroke(0.8.dp, rowBorderColor)
                                                                     ) {
                                                                         Text(
                                                                             text = liveStatusBadgeText,
                                                                             fontSize = 10.5.sp,
                                                                             fontWeight = FontWeight.ExtraBold,
                                                                             color = liveStatusTextColor,
+                                                                            maxLines = 1,
+                                                                            softWrap = false,
                                                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                                                         )
                                                                     }
@@ -14069,8 +14299,8 @@ fun BezierInteractiveBoardingStatusCard(
                     Text(
                         text = when {
                             !hasAnyScanToday -> "حالة النقل المباشرة اليوم"
-                            isBoarded -> "تأكيد صعود للباص بالباركود ✓"
-                            else -> "تأكيد مغادرة ووصول آمن بالباركود ✓"
+                            isBoarded -> "تأكيد صعود للمركبة ✓"
+                            else -> "تأكيد الوصول بأمان ✓"
                         },
                         fontSize = 10.5.sp,
                         fontWeight = FontWeight.ExtraBold,

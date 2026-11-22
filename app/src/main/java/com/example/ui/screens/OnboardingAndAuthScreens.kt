@@ -94,7 +94,17 @@ fun OnboardingScreen(
     val slides = remember {
         listOf(
             OnboardingSlideData(
-                badge = "الشريحة 1 من 3 • منصة مدرستي المتكاملة",
+                badge = "ميزة تعليمية حصرية",
+                title = "واحة القراءة الذكية",
+                description = "رحلة تفاعلية ممتعة لتعليم القراءة العربية بالطريقة المقطعية العراقية بأسلوب بصري وصوتي حيّ يناسب طلبتنا.",
+                highlights = listOf(
+                    "منهج كتاب قراءتي الجديدة التفاعلي بوحداته الأربع كاملة",
+                    "نطق صوتي واضح للتقطيع والكلمات والأناشيد يعمل بدون إنترنت",
+                    "ألعاب تعليمية، تدريب على الكتابة، ودوري أبطال القراءة لكل صف"
+                )
+            ),
+            OnboardingSlideData(
+                badge = "منصة مدرستي المتكاملة",
                 title = "منصة مدرستي الذكية بهوية عصرية",
                 description = "منصة رقمية شاملة تربط الأسرة التربوية، الكادر التدريسي، أولياء الأمور، والطلبة في بيئة تعليمية موحدة وآمنة.",
                 highlights = listOf(
@@ -104,7 +114,7 @@ fun OnboardingScreen(
                 )
             ),
             OnboardingSlideData(
-                badge = "الشريحة 2 من 3 • المتابعة اليومية الدقيقة",
+                badge = "المتابعة اليومية الدقيقة",
                 title = "رصد الحضور والواجبات والدرجات لحظياً",
                 description = "متابعة يومية دقيقة لسجل الحضور والغياب، جدول الحصص الأسبوعي، التحضير اليومي، وكشف الدرجات التفصيلي مع حساب السعي والمعدل تلقائياً.",
                 highlights = listOf(
@@ -114,7 +124,7 @@ fun OnboardingScreen(
                 )
             ),
             OnboardingSlideData(
-                badge = "الشريحة 3 من 3 • مجتمع تفاعلي ومنصة تواصل",
+                badge = "مجتمع تفاعلي ومنصة تواصل",
                 title = "مجتمع تفاعلي ومنصة تواصل اجتماعي تربوية",
                 description = "مساحة اجتماعية آمنة وراقية تجمع الطلبة والأساتذة لمشاركة الإبداعات العلمية والفنية، التفاعل الإيجابي، ومتابعة الفعاليات والأخبار المدرسية لحظة بلحظة.",
                 highlights = listOf(
@@ -243,8 +253,9 @@ fun OnboardingScreen(
                 ) { index ->
                     val slide = slides[index]
                     val slideIllustration = when (index) {
-                        0 -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
-                        1 -> ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK
+                        0 -> ThreeDIllustrationType.READING_OASIS_BOOK
+                        1 -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
+                        2 -> ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK
                         else -> ThreeDIllustrationType.SOCIAL_COMMUNITY_3D
                     }
                     Column(
@@ -252,11 +263,12 @@ fun OnboardingScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // 3D Seamless Wave Hero Section for the active Onboarding Slide (without "الشريحة X من 3" badge or duplicate middle box)
+                        // 3D Seamless Wave Hero Section for the active Onboarding Slide
                         ThreeDHeroHeaderCard(
                             title = slide.title,
                             subtitle = slide.description,
-                            rightPillText = "",
+                            rightPillText = if (index == 0) slide.badge else "",
+                            rightPillIcon = if (index == 0) Icons.Filled.AutoAwesome else Icons.Filled.School,
                             leftPillText = "منصة مدرستي الذكية",
                             leftPillIcon = Icons.Filled.VerifiedUser,
                             illustrationType = slideIllustration

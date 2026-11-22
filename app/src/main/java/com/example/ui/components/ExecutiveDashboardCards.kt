@@ -35,236 +35,285 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.background
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.screens.ExecutiveAnalyticsRadarVectorCanvas
-import com.example.ui.theme.AdaptiveHighlightGlow
 import com.example.ui.theme.DeepEmerald
-import com.example.ui.theme.DeepForestGreen
 import com.example.ui.theme.GoldAccent
 import com.example.ui.theme.GoldLight
 import com.example.ui.theme.RoyalGreen
 
 /**
- * Interactive animated emblem for "مركز الإدارة" rendered with Compose Canvas + rememberInfiniteTransition:
- * - Royal Emerald orb matching the platform identity
- * - Counter-rotating Gold & Luminous Mint leadership rings
- * - Breathing KPI performance bars oscillating smoothly
- * - Periodic soft light sheen sweeping diagonally across the emblem
+ * أيقونة هادئة وأنيقة لبطاقة "المستشار الذكي":
+ * - حاوية زوايا دائرية ناعمة (16dp) بتدرج زمردي فاتح متناسق مع هوية المنصة
+ * - نجمة إرشاد ذكية صافية مع هالة ضوئية ناعمة وتنفس بطيء مريح للعين (0.96f..1.04f)
+ */
+@Composable
+fun SmartAdvisorCalmEmblem(
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "smart_advisor_calm_emblem")
+    val breatheScale by transition.animateFloat(
+        initialValue = 0.96f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "advisor_breathe_scale"
+    )
+    val auraAlpha by transition.animateFloat(
+        initialValue = 0.24f,
+        targetValue = 0.52f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "advisor_aura_alpha"
+    )
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.34f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFECFDF5),
+                            Color(0xFFD1FAE5)
+                        )
+                    )
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val cx = w / 2f
+                val cy = h / 2f
+
+                // Soft breathing radial aura
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = auraAlpha * 0.45f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = w * 0.46f
+                    ),
+                    radius = w * 0.46f,
+                    center = Offset(cx, cy)
+                )
+
+                // Clean 4-point guidance star (Smart Advisor)
+                val starR = w * 0.27f * breatheScale
+                val innerR = starR * 0.34f
+                val mainStar = Path().apply {
+                    moveTo(cx, cy - starR)
+                    quadraticBezierTo(cx, cy, cx + starR, cy)
+                    quadraticBezierTo(cx, cy, cx, cy + starR)
+                    quadraticBezierTo(cx, cy, cx - starR, cy)
+                    quadraticBezierTo(cx, cy, cx, cy - starR)
+                    close()
+                }
+                drawPath(
+                    path = mainStar,
+                    brush = Brush.linearGradient(
+                        colors = listOf(RoyalGreen, DeepEmerald),
+                        start = Offset(cx - starR, cy - starR),
+                        end = Offset(cx + starR, cy + starR)
+                    )
+                )
+
+                // Crisp small accent sparkle (top-left) in warm gold
+                val miniCx = cx - w * 0.22f
+                val miniCy = cy - h * 0.21f
+                val miniR = w * 0.085f * (2f - breatheScale)
+                val miniStar = Path().apply {
+                    moveTo(miniCx, miniCy - miniR)
+                    lineTo(miniCx + miniR * 0.32f, miniCy - miniR * 0.32f)
+                    lineTo(miniCx + miniR, miniCy)
+                    lineTo(miniCx + miniR * 0.32f, miniCy + miniR * 0.32f)
+                    lineTo(miniCx, miniCy + miniR)
+                    lineTo(miniCx - miniR * 0.32f, miniCy + miniR * 0.32f)
+                    lineTo(miniCx - miniR, miniCy)
+                    lineTo(miniCx - miniR * 0.32f, miniCy - miniR * 0.32f)
+                    close()
+                }
+                drawPath(path = miniStar, color = GoldAccent)
+
+                // Subtle luminous core dot
+                drawCircle(
+                    color = Color(0xFFFEF9C3),
+                    radius = innerR * 0.34f,
+                    center = Offset(cx, cy)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * أيقونة هادئة وأنيقة لبطاقة "مركز الإدارة":
+ * - حاوية زوايا دائرية ناعمة (16dp) بتدرج زمردي-ذهبي فاتح هادئ
+ * - درع قيادي وتقارير منظمة بخطوط فيكتور واضحة
+ * - حركة تنفس هادئة ولمعة ضوئية ناعمة بدون دوائر مظلمة أو خطوط متشابكة
  */
 @Composable
 fun ManagementCenterAnimatedEmblemCanvas(
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "management_center_exec_emblem")
+    val transition = rememberInfiniteTransition(label = "management_center_calm_emblem")
 
-    val clockwiseAngle by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
+    val breatheScale by transition.animateFloat(
+        initialValue = 0.96f,
+        targetValue = 1.04f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 7200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "mgmt_outer_ring_cw"
-    )
-
-    val counterClockwiseAngle by transition.animateFloat(
-        initialValue = 360f,
-        targetValue = 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 5400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "mgmt_inner_ring_ccw"
-    )
-
-    val kpiPhaseA by transition.animateFloat(
-        initialValue = 0.42f,
-        targetValue = 0.92f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1550, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "mgmt_kpi_bar_a"
-    )
-
-    val kpiPhaseB by transition.animateFloat(
-        initialValue = 0.88f,
-        targetValue = 0.36f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1850, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "mgmt_kpi_bar_b"
+        label = "mgmt_breathe_scale"
     )
 
     val sheenProgress by transition.animateFloat(
-        initialValue = -0.6f,
+        initialValue = -0.5f,
         targetValue = 1.6f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 3600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
-        label = "mgmt_light_sheen"
+        label = "mgmt_calm_sheen"
     )
 
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val cx = w / 2f
-        val cy = h / 2f
-        val radius = (w.coerceAtMost(h) / 2f) * 0.94f
-
-        // 1. Royal Emerald orb backdrop matching platform's signature crest
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    RoyalGreen,
-                    DeepEmerald,
-                    DeepForestGreen
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.42f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFFFFBEB),
+                            Color(0xFFECFDF5)
+                        )
+                    )
                 ),
-                center = Offset(cx, cy),
-                radius = radius
-            ),
-            radius = radius,
-            center = Offset(cx, cy)
-        )
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val cx = w / 2f
+                val cy = h / 2f
 
-        // 2. Outer clockwise rotating Gold & Mint leadership arcs
-        rotate(degrees = clockwiseAngle, pivot = Offset(cx, cy)) {
-            val outerStroke = Stroke(width = (radius * 0.085f).coerceAtLeast(1.8f), cap = StrokeCap.Round)
-            drawArc(
-                brush = Brush.sweepGradient(
-                    colors = listOf(
-                        GoldAccent,
-                        GoldLight,
-                        GoldAccent.copy(alpha = 0.25f),
-                        GoldAccent
-                    ),
-                    center = Offset(cx, cy)
-                ),
-                startAngle = 0f,
-                sweepAngle = 215f,
-                useCenter = false,
-                topLeft = Offset(cx - radius * 0.94f, cy - radius * 0.94f),
-                size = Size(radius * 1.88f, radius * 1.88f),
-                style = outerStroke
-            )
-            drawArc(
-                color = AdaptiveHighlightGlow.copy(alpha = 0.85f),
-                startAngle = 235f,
-                sweepAngle = 100f,
-                useCenter = false,
-                topLeft = Offset(cx - radius * 0.94f, cy - radius * 0.94f),
-                size = Size(radius * 1.88f, radius * 1.88f),
-                style = outerStroke
-            )
-        }
+                // Clip subtle sheen to container bounds
+                val containerClip = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            left = 0f,
+                            top = 0f,
+                            right = w,
+                            bottom = h,
+                            cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx())
+                        )
+                    )
+                }
+                clipPath(containerClip) {
+                    val sheenX = w * sheenProgress
+                    drawLine(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.White.copy(alpha = 0.55f),
+                                Color.Transparent
+                            ),
+                            start = Offset(sheenX - w * 0.25f, 0f),
+                            end = Offset(sheenX + w * 0.25f, h)
+                        ),
+                        start = Offset(sheenX - w * 0.14f, 0f),
+                        end = Offset(sheenX + w * 0.14f, h),
+                        strokeWidth = w * 0.24f
+                    )
+                }
 
-        // 3. Inner counter-clockwise rotating luminous ring
-        rotate(degrees = counterClockwiseAngle, pivot = Offset(cx, cy)) {
-            val innerR = radius * 0.76f
-            val innerStroke = Stroke(width = (radius * 0.055f).coerceAtLeast(1.3f), cap = StrokeCap.Round)
-            drawArc(
-                color = AdaptiveHighlightGlow.copy(alpha = 0.78f),
-                startAngle = 20f,
-                sweepAngle = 135f,
-                useCenter = false,
-                topLeft = Offset(cx - innerR, cy - innerR),
-                size = Size(innerR * 2f, innerR * 2f),
-                style = innerStroke
-            )
-            drawArc(
-                color = GoldLight.copy(alpha = 0.78f),
-                startAngle = 200f,
-                sweepAngle = 125f,
-                useCenter = false,
-                topLeft = Offset(cx - innerR, cy - innerR),
-                size = Size(innerR * 2f, innerR * 2f),
-                style = innerStroke
-            )
-        }
-
-        // 4. Breathing KPI Performance Bars inside the core
-        val baseY = cy + radius * 0.34f
-        val maxBarH = radius * 0.68f
-        val barWidth = radius * 0.14f
-        val gap = radius * 0.08f
-        val barFactors = listOf(
-            0.46f + (kpiPhaseA - 0.42f) * 0.75f,
-            0.55f + (kpiPhaseB - 0.36f) * 0.70f,
-            0.62f + (kpiPhaseA - 0.42f) * 0.65f,
-            0.48f + (kpiPhaseB - 0.36f) * 0.80f
-        )
-        val totalBarsW = barFactors.size * barWidth + (barFactors.size - 1) * gap
-        val startX = cx - totalBarsW / 2f
-
-        barFactors.forEachIndexed { index, factor ->
-            val clampedH = (maxBarH * factor.coerceIn(0.32f, 0.96f))
-            val left = startX + index * (barWidth + gap)
-            val top = baseY - clampedH
-            val barBrush = if (index % 2 == 0) {
-                Brush.verticalGradient(colors = listOf(GoldLight, GoldAccent))
-            } else {
-                Brush.verticalGradient(colors = listOf(Color(0xFFA7F3D0), AdaptiveHighlightGlow))
-            }
-            drawRoundRect(
-                brush = barBrush,
-                topLeft = Offset(left, top),
-                size = Size(barWidth, clampedH),
-                cornerRadius = CornerRadius(barWidth * 0.48f, barWidth * 0.48f)
-            )
-        }
-
-        drawLine(
-            color = Color.White.copy(alpha = 0.42f),
-            start = Offset(startX - radius * 0.06f, baseY + radius * 0.05f),
-            end = Offset(startX + totalBarsW + radius * 0.06f, baseY + radius * 0.05f),
-            strokeWidth = (radius * 0.045f).coerceAtLeast(1.2f),
-            cap = StrokeCap.Round
-        )
-
-        // 5. Soft diagonal periodic light sheen clipped to circle
-        val clipCirclePath = Path().apply {
-            addOval(
-                androidx.compose.ui.geometry.Rect(
-                    left = cx - radius,
-                    top = cy - radius,
-                    right = cx + radius,
-                    bottom = cy + radius
+                // Clean Executive Shield Outline (Leadership & Reports)
+                val sw = w * 0.26f * breatheScale
+                val sh = h * 0.29f * breatheScale
+                val shieldPath = Path().apply {
+                    moveTo(cx, cy - sh)
+                    lineTo(cx + sw, cy - sh * 0.62f)
+                    lineTo(cx + sw * 0.92f, cy + sh * 0.12f)
+                    quadraticBezierTo(cx + sw * 0.62f, cy + sh * 0.78f, cx, cy + sh)
+                    quadraticBezierTo(cx - sw * 0.62f, cy + sh * 0.78f, cx - sw * 0.92f, cy + sh * 0.12f)
+                    lineTo(cx - sw, cy - sh * 0.62f)
+                    close()
+                }
+                drawPath(
+                    path = shieldPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF059669).copy(alpha = 0.16f),
+                            GoldLight.copy(alpha = 0.30f)
+                        )
+                    )
                 )
-            )
-        }
-        clipPath(clipCirclePath) {
-            val sheenX = (cx - radius) + (radius * 2f) * sheenProgress
-            drawLine(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.Transparent,
-                        Color.White.copy(alpha = 0.28f),
-                        Color.Transparent
+                drawPath(
+                    path = shieldPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(DeepEmerald, Color(0xFFD97706)),
+                        start = Offset(cx - sw, cy - sh),
+                        end = Offset(cx + sw, cy + sh)
                     ),
-                    start = Offset(sheenX - radius * 0.35f, cy - radius),
-                    end = Offset(sheenX + radius * 0.35f, cy + radius)
-                ),
-                start = Offset(sheenX - radius * 0.22f, cy - radius),
-                end = Offset(sheenX + radius * 0.22f, cy + radius),
-                strokeWidth = radius * 0.34f
-            )
+                    style = Stroke(
+                        width = 2.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round
+                    )
+                )
+
+                // Structured Mini Executive Bars inside the shield (crisp, static & balanced)
+                val barBottom = cy + sh * 0.44f
+                val barW = w * 0.068f
+                val barGap = w * 0.045f
+                val heights = listOf(sh * 0.42f, sh * 0.68f, sh * 0.54f)
+                val totalBarsW = heights.size * barW + (heights.size - 1) * barGap
+                val startX = cx - totalBarsW / 2f
+
+                heights.forEachIndexed { idx, barH ->
+                    val bx = startX + idx * (barW + barGap)
+                    drawRoundRect(
+                        color = if (idx == 1) Color(0xFFD97706) else DeepEmerald,
+                        topLeft = Offset(bx, barBottom - barH),
+                        size = Size(barW, barH),
+                        cornerRadius = CornerRadius(barW * 0.45f, barW * 0.45f)
+                    )
+                }
+            }
         }
     }
 }
@@ -401,8 +450,8 @@ fun PrincipalExecutiveToolsPairRow(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            ExecutiveAnalyticsRadarVectorCanvas(
-                                modifier = Modifier.size(46.dp)
+                            SmartAdvisorCalmEmblem(
+                                modifier = Modifier.size(50.dp)
                             )
                             Surface(
                                 shape = RoundedCornerShape(50),
@@ -514,7 +563,7 @@ fun PrincipalExecutiveToolsPairRow(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         ManagementCenterAnimatedEmblemCanvas(
-                            modifier = Modifier.size(46.dp)
+                            modifier = Modifier.size(50.dp)
                         )
                         Surface(
                             shape = RoundedCornerShape(50),

@@ -248,6 +248,7 @@ class SchoolRepository(context: Context) {
                 lastUpdatedTimestamp = obj.optLong("lastUpdatedTimestamp", 0L),
                 lastUpdatedDate = ArabicTextNormalizer.normalizeDateIso(obj.optString("lastUpdatedDate", "")),
                 isHolidayOverrideActive = obj.optBoolean("isHolidayOverrideActive", false),
+                isManualOverrideActive = obj.optBoolean("isManualOverrideActive", false),
                 allowParentToViewDriverIdentity = obj.optBoolean("allowParentToViewDriverIdentity", true),
                 busDriverName = obj.optString("busDriverName", "السائق المعتمد للخط المدرسي").ifBlank { "السائق المعتمد للخط المدرسي" },
                 busDriverPhone = obj.optString("busDriverPhone", ""),
@@ -284,7 +285,8 @@ class SchoolRepository(context: Context) {
                                         activeBusEventDateIso = rObj.optString("activeBusEventDateIso", ""),
                                         lastUpdatedTimestamp = rObj.optLong("lastUpdatedTimestamp", 0L),
                                         lastUpdatedDate = ArabicTextNormalizer.normalizeDateIso(rObj.optString("lastUpdatedDate", "")),
-                                        isHolidayOverrideActive = rObj.optBoolean("isHolidayOverrideActive", false)
+                                        isHolidayOverrideActive = rObj.optBoolean("isHolidayOverrideActive", false),
+                                        isManualOverrideActive = rObj.optBoolean("isManualOverrideActive", false)
                                     )
                                 )
                             }
@@ -493,6 +495,7 @@ class SchoolRepository(context: Context) {
             put("lastUpdatedTimestamp", config.lastUpdatedTimestamp)
             put("lastUpdatedDate", ArabicTextNormalizer.normalizeDateIso(config.lastUpdatedDate))
             put("isHolidayOverrideActive", config.isHolidayOverrideActive)
+            put("isManualOverrideActive", config.isManualOverrideActive)
             put("allowParentToViewDriverIdentity", config.allowParentToViewDriverIdentity)
             put("busDriverName", InputSanitizer.sanitize(config.busDriverName))
             put("busDriverPhone", InputSanitizer.sanitize(config.busDriverPhone))
@@ -523,6 +526,7 @@ class SchoolRepository(context: Context) {
                     put("lastUpdatedTimestamp", r.lastUpdatedTimestamp)
                     put("lastUpdatedDate", ArabicTextNormalizer.normalizeDateIso(r.lastUpdatedDate))
                     put("isHolidayOverrideActive", r.isHolidayOverrideActive)
+                    put("isManualOverrideActive", r.isManualOverrideActive)
                 })
             }
             put("registeredBusRoutes", routesJsonArr)

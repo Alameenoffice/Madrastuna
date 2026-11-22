@@ -554,6 +554,7 @@ data class SchoolConfig(
     val lastUpdatedTimestamp: Long = 0L,
     val lastUpdatedDate: String = "",
     val isHolidayOverrideActive: Boolean = false,
+    val isManualOverrideActive: Boolean = false,
     val allowParentToViewDriverIdentity: Boolean = true,
     val busDriverName: String = "السائق المعتمد للخط المدرسي",
     val busDriverPhone: String = "",
@@ -629,7 +630,8 @@ data class SchoolConfig(
                     activeBusEventDateIso = activeBusEventDateIso,
                     lastUpdatedTimestamp = lastUpdatedTimestamp,
                     lastUpdatedDate = lastUpdatedDate,
-                    isHolidayOverrideActive = isHolidayOverrideActive
+                    isHolidayOverrideActive = isHolidayOverrideActive,
+                    isManualOverrideActive = isManualOverrideActive
                 )
             )
         }
@@ -643,6 +645,7 @@ data class SchoolConfig(
         lastUpdatedDate = lastUpdatedDate,
         lastUpdatedTimestamp = lastUpdatedTimestamp,
         isHolidayOverrideActive = isHolidayOverrideActive,
+        isManualOverrideActive = isManualOverrideActive,
         holidayLabel = holidayLabel,
         nowMillis = nowMillis
     )
@@ -675,13 +678,17 @@ fun resolveTransportStatus(
     lastUpdatedDate: String,
     lastUpdatedTimestamp: Long,
     isHolidayOverrideActive: Boolean,
+    isManualOverrideActive: Boolean = false,
     holidayLabel: String?,
     nowMillis: Long = System.currentTimeMillis()
 ): ResolvedTransportStatus {
-    val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
-    val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(nowMillis))
+    val effectiveNowMillis = maxOf(nowMillis, lastUpdatedTimestamp)
+    val cal = Calendar.getInstance().apply { timeInMillis = effectiveNowMillis }
+    val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(effectiveNowMillis))
     val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
     val hourOfDay = cal.get(Calendar.HOUR_OF_DAY)
+    val minuteOfHour = cal.get(Calendar.MINUTE)
+    val totalMinutes = hourOfDay * 60 + minuteOfHour
 
     val isIraqWeekend = dayOfWeek == Calendar.FRIDAY || dayOfWeek == Calendar.SATURDAY
     val resolvedHolidayLabel = when {
@@ -697,9 +704,10 @@ fun resolveTransportStatus(
         lastUpdatedDate.ifBlank { activeBusEventDateIso }.trim()
     )
     val isSameDay = effectiveDate.isNotEmpty() && effectiveDate == todayIso
-    val ageMs = nowMillis - lastUpdatedTimestamp
+    val ageMs = effectiveNowMillis - lastUpdatedTimestamp
     val isWithinExpiryWindow = lastUpdatedTimestamp > 0L && ageMs in 0L..TRANSPORT_TRIP_EXPIRY_MS
-    val isWithinSchoolHours = hourOfDay in 6..16
+    // Permitted school hours: 5:30 AM (330 min) to 6:00 PM (1080 min)
+    val isWithinSchoolHours = totalMinutes in (5 * 60 + 30)..(18 * 60)
 
     if (isHoliday) {
         if (isHolidayOverrideActive && parsedEvent != null && isSameDay && isWithinExpiryWindow) {
@@ -724,7 +732,8 @@ fun resolveTransportStatus(
         )
     }
 
-    if (parsedEvent == null || !isSameDay || !isWithinExpiryWindow || !isWithinSchoolHours) {
+    val isAllowedNow = isWithinSchoolHours || isManualOverrideActive
+    if (parsedEvent == null || !isSameDay || !isWithinExpiryWindow || !isAllowedNow) {
         return ResolvedTransportStatus(
             operationalState = TransportOperationalState.STANDBY_OFF_HOURS,
             activeEvent = null,
@@ -763,7 +772,8 @@ data class BusRouteFleetItem(
     val activeBusEventDateIso: String = "",
     val lastUpdatedTimestamp: Long = 0L,
     val lastUpdatedDate: String = "",
-    val isHolidayOverrideActive: Boolean = false
+    val isHolidayOverrideActive: Boolean = false,
+    val isManualOverrideActive: Boolean = false
 ) {
     fun resolveTransportStatus(
         holidayLabel: String? = null,
@@ -774,6 +784,7 @@ data class BusRouteFleetItem(
         lastUpdatedDate = lastUpdatedDate,
         lastUpdatedTimestamp = lastUpdatedTimestamp,
         isHolidayOverrideActive = isHolidayOverrideActive,
+        isManualOverrideActive = isManualOverrideActive,
         holidayLabel = holidayLabel,
         nowMillis = nowMillis
     )

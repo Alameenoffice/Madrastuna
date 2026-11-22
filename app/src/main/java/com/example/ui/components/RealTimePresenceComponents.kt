@@ -223,7 +223,7 @@ fun RealTimePlatformPresenceCard(
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
-                                text = "النشاط اللحظي للمنصة",
+                                text = "المتواجدون في المنصة",
                                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.5.sp),
                                 fontWeight = FontWeight.ExtraBold,
                                 color = onSurface,
@@ -231,7 +231,7 @@ fun RealTimePlatformPresenceCard(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "رصد حي ومباشر للمتواجدين داخل المدرسة الرقمية",
+                                text = "متابعة مباشرة للمتصلين داخل المدرسة",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = onSurfaceVariant,
                                 maxLines = 1,
@@ -294,7 +294,7 @@ fun RealTimePlatformPresenceCard(
                                         .background(EmeraldAccent)
                                 )
                                 Text(
-                                    text = "نشطون الآن لحظياً",
+                                    text = "المتصلون الآن",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = onPrimaryContainer,
@@ -338,17 +338,17 @@ fun RealTimePlatformPresenceCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                ActivitySparkMiniCanvas(
+                                PresenceUsersGroupMiniCanvas(
                                     tint = tertiaryColor,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(15.dp)
                                 )
                                 Text(
-                                    text = "المستخدمون الفعّالون اليوم",
+                                    text = "نشطو اليوم",
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = onTertiaryContainer,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    softWrap = false
                                 )
                             }
                             Row(
@@ -399,25 +399,47 @@ fun RealTimePlatformPresenceCard(
 }
 
 @Composable
-private fun ActivitySparkMiniCanvas(
+private fun PresenceUsersGroupMiniCanvas(
     tint: Color,
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val path = Path().apply {
-            moveTo(0f, h * 0.65f)
-            lineTo(w * 0.28f, h * 0.65f)
-            lineTo(w * 0.45f, h * 0.18f)
-            lineTo(w * 0.66f, h * 0.85f)
-            lineTo(w * 0.82f, h * 0.45f)
-            lineTo(w, h * 0.45f)
+        val strokeW = 1.65.dp.toPx()
+
+        // Primary user (center-left)
+        drawCircle(
+            color = tint,
+            radius = w * 0.18f,
+            center = Offset(w * 0.38f, h * 0.30f),
+            style = Stroke(width = strokeW)
+        )
+        val primaryShoulders = Path().apply {
+            moveTo(w * 0.12f, h * 0.84f)
+            quadraticBezierTo(w * 0.38f, h * 0.56f, w * 0.64f, h * 0.84f)
         }
         drawPath(
-            path = path,
+            path = primaryShoulders,
             color = tint,
-            style = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+        )
+
+        // Secondary user (subtle companion on right)
+        drawCircle(
+            color = tint.copy(alpha = 0.85f),
+            radius = w * 0.14f,
+            center = Offset(w * 0.72f, h * 0.36f),
+            style = Stroke(width = strokeW * 0.9f)
+        )
+        val secondaryShoulder = Path().apply {
+            moveTo(w * 0.64f, h * 0.78f)
+            quadraticBezierTo(w * 0.78f, h * 0.62f, w * 0.90f, h * 0.80f)
+        }
+        drawPath(
+            path = secondaryShoulder,
+            color = tint.copy(alpha = 0.85f),
+            style = Stroke(width = strokeW * 0.9f, cap = StrokeCap.Round)
         )
     }
 }
@@ -556,7 +578,7 @@ fun RealTimePresenceBottomSheet(
                             color = colorScheme.onSurface
                         )
                         Text(
-                            text = "نشطون الآن: ${summary.activeNowCount} • الفعّالون اليوم: ${summary.activeTodayCount}",
+                            text = "المتصلون الآن: ${summary.activeNowCount} • نشطو اليوم: ${summary.activeTodayCount}",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = colorScheme.primary

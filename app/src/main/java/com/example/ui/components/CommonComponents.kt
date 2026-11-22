@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -2186,7 +2187,8 @@ enum class ThreeDIllustrationType {
     UPDATE_SPARK_3D,
     CALENDAR_HOLIDAYS,
     CLOUD_OFFLINE_3D,
-    DIGITAL_LIBRARY_ILLUMINATED_BOOK_3D
+    DIGITAL_LIBRARY_ILLUMINATED_BOOK_3D,
+    READING_OASIS_BOOK
 }
 
 fun OccasionIconKey.toThreeDIllustrationType(): ThreeDIllustrationType {
@@ -5739,7 +5741,229 @@ fun ThreeDIllustrationBox(
                     cap = StrokeCap.Round
                 )
             }
+
+            ThreeDIllustrationType.READING_OASIS_BOOK -> {
+                // Soft emerald & gold glow behind open book
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFEF08A).copy(alpha = glowPulseAlpha * 0.52f),
+                            Color(0xFF6EE7B7).copy(alpha = glowPulseAlpha * 0.36f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, h * 0.58f),
+                        radius = w * 0.50f
+                    ),
+                    radius = w * 0.50f,
+                    center = Offset(cx, h * 0.58f)
+                )
+            }
         }
+    }
+}
+
+/**
+ * رسم تفاعلي هادئ ومتزن لواحة القراءة الذكية في الشريحة التعريفية الأولى:
+ * كتاب مفتوح أنيق تطفو فوق صفحاته حروف عربية مضيئة ونجوم ذهبية بحركة ناعمة عبر rememberInfiniteTransition.
+ */
+@Composable
+fun ReadingOasisOnboardingBookCanvas(
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "reading_oasis_onboarding_book")
+    val floatPhaseA by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "oasis_letter_float_a"
+    )
+    val floatPhaseB by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "oasis_letter_float_b"
+    )
+    val starGlow by transition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "oasis_star_glow"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.50f
+
+        // 1) Soft luminous aura rising from the open book
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFFEF08A).copy(alpha = 0.30f * starGlow),
+                    Color(0xFF34D399).copy(alpha = 0.22f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, h * 0.50f),
+                radius = w * 0.48f
+            ),
+            radius = w * 0.48f,
+            center = Offset(cx, h * 0.50f)
+        )
+
+        // 2) Subtle shadow under the open book
+        drawOval(
+            color = Color(0xFF022C22).copy(alpha = 0.35f),
+            topLeft = Offset(w * 0.14f, h * 0.84f),
+            size = Size(w * 0.72f, h * 0.10f)
+        )
+
+        // 3) Book hardcover base (Emerald & Gold trim)
+        val coverPath = Path().apply {
+            moveTo(w * 0.10f, h * 0.76f)
+            quadraticBezierTo(w * 0.30f, h * 0.70f, cx, h * 0.80f)
+            quadraticBezierTo(w * 0.70f, h * 0.70f, w * 0.90f, h * 0.76f)
+            lineTo(w * 0.88f, h * 0.83f)
+            quadraticBezierTo(w * 0.70f, h * 0.77f, cx, h * 0.86f)
+            quadraticBezierTo(w * 0.30f, h * 0.77f, w * 0.12f, h * 0.83f)
+            close()
+        }
+        drawPath(
+            path = coverPath,
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color(0xFFF59E0B), Color(0xFFFDE68A), Color(0xFFD97706))
+            )
+        )
+
+        // 4) Left & Right open cream-white pages
+        val leftPage = Path().apply {
+            moveTo(cx, h * 0.79f)
+            quadraticBezierTo(w * 0.31f, h * 0.68f, w * 0.12f, h * 0.73f)
+            lineTo(w * 0.16f, h * 0.52f)
+            quadraticBezierTo(w * 0.34f, h * 0.48f, cx, h * 0.60f)
+            close()
+        }
+        val rightPage = Path().apply {
+            moveTo(cx, h * 0.79f)
+            quadraticBezierTo(w * 0.69f, h * 0.68f, w * 0.88f, h * 0.73f)
+            lineTo(w * 0.84f, h * 0.52f)
+            quadraticBezierTo(w * 0.66f, h * 0.48f, cx, h * 0.60f)
+            close()
+        }
+        drawPath(
+            path = leftPage,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFFFFFF), Color(0xFFECFDF5), Color(0xFFFEF9C3))
+            )
+        )
+        drawPath(
+            path = rightPage,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFEF9C3), Color(0xFFECFDF5), Color(0xFFFFFFFF))
+            )
+        )
+        drawPath(
+            path = leftPage,
+            color = Color(0xFF047857).copy(alpha = 0.25f),
+            style = Stroke(width = 1.dp.toPx(), join = StrokeJoin.Round)
+        )
+        drawPath(
+            path = rightPage,
+            color = Color(0xFF047857).copy(alpha = 0.25f),
+            style = Stroke(width = 1.dp.toPx(), join = StrokeJoin.Round)
+        )
+
+        // Page text lines
+        for (idx in 0..2) {
+            val yOff = h * (0.58f + idx * 0.052f)
+            drawLine(
+                color = Color(0xFF059669).copy(alpha = 0.42f),
+                start = Offset(w * 0.21f, yOff),
+                end = Offset(w * 0.44f, yOff + h * 0.032f),
+                strokeWidth = 1.8.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFF059669).copy(alpha = 0.42f),
+                start = Offset(w * 0.79f, yOff),
+                end = Offset(w * 0.56f, yOff + h * 0.032f),
+                strokeWidth = 1.8.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
+
+        // Golden spine accent
+        drawLine(
+            brush = Brush.verticalGradient(listOf(Color(0xFFFEF08A), Color(0xFFF59E0B))),
+            start = Offset(cx, h * 0.60f),
+            end = Offset(cx, h * 0.84f),
+            strokeWidth = 2.6.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // 5) Floating Luminous Arabic Letters rising gently above the pages (Native Canvas anti-aliased text)
+        val letterSpecs = listOf(
+            Triple("أ", Offset(w * 0.28f, h * (0.37f - floatPhaseA * 0.06f)), 17.sp.toPx()),
+            Triple("ق", Offset(w * 0.50f, h * (0.26f - floatPhaseB * 0.07f)), 19.sp.toPx()),
+            Triple("ب", Offset(w * 0.73f, h * (0.38f - floatPhaseA * 0.055f)), 16.5.sp.toPx())
+        )
+        val letterPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        letterSpecs.forEachIndexed { idx, (letter, pos, pxSize) ->
+            // Soft circular halo behind each floating letter
+            val haloColor = if (idx == 1) Color(0xFFFDE68A) else Color(0xFF6EE7B7)
+            drawCircle(
+                color = haloColor.copy(alpha = 0.22f * starGlow),
+                radius = pxSize * 0.74f,
+                center = Offset(pos.x, pos.y - pxSize * 0.26f)
+            )
+            letterPaint.textSize = pxSize
+            letterPaint.color = if (idx == 1) android.graphics.Color.parseColor("#FEF08A") else android.graphics.Color.WHITE
+            drawContext.canvas.nativeCanvas.drawText(letter, pos.x, pos.y, letterPaint)
+        }
+
+        // 6) Gentle Golden 4-Point Sparkle Stars
+        fun drawSparkleStar(center: Offset, outerR: Float, alpha: Float) {
+            val innerR = outerR * 0.34f
+            val starPath = Path().apply {
+                moveTo(center.x, center.y - outerR)
+                lineTo(center.x + innerR, center.y - innerR)
+                lineTo(center.x + outerR, center.y)
+                lineTo(center.x + innerR, center.y + innerR)
+                lineTo(center.x, center.y + outerR)
+                lineTo(center.x - innerR, center.y + innerR)
+                lineTo(center.x - outerR, center.y)
+                lineTo(center.x - innerR, center.y - innerR)
+                close()
+            }
+            drawPath(path = starPath, color = Color(0xFFFDE68A).copy(alpha = alpha))
+        }
+
+        drawSparkleStar(
+            center = Offset(w * 0.18f, h * (0.24f - floatPhaseB * 0.04f)),
+            outerR = 6.dp.toPx(),
+            alpha = 0.65f + 0.35f * starGlow
+        )
+        drawSparkleStar(
+            center = Offset(w * 0.82f, h * (0.22f - floatPhaseA * 0.045f)),
+            outerR = 6.5.dp.toPx(),
+            alpha = 0.60f + 0.40f * starGlow
+        )
+        drawSparkleStar(
+            center = Offset(w * 0.62f, h * (0.14f - floatPhaseB * 0.03f)),
+            outerR = 4.5.dp.toPx(),
+            alpha = 0.55f + 0.35f * starGlow
+        )
     }
 }
 
@@ -6707,15 +6931,23 @@ fun ThreeDHeroHeaderCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                if (illustrationType == ThreeDIllustrationType.WELCOME_ACADEMIC_CHARACTER) {
-                    WelcomeBannerBezierCharacter(
-                        modifier = Modifier.size(108.dp)
-                    )
-                } else {
-                    ThreeDIllustrationBox(
-                        type = illustrationType,
-                        modifier = Modifier.size(108.dp)
-                    )
+                when (illustrationType) {
+                    ThreeDIllustrationType.WELCOME_ACADEMIC_CHARACTER -> {
+                        WelcomeBannerBezierCharacter(
+                            modifier = Modifier.size(108.dp)
+                        )
+                    }
+                    ThreeDIllustrationType.READING_OASIS_BOOK -> {
+                        ReadingOasisOnboardingBookCanvas(
+                            modifier = Modifier.size(114.dp)
+                        )
+                    }
+                    else -> {
+                        ThreeDIllustrationBox(
+                            type = illustrationType,
+                            modifier = Modifier.size(108.dp)
+                        )
+                    }
                 }
             }
 

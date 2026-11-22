@@ -6740,7 +6740,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     activeBusEventDateIso = todayIso,
                     lastUpdatedTimestamp = nowMillis,
                     lastUpdatedDate = todayIso,
-                    isHolidayOverrideActive = isHolidayOverride
+                    isHolidayOverrideActive = isHolidayOverride,
+                    isManualOverrideActive = true
                 )
             } else {
                 route
@@ -6755,6 +6756,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 lastUpdatedTimestamp = nowMillis,
                 lastUpdatedDate = todayIso,
                 isHolidayOverrideActive = isHolidayOverride,
+                isManualOverrideActive = true,
                 registeredBusRoutes = updatedRoutes
             )
         } else {
@@ -6810,6 +6812,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             put("lastUpdatedTimestamp", nowMillis)
             put("lastUpdatedDate", todayIso)
             put("isHolidayOverrideActive", isHolidayOverride)
+            put("isManualOverrideActive", true)
         }.toString()
         repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
@@ -6856,7 +6859,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     activeBusEventDateIso = "",
                     lastUpdatedTimestamp = 0L,
                     lastUpdatedDate = "",
-                    isHolidayOverrideActive = false
+                    isHolidayOverrideActive = false,
+                    isManualOverrideActive = false
                 )
             } else {
                 route
@@ -6871,6 +6875,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 lastUpdatedTimestamp = 0L,
                 lastUpdatedDate = "",
                 isHolidayOverrideActive = false,
+                isManualOverrideActive = false,
                 registeredBusRoutes = updatedRoutes
             )
         } else {
@@ -6892,6 +6897,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             put("lastUpdatedTimestamp", 0L)
             put("lastUpdatedDate", "")
             put("isHolidayOverrideActive", false)
+            put("isManualOverrideActive", false)
         }.toString()
         repo.saveRawCachedSubCollection(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
         FirebaseCloudSync.pushSubCollectionAsync(sid, FirebaseConfigConstants.COL_BUS_TRACKING, payload)
