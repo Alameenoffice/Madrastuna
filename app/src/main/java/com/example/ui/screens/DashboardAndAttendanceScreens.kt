@@ -302,17 +302,42 @@ fun DashboardScreen(
                         null
                     }
                 }
+                val todayStaffRecordsMap by com.example.staffattendance.StaffAttendanceCloudStore.todayRecordsByStaffId.collectAsState()
+                LaunchedEffect(currentUser?.id, schoolConfig.schoolId, todayIso, isParentOrStudent) {
+                    val userId = currentUser?.id.orEmpty()
+                    if (!isParentOrStudent && userId.isNotBlank()) {
+                        com.example.staffattendance.StaffAttendanceCloudStore.fetchStaffRecordForDate(
+                            context = context,
+                            schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
+                            dateIso = todayIso,
+                            staffId = userId
+                        )
+                    }
+                }
+                val myTodayStaffRecord = remember(todayStaffRecordsMap, currentUser?.id) {
+                    val userId = currentUser?.id.orEmpty()
+                    if (userId.isBlank()) null else todayStaffRecordsMap[userId]
+                }
                 val activeDailyStatusBadge = remember(
                     isParentOrStudent,
+                    isTeacher,
                     studentTodayAttendanceStatus,
-                    todayHolidayLabel
+                    todayHolidayLabel,
+                    myTodayStaffRecord
                 ) {
-                    resolveDailyStatusBadgeSpec(
-                        isParentOrStudent = isParentOrStudent,
-                        attendanceStatus = studentTodayAttendanceStatus,
-                        isHolidayToday = todayHolidayLabel != null,
-                        staffDailyStatusText = "متصل الآن"
-                    )
+                    if (!isParentOrStudent && (isTeacher || myTodayStaffRecord != null)) {
+                        com.example.staffattendance.buildStaffDailyStatusBadgeSpec(
+                            record = myTodayStaffRecord,
+                            isHolidayToday = todayHolidayLabel != null
+                        )
+                    } else {
+                        resolveDailyStatusBadgeSpec(
+                            isParentOrStudent = isParentOrStudent,
+                            attendanceStatus = studentTodayAttendanceStatus,
+                            isHolidayToday = todayHolidayLabel != null,
+                            staffDailyStatusText = "متصل الآن"
+                        )
+                    }
                 }
 
                 ThreeDHeroHeaderCard(
@@ -340,10 +365,10 @@ fun DashboardScreen(
                             persona = activeAvatarPersona,
                             statusBadge = activeDailyStatusBadge,
                             onClick = {
-                                if (isParentOrStudent) {
-                                    viewModel.navigateToSection(AppSection.STUDENT_PERSONAL_PROFILE)
-                                } else {
-                                    viewModel.navigateToSection(AppSection.SETTINGS)
+                                when {
+                                    isParentOrStudent -> viewModel.navigateToSection(AppSection.STUDENT_PERSONAL_PROFILE)
+                                    isTeacher -> viewModel.navigateToSection(AppSection.STAFF_SELF_ATTENDANCE)
+                                    else -> viewModel.navigateToSection(AppSection.SETTINGS)
                                 }
                             },
                             avatarSize = 86.dp
@@ -1134,7 +1159,11 @@ fun DashboardScreen(
                     if (isParentOrStudent) {
                         add(Triple(AppSection.STUDENT_PERSONAL_PROFILE, Icons.Filled.Badge, "ملف الطالب الشخصي الشامل والمواظبة والدرجات"))
                     }
+                    if (isTeacher) {
+                        add(Triple(AppSection.STAFF_SELF_ATTENDANCE, Icons.Filled.Fingerprint, "البصمة الإلكترونية الذكية عبر النطاق الجغرافي وطلبات الإجازات"))
+                    }
                     if (isAdmin) {
+                        add(Triple(AppSection.STAFF_ATTENDANCE_ADMIN, Icons.Filled.Fingerprint, "حضور وبصمة الكوادر التدريسية والنطاق الجغرافي والإجازات"))
                         add(Triple(AppSection.TEACHING_STAFF, Icons.Filled.Groups, "سجل الكادر التدريسي المدمج ومؤشرات الإشراف"))
                         add(Triple(AppSection.STUDENTS_DIRECTORY, Icons.Filled.People, "سجل وأسماء الطلاب حسب الصف والشعبة والنقل الفوري"))
                     }

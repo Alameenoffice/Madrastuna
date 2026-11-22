@@ -862,6 +862,12 @@ fun AuthenticatedMainPlatform(
             if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
                 add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
             }
+            if (currentUser?.role == UserRole.TEACHER) {
+                add(AppSection.STAFF_SELF_ATTENDANCE to Icons.Filled.Fingerprint)
+            }
+            if (currentUser?.role == UserRole.ADMIN) {
+                add(AppSection.STAFF_ATTENDANCE_ADMIN to Icons.Filled.Fingerprint)
+            }
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
             if (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE || currentUser?.role == UserRole.ADMIN) {
                 add(AppSection.SCHOOL_TRANSPORT to Icons.Filled.DirectionsBus)
@@ -1016,6 +1022,12 @@ fun AuthenticatedMainPlatform(
                         }
                         if (currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER) {
                             add(AppSection.LIVE_OPERATIONS_RADAR to Icons.Filled.FactCheck)
+                        }
+                        if (currentUser?.role == UserRole.TEACHER) {
+                            add(AppSection.STAFF_SELF_ATTENDANCE to Icons.Filled.Fingerprint)
+                        }
+                        if (currentUser?.role == UserRole.ADMIN) {
+                            add(AppSection.STAFF_ATTENDANCE_ADMIN to Icons.Filled.Fingerprint)
                         }
                         add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
                         if (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE || currentUser?.role == UserRole.ADMIN) {
@@ -2084,6 +2096,8 @@ fun AuthenticatedMainPlatform(
                                 }
                             )
                             AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)
+                            AppSection.STAFF_SELF_ATTENDANCE -> com.example.staffattendance.StaffSelfAttendanceScreen(viewModel = viewModel)
+                            AppSection.STAFF_ATTENDANCE_ADMIN -> com.example.staffattendance.StaffAttendanceAdminScreen(viewModel = viewModel)
                             AppSection.ATTENDANCE -> DailyAttendanceScreen(viewModel = viewModel)
                             AppSection.SCHOOL_TRANSPORT -> SchoolTransportFleetScreen(viewModel = viewModel)
                             AppSection.STUDENT_PERSONAL_PROFILE -> StudentPersonalProfileScreen(viewModel = viewModel)
