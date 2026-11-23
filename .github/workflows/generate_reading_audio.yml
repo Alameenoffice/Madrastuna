@@ -1,23 +1,35 @@
-name: Generate Reading Audio (Clean Teacher Voice)
+name: Generate Reading Audio (Google Gemini AI Teacher Voice)
 
 on:
   workflow_dispatch:
     inputs:
       voice:
-        description: 'اختر صوت آنسة الصف'
+        description: 'اختر صوت آنسة الصف (أصوات جوجل جيميني الطبيعية)'
         type: choice
-        default: 'ar-SA-ZariyahNeural'
+        default: 'Kore'
         options:
-          - 'ar-SA-ZariyahNeural'
-          - 'ar-JO-SanaNeural'
-          - 'ar-EG-SalmaNeural'
-          - 'ar-IQ-RanaNeural'
-      rate:
-        description: 'سرعة القراءة (-8% واضحة وهادئة جداً للصف الأول)'
+          - 'Kore'
+          - 'Aoede'
+          - 'Leda'
+          - 'Zephyr'
+          - 'Sulafat'
+      model:
+        description: 'نموذج الصوت من جوجل'
+        type: choice
+        default: 'gemini-2.5-flash-preview-tts'
+        options:
+          - 'gemini-2.5-flash-preview-tts'
+          - 'gemini-2.5-pro-preview-tts'
+      delay_seconds:
+        description: 'الفاصل الزمني بالثواني بين كل ملف (4.5 للمجاني، 0.5 للمدفوع)'
         required: true
-        default: '-8%'
+        default: '4.5'
+      max_files_per_run:
+        description: 'أقصى عدد ملفات في كل تشغيل (0 = الكل، مفيد للإكمال التدريجي)'
+        required: true
+        default: '0'
       force_regenerate:
-        description: 'إعادة توليد كل الأصوات من الصفر'
+        description: 'إعادة توليد كل الأصوات من الصفر حتى المولدة سابقاً بجيميني'
         type: boolean
         default: false
 
@@ -37,30 +49,48 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install edge-tts
-        run: pip install --upgrade edge-tts
+      - name: Install Google GenAI SDK and FFmpeg
+        run: |
+          pip install --upgrade google-genai
+          which ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
-      - name: Extract Arabic texts and generate clean Teacher MP3 pack
+      - name: Extract Arabic texts and generate Gemini AI Teacher MP3 pack
         env:
-          TTS_VOICE: ${{ github.event.inputs.voice || 'ar-SA-ZariyahNeural' }}
-          TTS_PITCH: '+0Hz'
-          TTS_RATE: ${{ github.event.inputs.rate || '-8%' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TTS_VOICE: ${{ github.event.inputs.voice || 'Kore' }}
+          TTS_MODEL: ${{ github.event.inputs.model || 'gemini-2.5-flash-preview-tts' }}
+          DELAY_SECONDS: ${{ github.event.inputs.delay_seconds || '4.5' }}
+          MAX_FILES: ${{ github.event.inputs.max_files_per_run || '0' }}
           FORCE_REGEN: ${{ github.event.inputs.force_regenerate || 'false' }}
         run: |
           python3 - << 'EOF'
-          import asyncio
+          import base64
           import hashlib
+          import json
           import os
           import re
           import shutil
+          import subprocess
+          import sys
+          import time
           from pathlib import Path
-          import edge_tts
+          from google import genai
+          from google.genai import types
+
+          API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not API_KEY:
+              print("ERROR: GEMINI_API_KEY secret is missing! Add it in GitHub Repo -> Settings -> Secrets -> Actions.")
+              sys.exit(1)
 
           VOICE = os.environ["TTS_VOICE"]
-          PITCH = os.environ["TTS_PITCH"]
-          RATE = os.environ["TTS_RATE"]
+          MODEL = os.environ["TTS_MODEL"]
+          DELAY = float(os.environ.get("DELAY_SECONDS", "4.5"))
+          MAX_FILES = int(os.environ.get("MAX_FILES", "0"))
           FORCE = os.environ["FORCE_REGEN"].lower() == "true"
-          ENGINE_VER = "v3-clean-madd-and-letters"
+          ENGINE_VER = "v4-gemini-ai-teacher"
+          CURRENT_SIG = f"{ENGINE_VER}|{MODEL}|{VOICE}"
+
+          client = genai.Client(api_key=API_KEY)
 
           main_dir = Path("app/src/main")
           if not main_dir.exists():
@@ -70,15 +100,16 @@ jobs:
           out_dir = main_dir / "assets" / "reading_audio"
           out_dir.mkdir(parents=True, exist_ok=True)
           custom_dir = Path("custom_reading_audio")
+          manifest_file = out_dir / ".gemini_manifest.json"
 
-          # كشف أي تغيير في الصوت أو إصدار التنظيف لإعادة توليد كل الأصوات القديمة بنظافة
-          sig_file = out_dir / ".voice_signature"
-          current_sig = f"{ENGINE_VER}|{VOICE}|{PITCH}|{RATE}"
-          if not sig_file.exists() or sig_file.read_text(encoding="utf-8").strip() != current_sig:
-              print(f"Voice engine updated ({current_sig}) -> regenerating all MP3 files.")
-              FORCE = True
+          done_map = {}
+          if manifest_file.exists() and not FORCE:
+              try:
+                  done_map = json.loads(manifest_file.read_text(encoding="utf-8"))
+              except Exception:
+                  done_map = {}
 
-          # أسماء الحروف المنفردة العارية لمنع هلوسة المحرك (مثل د -> ا، ق -> خي)
+          # أسماء الحروف المنفردة العارية لضمان نطقها الصحيح والواضح
           LETTER_NAMES = {
               "ا": "أَلِف", "أ": "أَلِف", "إ": "أَلِف", "آ": "أَلِف مَدّ", "ى": "أَلِف مَقْصُورَة",
               "ب": "بَاء", "ت": "تَاء", "ة": "تَاءٌ مَرْبُوطَة", "ث": "ثَاء",
@@ -91,51 +122,40 @@ jobs:
               "لا": "لَام أَلِف",
           }
 
-          # تصحيحات صوتية مخصّصة لأي كلمة أو مقطع يحتاج ضبطاً إضافياً (يمكنك الإضافة إليها لاحقاً)
+          # تصحيحات وتشكيل دقيق لأشهر كلمات ومقاطع منهج قراءتي العراقية للصف الأول
           PHONETIC_OVERRIDES = {
-              "بوق": "بُوقٌ",
-              "بُوْقُ": "بُوقٌ",
-              "بُوقُ": "بُوقٌ",
-              "دور": "دُورٌ",
-              "دُوْرُ": "دُورٌ",
-              "دار": "دَارٌ",
-              "دَارُ": "دَارٌ",
-              "نور": "نُورٌ",
-              "نُوْرُ": "نُورٌ",
-              "وز": "وَزٌّ",
-              "قُوْ": "قُو",
-              "قِيْ": "قِي",
-              "مِيْ": "مِي",
-              "بُوْ": "بُو",
-              "بِيْ": "بِي",
-              "رُوْ": "رُو",
-              "رِيْ": "رِي",
-              "دُوْ": "دُو",
-              "دِيْ": "دِي",
-              "نُوْ": "نُو",
-              "نِيْ": "نِي",
-              "سُوْ": "سُو",
-              "سِيْ": "سِي",
-              "تُوْ": "تُو",
-              "تِيْ": "تِي",
-              "فُوْ": "فُو",
-              "فِيْ": "فِي",
-              "لُوْ": "لُو",
-              "لِيْ": "لِي",
-              "طُوْ": "طُو",
-              "طِيْ": "طِي",
-              "عُوْ": "عُو",
-              "عِيْ": "عِي",
-              "حُوْ": "حُو",
-              "حِيْ": "حِي",
-              "شُوْ": "شُو",
-              "شِيْ": "شِي",
-              "زُوْ": "زُو",
-              "زِيْ": "زِي",
-              "وُوْ": "وُو",
-              "وِيْ": "وِي",
-              "يُوْ": "يُو",
-              "يِيْ": "يِي",
+              "دادا": "دَادَا",
+              "بابا": "بَابَا",
+              "ماما": "مَامَا",
+              "دار": "دَار",
+              "دَارُ": "دَار",
+              "دور": "دُور",
+              "دُوْرُ": "دُور",
+              "نور": "نُور",
+              "نُوْرُ": "نُور",
+              "بوق": "بُوق",
+              "بُوْقُ": "بُوق",
+              "بُوقُ": "بُوق",
+              "وز": "وَزّ",
+              "بان": "بَان",
+              "ريم": "رِيم",
+              "نديم": "نَدِيم",
+              "بدران": "بَدْرَان",
+              "زورق": "زَوْرَق",
+              "زيدون": "زَيْدُون",
+              "قدوري": "قَدُّورِي",
+              "وزان": "وَزَّان",
+              "مازن": "مَازِن",
+              "وداد": "وِدَاد",
+              "نبيل": "نَبِيل",
+              "بقال": "بَقَّال",
+              "رمان": "رُمَّان",
+              "لبن": "لَبَن",
+              "مطر": "مَطَر",
+              "ورد": "وَرْد",
+              "لطيف": "لَطِيف",
+              "بط": "بَطّ",
+              "طيور": "طُيُور",
           }
 
           kt_files = [
@@ -156,6 +176,7 @@ jobs:
           }
 
           arabic_re = re.compile(r"[\u0600-\u06FF]")
+          diacritics_re = re.compile(r"[\u064B-\u065F\u0670]")
           string_literal_re = re.compile(r'"((?:[^"\\]|\\.)*)"')
           char_literal_re = re.compile(r"'([\u0600-\u06FF])'")
           punct_split_re = re.compile(r"[،,:!.؟|•\n]+")
@@ -167,38 +188,61 @@ jobs:
               digest = hashlib.md5(normalized_text.encode("utf-8")).hexdigest()[:12]
               return f"{digest}.mp3"
 
-          def clean_for_speech(text: str) -> str:
-              # 1. إزالة التطويل (ـ) والنقاط المتكررة
+          def clean_for_speech(text: str) -> tuple[str, str]:
+              """يعيد (النص المنطوق، نوع النص: letter | syllable | text)"""
               spoken = text.replace("\u0640", "")
               spoken = re.sub(r"\.{2,}", " ", spoken)
               spoken = spoken.replace("•", "، ").replace("|", "، ")
               spoken = re.sub(r"\s+", " ", spoken).strip()
 
-              # 2. التحقق من قاموس التصحيحات المخصصة أولاً
               if text in PHONETIC_OVERRIDES:
-                  return PHONETIC_OVERRIDES[text]
+                  return PHONETIC_OVERRIDES[text], "text"
               if spoken in PHONETIC_OVERRIDES:
-                  return PHONETIC_OVERRIDES[spoken]
+                  return PHONETIC_OVERRIDES[spoken], "text"
 
-              # 3. إذا كان حرفاً واحداً عارياً بدون تشكيل -> نطق اسمه الفصيح الواضح
+              # حرف منفرد بدون تشكيل
               if spoken in LETTER_NAMES:
-                  return LETTER_NAMES[spoken]
+                  return LETTER_NAMES[spoken], "letter"
 
-              # 4. إزالة السكون من حروف المد العراقي (ُوْ -> ُو ، ِيْ -> ِي ، اْ -> ا)
-              #    مع الإبقاء على سكون اللين بعد الفتحة (مَوْز، بَيْض، قَوْس) كما هو
+              # إزالة السكون من حروف المد العراقي (ُوْ -> ُو ، ِيْ -> ِي ، اْ -> ا)
               spoken = re.sub(r"\u064F\u0648\u0652", "\u064F\u0648", spoken)
               spoken = re.sub(r"\u0650\u064A\u0652", "\u0650\u064A", spoken)
               spoken = re.sub(r"\u0627\u0652", "\u0627", spoken)
 
-              # 5. معالجة التاء المربوطة والحروف المنفصلة بين فواصل مثل "ق ، قـ ، ـقـ"
+              # أشكال الحرف المفصولة بفواصل مثل (س ، سـ ، ـسـ)
               if "،" in spoken:
                   parts = [p.strip() for p in spoken.split("،") if p.strip()]
                   if parts and all(p in LETTER_NAMES for p in parts):
-                      # إذا كانت مجرد أشكال لنفس الحرف مثل (س ، سـ) نكتفي باسم الحرف مرة واحدة
                       unique_names = list(dict.fromkeys(LETTER_NAMES[p] for p in parts))
-                      return "، ".join(unique_names)
+                      return "، ".join(unique_names), "letter"
 
-              return spoken
+              # تمييز المقاطع الصوتية القصيرة (حرف بحركة أو حرف + مد مثل بَ، دَا، دُو، دِي)
+              base_chars = diacritics_re.sub("", spoken).replace(" ", "")
+              if " " not in spoken and 1 <= len(base_chars) <= 2:
+                  return spoken, "syllable"
+
+              return spoken, "text"
+
+          def build_teacher_prompt(spoken: str, kind: str) -> str:
+              if kind == "letter":
+                  return (
+                      "اقرئي اسم الحرف العربي التالي فقط بصوت معلمة صف أول ابتدائي دافئ وواضح وهادئ "
+                      "وبنطق فصيح صحيح، دون أي مقدمات أو شرح أو كلمات إضافية:\n"
+                      f"{spoken}"
+                  )
+              if kind == "syllable":
+                  return (
+                      "أنتِ معلمة لغة عربية للصف الأول الابتدائي. انطقي هذا المقطع الصوتي القصير فقط "
+                      "بصوت دافئ وواضح وممتد قليلاً لتعليم الطفل، مع الالتزام الدقيق بالحركات، "
+                      "ولا تضيفي أي كلمة أخرى قبله أو بعده:\n"
+                      f"{spoken}"
+                  )
+              return (
+                  "أنتِ معلمة لغة عربية للصف الأول الابتدائي. اقرئي النص العربي التالي بصوت دافئ وهادئ "
+                  "وواضح جداً وبسرعة متأنية مناسبة للأطفال مع مراعاة التشكيل بدقة، "
+                  "اقرئي النص التالي فقط دون أي إضافات:\n"
+                  f"{spoken}"
+              )
 
           def add_text_and_parts(raw_text: str):
               norm = normalize_key(raw_text)
@@ -229,64 +273,154 @@ jobs:
               for match in char_literal_re.finditer(content):
                   texts.add(normalize_key(match.group(1)))
 
-          print(f"Total unique Arabic items extracted: {len(texts)}")
+          sorted_texts = sorted(texts)
+          print(f"Total unique Arabic items extracted: {len(sorted_texts)}")
 
-          # كتابة فهرس مقروء يربط كل ملف MP3 بالنص العربي لتسهيل أي تعديل بشري مستقبلاً
           index_lines = []
-          for t in sorted(texts):
-              index_lines.append(f"{md5_filename(t)} | {t}  -->  {clean_for_speech(t)}")
+          for t in sorted_texts:
+              sp, kind = clean_for_speech(t)
+              index_lines.append(f"{md5_filename(t)} | [{kind}] {t}  -->  {sp}")
           Path("reading_audio_index.txt").write_text("\n".join(index_lines), encoding="utf-8")
 
-          sem = asyncio.Semaphore(4)
-          stats = {"created": 0, "custom": 0, "skipped": 0, "failed": 0}
+          def get_audio_duration(mp3_path: Path) -> float:
+              try:
+                  res = subprocess.run(
+                      ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                       "-of", "default=noprint_wrappers=1:nokey=1", str(mp3_path)],
+                      capture_output=True, text=True, check=True
+                  )
+                  return float(res.stdout.strip())
+              except Exception:
+                  return 0.0
 
-          async def generate_one(norm_text: str):
+          def save_pcm_to_mp3(pcm_bytes: bytes, sample_rate: int, mp3_target: Path) -> bool:
+              tmp_pcm = mp3_target.with_suffix(".pcm")
+              tmp_pcm.write_bytes(pcm_bytes)
+              try:
+                  subprocess.run(
+                      [
+                          "ffmpeg", "-y", "-loglevel", "error",
+                          "-f", "s16le", "-ar", str(sample_rate), "-ac", "1",
+                          "-i", str(tmp_pcm),
+                          "-c:a", "libmp3lame", "-b:a", "96k",
+                          str(mp3_target),
+                      ],
+                      check=True,
+                  )
+                  return mp3_target.exists() and mp3_target.stat().st_size > 400
+              finally:
+                  if tmp_pcm.exists():
+                      tmp_pcm.unlink()
+
+          stats = {"created": 0, "custom": 0, "skipped": 0, "failed": 0}
+          quota_exhausted = False
+          generated_this_run = 0
+
+          for norm_text in sorted_texts:
+              if MAX_FILES > 0 and generated_this_run >= MAX_FILES:
+                  print(f"Reached max_files_per_run={MAX_FILES}. Saving progress cleanly.")
+                  break
+
               fname = md5_filename(norm_text)
               target = out_dir / fname
 
-              # الأولوية المطلقة للتسجيلات البشرية إن وُجدت في مجلد custom_reading_audio/
+              # الأولوية المطلقة للتسجيلات البشرية إن وُجدت في custom_reading_audio/
               custom_file = custom_dir / fname
               if custom_file.exists() and custom_file.stat().st_size > 100:
                   shutil.copy2(custom_file, target)
+                  done_map[fname] = "custom"
                   stats["custom"] += 1
-                  return
+                  continue
 
-              if target.exists() and target.stat().st_size > 200 and not FORCE:
+              # تخطّي الملفات التي سبق توليدها بنفس صوت جيميني (يدعم الإكمال التلقائي)
+              if not FORCE and target.exists() and target.stat().st_size > 400 and done_map.get(fname) == CURRENT_SIG:
                   stats["skipped"] += 1
-                  return
+                  continue
 
-              spoken = clean_for_speech(norm_text)
+              spoken, kind = clean_for_speech(norm_text)
               if not spoken or not arabic_re.search(spoken):
                   stats["skipped"] += 1
-                  return
+                  continue
 
-              async with sem:
-                  for attempt in range(1, 4):
-                      try:
-                          comm = edge_tts.Communicate(
-                              text=spoken,
-                              voice=VOICE,
-                              rate=RATE,
-                              pitch=PITCH,
-                          )
-                          await comm.save(str(target))
-                          if target.exists() and target.stat().st_size > 100:
-                              stats["created"] += 1
-                              return
-                      except Exception as exc:
+              prompt = build_teacher_prompt(spoken, kind)
+              success = False
+
+              for attempt in range(1, 4):
+                  try:
+                      response = client.models.generate_content(
+                          model=MODEL,
+                          contents=prompt,
+                          config=types.GenerateContentConfig(
+                              response_modalities=["AUDIO"],
+                              speech_config=types.SpeechConfig(
+                                  voice_config=types.VoiceConfig(
+                                      prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                                          voice_name=VOICE,
+                                      )
+                                  )
+                              ),
+                          ),
+                      )
+
+                      audio_data = None
+                      sample_rate = 24000
+                      if response.candidates:
+                          for part in response.candidates[0].content.parts:
+                              if getattr(part, "inline_data", None) and part.inline_data.data:
+                                  raw_data = part.inline_data.data
+                                  audio_data = base64.b64decode(raw_data) if isinstance(raw_data, str) else raw_data
+                                  mime = getattr(part.inline_data, "mime_type", "") or ""
+                                  m_rate = re.search(r"rate=(\d+)", mime)
+                                  if m_rate:
+                                      sample_rate = int(m_rate.group(1))
+                                  break
+
+                      if not audio_data:
+                          raise RuntimeError("No audio bytes returned by Gemini TTS")
+
+                      if save_pcm_to_mp3(audio_data, sample_rate, target):
+                          # فحص أمان لمنع أي هلوسة إضافية في الحروف والمقاطع القصيرة
+                          dur = get_audio_duration(target)
+                          if kind in ("letter", "syllable") and dur > 4.5 and attempt < 3:
+                              print(f"Retry [{fname}] ({spoken}): audio too long ({dur:.1f}s)")
+                              time.sleep(DELAY)
+                              continue
+
+                          done_map[fname] = CURRENT_SIG
+                          stats["created"] += 1
+                          generated_this_run += 1
+                          success = True
+                          print(f"OK [{stats['created']}] {fname} ({dur:.1f}s) <- {spoken[:35]}")
+                          break
+
+                  except Exception as exc:
+                      err_str = str(exc)
+                      if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                          wait_s = 25 * attempt
+                          print(f"Rate limit hit on [{fname}], waiting {wait_s}s (attempt {attempt}/3)...")
+                          time.sleep(wait_s)
                           if attempt == 3:
-                              print(f"Failed [{fname}] ({norm_text[:30]}): {exc}")
-                              stats["failed"] += 1
-                          else:
-                              await asyncio.sleep(1.5 * attempt)
+                              print("Quota exhausted for now. Saving all generated files safely so next run resumes!")
+                              quota_exhausted = True
+                      else:
+                          print(f"Error [{fname}] attempt {attempt}/3: {err_str[:180]}")
+                          time.sleep(3 * attempt)
 
-          async def main():
-              tasks = [generate_one(t) for t in sorted(texts)]
-              await asyncio.gather(*tasks)
+              if quota_exhausted:
+                  break
 
-          asyncio.run(main())
-          sig_file.write_text(current_sig, encoding="utf-8")
-          print(f"Done! Created: {stats['created']}, Custom: {stats['custom']}, Skipped: {stats['skipped']}, Failed: {stats['failed']}")
+              if not success:
+                  stats["failed"] += 1
+
+              # حفظ التقدم كل 10 ملفات
+              if generated_this_run > 0 and generated_this_run % 10 == 0:
+                  manifest_file.write_text(json.dumps(done_map, ensure_ascii=False, indent=2), encoding="utf-8")
+
+              time.sleep(DELAY)
+
+          manifest_file.write_text(json.dumps(done_map, ensure_ascii=False, indent=2), encoding="utf-8")
+          remaining = sum(1 for t in sorted_texts if done_map.get(md5_filename(t)) not in (CURRENT_SIG, "custom"))
+          print(f"Done! Created: {stats['created']}, Custom: {stats['custom']}, Skipped: {stats['skipped']}, Failed: {stats['failed']}, Remaining: {remaining}")
           EOF
 
       - name: Commit and push generated audio files
@@ -297,6 +431,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No audio changes to commit."
           else
-            git commit -m "Fix Arabic vowel sukun and isolated letters in Teacher MP3 voice pack"
+            git commit -m "Generate natural Arabic teacher voices via Google Gemini TTS"
             git push
           fi
