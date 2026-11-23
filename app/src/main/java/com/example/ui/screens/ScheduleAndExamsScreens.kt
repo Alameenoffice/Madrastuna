@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -49,7 +50,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -3389,103 +3392,148 @@ fun ExamsAndGradesScreen(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                val isGradesTab = selectedTab == 0
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (isGradesTab) Color(0xFF059669) else Color.White,
-                    border = BorderStroke(1.2.dp, if (isGradesTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
-                    shadowElevation = if (isGradesTab) 6.dp else 2.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 46.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { selectedTab = 0 }
-                        .testTag("tab_detailed_grades")
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 11.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (isParentOrStudent) "جدول كشف الدرجات" else "الدرجات حسب المادة",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isGradesTab) Color.White else Color(0xFF0F172A),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                val isScheduleTab = selectedTab == 1
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (isScheduleTab) Color(0xFF059669) else Color.White,
-                    border = BorderStroke(1.2.dp, if (isScheduleTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
-                    shadowElevation = if (isScheduleTab) 6.dp else 2.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 46.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { selectedTab = 1 }
-                        .testTag("tab_exam_schedule")
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 11.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "مواعيد الامتحانات",
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isScheduleTab) Color.White else Color(0xFF0F172A),
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-            }
-
-            // 3rd Main Tab: إصدار الكارتات والنتائج (Administrative tab — hidden for Student and Parent accounts)
-            if (!isParentOrStudent) {
-                val isReportCardsTab = selectedTab == 2
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (isReportCardsTab) Color(0xFF047857) else Color(0xFFFFFBEB),
-                    border = BorderStroke(
-                        1.4.dp,
-                        if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFF59E0B).copy(alpha = 0.55f)
-                    ),
-                    shadowElevation = if (isReportCardsTab) 7.dp else 2.dp,
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 46.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { selectedTab = 2 }
-                        .testTag("tab_smart_report_cards_hub")
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 11.dp),
-                        contentAlignment = Alignment.Center
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "إصدار الكارتات والنتائج",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isReportCardsTab) Color.White else Color(0xFF78350F),
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                        val isGradesTab = selectedTab == 0
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isGradesTab) Color(0xFF059669) else Color(0xFFF0FDF4),
+                            border = BorderStroke(
+                                1.2.dp,
+                                if (isGradesTab) Color(0xFFA7F3D0) else Color(0xFF059669).copy(alpha = 0.24f)
+                            ),
+                            shadowElevation = if (isGradesTab) 4.dp else 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedTab = 0 }
+                                .testTag("tab_detailed_grades")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Grading,
+                                    contentDescription = null,
+                                    tint = if (isGradesTab) Color.White else Color(0xFF065F46),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isParentOrStudent) "جدول كشف الدرجات" else "الدرجات حسب المادة",
+                                    fontSize = 12.2.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isGradesTab) Color.White else Color(0xFF064E3B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        val isScheduleTab = selectedTab == 1
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isScheduleTab) Color(0xFF059669) else Color(0xFFF0FDF4),
+                            border = BorderStroke(
+                                1.2.dp,
+                                if (isScheduleTab) Color(0xFFA7F3D0) else Color(0xFF059669).copy(alpha = 0.24f)
+                            ),
+                            shadowElevation = if (isScheduleTab) 4.dp else 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedTab = 1 }
+                                .testTag("tab_exam_schedule")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.EventNote,
+                                    contentDescription = null,
+                                    tint = if (isScheduleTab) Color.White else Color(0xFF065F46),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "مواعيد الامتحانات",
+                                    fontSize = 12.2.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isScheduleTab) Color.White else Color(0xFF064E3B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    // 3rd Main Tab: إصدار الكارتات والنتائج (Administrative tab — hidden for Student and Parent accounts)
+                    if (!isParentOrStudent) {
+                        val isReportCardsTab = selectedTab == 2
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isReportCardsTab) Color(0xFF065F46) else Color(0xFFFFFBEB),
+                            border = BorderStroke(
+                                1.3.dp,
+                                if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFD97706).copy(alpha = 0.42f)
+                            ),
+                            shadowElevation = if (isReportCardsTab) 4.dp else 0.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedTab = 2 }
+                                .testTag("tab_smart_report_cards_hub")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.WorkspacePremium,
+                                    contentDescription = null,
+                                    tint = if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFB45309),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(7.dp))
+                                Text(
+                                    text = "إصدار الكارتات والنتائج",
+                                    fontSize = 12.8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isReportCardsTab) Color.White else Color(0xFF78350F),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -4237,7 +4285,7 @@ fun ExamsAndGradesScreen(
                         renderTopTabsHeader()
                     }
 
-                    // 3D Wave Hero Header for Grades & Exams
+                    // Hero Header with Custom Glass Accuracy Live Board Canvas Widget
                     item {
                         ThreeDHeroHeaderCard(
                             title = "الامتحانات ورصد الدرجات",
@@ -4246,33 +4294,61 @@ fun ExamsAndGradesScreen(
                             rightPillIcon = Icons.Filled.Class,
                             leftPillText = "طلاب الصف: ${classSectionStudents.size}",
                             leftPillIcon = Icons.Filled.Groups,
-                            illustrationType = ThreeDIllustrationType.EXAM_CERTIFICATE_PEN
+                            customTrailingContent = {
+                                ExamsAccuracyLiveBoardHeaderWidget()
+                            }
                         )
                     }
 
-                    // Step A & B Filter Card (Removed overlapping green badge next to title)
+                    // Step A & B Filter Card — Cohesive Emerald-Mint Identity with Comfortable Spacing
                     item {
+                        val emeraldChipColors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF059669),
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFFF8FAFC),
+                            labelColor = Color(0xFF0F172A)
+                        )
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .shadow(8.dp, RoundedCornerShape(22.dp)),
+                                .shadow(6.dp, RoundedCornerShape(22.dp)),
                             shape = RoundedCornerShape(22.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.22f))
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(
-                                    text = "أولاً: اختر الصف والشعبة والمادة الدراسية",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF047857),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Tune,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier
+                                                .padding(7.dp)
+                                                .size(18.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "أولاً: اختر الصف والشعبة والمادة الدراسية",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
 
-                                // 1. Registered Class Selector (Pure-Text Chips)
+                                // 1. Registered Class Selector
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(allowedClasses) { cls ->
                                         FilterChip(
@@ -4284,6 +4360,13 @@ fun ExamsAndGradesScreen(
                                                     selectedSection = nextSecs.firstOrNull() ?: "أ"
                                                 }
                                             },
+                                            colors = emeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedClass == cls,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
                                             label = {
                                                 Text(
                                                     text = cls,
@@ -4296,7 +4379,7 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 2. Registered Section Selector (LazyRow so "شعبة ج" never clips)
+                                // 2. Registered Section Selector
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -4305,6 +4388,8 @@ fun ExamsAndGradesScreen(
                                     Text(
                                         text = "الشعبة:",
                                         style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF065F46),
                                         maxLines = 1,
                                         softWrap = false
                                     )
@@ -4317,9 +4402,17 @@ fun ExamsAndGradesScreen(
                                             FilterChip(
                                                 selected = selectedSection == sec,
                                                 onClick = { selectedSection = sec },
+                                                colors = emeraldChipColors,
+                                                border = FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selectedSection == sec,
+                                                    borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                    selectedBorderColor = Color(0xFF047857)
+                                                ),
                                                 label = {
                                                     Text(
                                                         text = "شعبة $sec",
+                                                        fontWeight = if (selectedSection == sec) FontWeight.ExtraBold else FontWeight.SemiBold,
                                                         maxLines = 1,
                                                         softWrap = false
                                                     )
@@ -4329,17 +4422,25 @@ fun ExamsAndGradesScreen(
                                     }
                                 }
 
-                                // 3. Subject Selector (المادة الدراسية المخصصة للصف المختار - Pure-Text Chips)
+                                // 3. Subject Selector
                                 Text(
                                     text = "المادة الدراسية المختارة للرصد (${allowedSubjects.size}):",
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.secondary
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF065F46)
                                 )
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(allowedSubjects) { subj ->
                                         FilterChip(
                                             selected = selectedSubject == subj,
                                             onClick = { selectedSubject = subj },
+                                            colors = emeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedSubject == subj,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
                                             label = {
                                                 Text(
                                                     text = subj,
@@ -5258,7 +5359,9 @@ fun ExamsAndGradesScreen(
                         rightPillIcon = Icons.Filled.EventNote,
                         leftPillText = schoolConfig.academicYear,
                         leftPillIcon = Icons.Filled.CalendarMonth,
-                        illustrationType = ThreeDIllustrationType.EXAM_CERTIFICATE_PEN
+                        customTrailingContent = {
+                            ExamsAccuracyLiveBoardHeaderWidget()
+                        }
                     )
                 }
 
@@ -5425,7 +5528,9 @@ fun ExamsAndGradesScreen(
                             rightPillIcon = Icons.Filled.School,
                             leftPillText = "${myStu?.gradeClass.orEmpty()} (${myStu?.sectionName.orEmpty()})",
                             leftPillIcon = Icons.Filled.WorkspacePremium,
-                            illustrationType = ThreeDIllustrationType.EXAM_CERTIFICATE_PEN
+                            customTrailingContent = {
+                                ExamsAccuracyLiveBoardHeaderWidget()
+                            }
                         )
                     }
 
@@ -5602,7 +5707,9 @@ fun ExamsAndGradesScreen(
                             rightPillIcon = Icons.Filled.WorkspacePremium,
                             leftPillText = selectedReportCardPeriod.shortLabel,
                             leftPillIcon = Icons.Filled.Verified,
-                            illustrationType = ThreeDIllustrationType.EXAM_CERTIFICATE_PEN
+                            customTrailingContent = {
+                                ExamsAccuracyLiveBoardHeaderWidget()
+                            }
                         )
                     }
 
@@ -7368,6 +7475,177 @@ fun HomeworkIllustrativePhotoPickerSection(
                             }
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * البصمة الخاصة بقسم "الامتحانات ورصد الدرجات":
+ * وحدة زجاجية مصقولة بـ Compose Canvas تعرض 3 أشرطة درجات متدرجة تتوازن بارتفاعات ناعمة
+ * مع نجمة اعتماد ذهبية تمر عليها لمعة بطيئة، وتبدّل عبر Crossfade بين 3 عبارات.
+ */
+@Composable
+private fun ExamsAccuracyLiveBoardHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "رصدٌ دقيق وسريع",
+            "حساب تلقائي للسعي",
+            "إصدار فوري للكارتات"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2700L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "exams_accuracy_live_board")
+    val barWave by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "exams_bars_wave"
+    )
+    val starGleam by infiniteTransition.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "exams_star_gleam"
+    )
+
+    Surface(
+        modifier = modifier.width(136.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val baseBottom = h * 0.88f
+
+                // خط مرجعي سفلي ناعم
+                drawLine(
+                    color = Color.White.copy(alpha = 0.25f),
+                    start = Offset(w * 0.08f, baseBottom),
+                    end = Offset(w * 0.64f, baseBottom),
+                    strokeWidth = 1.4.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // 3 أشرطة درجات متدرجة تتوازن بارتفاعات ناعمة
+                val barWidth = w * 0.125f
+                val barXs = listOf(w * 0.14f, w * 0.31f, w * 0.48f)
+                val barHeights = listOf(
+                    0.46f + 0.16f * kotlin.math.sin(barWave.toDouble()).toFloat(),
+                    0.66f + 0.14f * kotlin.math.sin(barWave.toDouble() + 2.1).toFloat(),
+                    0.56f + 0.18f * kotlin.math.sin(barWave.toDouble() + 4.2).toFloat()
+                )
+                barXs.forEachIndexed { i, bx ->
+                    val bh = (h * 0.70f) * barHeights[i].coerceIn(0.28f, 0.90f)
+                    val topY = baseBottom - bh
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = when (i) {
+                                1 -> listOf(Color(0xFFFDE68A), Color(0xFF34D399), Color(0xFF059669))
+                                else -> listOf(Color(0xFFA7F3D0), Color(0xFF34D399), Color(0xFF047857))
+                            },
+                            startY = topY,
+                            endY = baseBottom
+                        ),
+                        topLeft = Offset(bx, topY),
+                        size = Size(barWidth, bh),
+                        cornerRadius = CornerRadius(barWidth * 0.45f, barWidth * 0.45f)
+                    )
+                }
+
+                // نجمة اعتماد ذهبية مع لمعة بطيئة تمر عليها
+                val starCx = w * 0.80f
+                val starCy = h * 0.44f
+                val outerR = h * 0.29f
+                val innerR = outerR * 0.46f
+
+                // هالة ذهبية خفيفة خلف النجمة
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = 0.34f),
+                            Color.Transparent
+                        ),
+                        center = Offset(starCx, starCy),
+                        radius = outerR * 1.45f
+                    ),
+                    radius = outerR * 1.45f,
+                    center = Offset(starCx, starCy)
+                )
+
+                val starPath = Path()
+                for (p in 0 until 10) {
+                    val angle = (-90.0 + p * 36.0) * kotlin.math.PI / 180.0
+                    val r = if (p % 2 == 0) outerR else innerR
+                    val sx = starCx + (r * kotlin.math.cos(angle)).toFloat()
+                    val sy = starCy + (r * kotlin.math.sin(angle)).toFloat()
+                    if (p == 0) starPath.moveTo(sx, sy) else starPath.lineTo(sx, sy)
+                }
+                starPath.close()
+
+                val gleamX = (starCx - outerR) + (outerR * 2f * starGleam)
+                drawPath(
+                    path = starPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFF59E0B),
+                            Color(0xFFFDE68A),
+                            Color.White,
+                            Color(0xFFFDE68A),
+                            Color(0xFFD97706)
+                        ),
+                        start = Offset(gleamX - outerR * 0.9f, starCy - outerR),
+                        end = Offset(gleamX + outerR * 0.9f, starCy + outerR)
+                    )
+                )
+                drawPath(
+                    path = starPath,
+                    color = Color.White.copy(alpha = 0.65f),
+                    style = Stroke(width = 1.dp.toPx())
+                )
+            }
+
+            Crossfade(
+                targetState = phrases[phraseIndex],
+                animationSpec = tween(420),
+                label = "exams_live_phrase_crossfade"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

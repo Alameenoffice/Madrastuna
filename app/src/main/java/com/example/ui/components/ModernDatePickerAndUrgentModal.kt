@@ -57,12 +57,28 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -847,7 +863,9 @@ fun SchoolHolidaysManagementModalDialog(
                     rightPillIcon = Icons.Filled.CalendarMonth,
                     leftPillText = "الرسمية: ${holidaysConfig.officialHolidays.size}",
                     leftPillIcon = Icons.Filled.EventAvailable,
-                    illustrationType = ThreeDIllustrationType.CALENDAR_HOLIDAYS
+                    customTrailingContent = {
+                        SmartHolidayCalendarHeaderWidget()
+                    }
                 )
 
                 // القسم الأول: أيام العطلة الأسبوعية الثابتة (شبكة عمودين واسعة ومرتبة بدون أي فراغ أو بتر للحروف)
@@ -869,7 +887,7 @@ fun SchoolHolidaysManagementModalDialog(
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
@@ -892,12 +910,12 @@ fun SchoolHolidaysManagementModalDialog(
                                     }
                                 }
                                 Text(
-                                    text = "1. أيام العطلة الأسبوعية الثابتة",
+                                    text = "أيام العطلة الأسبوعية",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = DeepForestGreen,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    maxLines = 2,
+                                    lineHeight = 19.sp
                                 )
                             }
                             Surface(
@@ -1284,4 +1302,202 @@ fun SchoolHolidaysManagementModalDialog(
     }
 }
 
+/**
+ * مؤشّر التقويم الذكي:
+ * وحدة زجاجية مصقولة بـ Compose Canvas تعرض شبكة تقويم هندسية مضيئة تبرز فيها أيام العطل
+ * بلون ذهبي دافئ ولمعة انسيابية هادئة، مع تبدّل سلس للعبارات عبر Crossfade.
+ */
+@Composable
+private fun SmartHolidayCalendarHeaderWidget() {
+    val captions = remember {
+        listOf(
+            "ضبط العطل الأسبوعية",
+            "توثيق العطل الرسمية",
+            "إيقاف تلقائي للغياب"
+        )
+    }
+    var captionIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2800L)
+            captionIndex = (captionIndex + 1) % captions.size
+        }
+    }
 
+    val infiniteTransition = rememberInfiniteTransition(label = "smart_holiday_calendar_glow")
+    val shimmerProgress by infiniteTransition.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "calendar_shimmer_sweep"
+    )
+    val goldPulse by infiniteTransition.animateFloat(
+        initialValue = 0.72f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "calendar_gold_pulse"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.width(108.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White.copy(alpha = 0.14f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.34f)),
+            modifier = Modifier.size(64.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(9.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val topOffset = h * 0.12f
+                val frameH = h - topOffset
+
+                // إطار التقويم الزجاجي
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.14f),
+                    topLeft = Offset(0f, topOffset),
+                    size = Size(w, frameH),
+                    cornerRadius = CornerRadius(8.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.45f),
+                    topLeft = Offset(0f, topOffset),
+                    size = Size(w, frameH),
+                    cornerRadius = CornerRadius(8.dp.toPx()),
+                    style = Stroke(width = 1.2.dp.toPx())
+                )
+
+                // شريط الترويسة العلوي للتقويم وحلقتا التثبيت الذهبيتان
+                val headerH = frameH * 0.24f
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = 0.45f),
+                            Color(0xFFFDE68A).copy(alpha = 0.40f)
+                        )
+                    ),
+                    topLeft = Offset(1.dp.toPx(), topOffset + 1.dp.toPx()),
+                    size = Size(w - 2.dp.toPx(), headerH),
+                    cornerRadius = CornerRadius(6.dp.toPx())
+                )
+
+                val pinW = 3.dp.toPx()
+                val pinH = 7.dp.toPx()
+                drawRoundRect(
+                    color = Color(0xFFFDE68A),
+                    topLeft = Offset(w * 0.26f - pinW / 2f, 0f),
+                    size = Size(pinW, pinH),
+                    cornerRadius = CornerRadius(2.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFFFDE68A),
+                    topLeft = Offset(w * 0.74f - pinW / 2f, 0f),
+                    size = Size(pinW, pinH),
+                    cornerRadius = CornerRadius(2.dp.toPx())
+                )
+
+                // شبكة أيام التقويم (4 أعمدة × 3 صفوف) مع إبراز أيام العطل بالذهبي الدافئ
+                val cols = 4
+                val rows = 3
+                val gridPadX = w * 0.11f
+                val gridStartY = topOffset + headerH + frameH * 0.10f
+                val availW = w - gridPadX * 2f
+                val availH = frameH - headerH - frameH * 0.20f
+                val gap = 3.2.dp.toPx()
+                val cellW = (availW - gap * (cols - 1)) / cols
+                val cellH = (availH - gap * (rows - 1)) / rows
+
+                val holidayCells = setOf(0 to 3, 1 to 3, 2 to 3, 1 to 1)
+                for (r in 0 until rows) {
+                    for (c in 0 until cols) {
+                        val cx = gridPadX + c * (cellW + gap)
+                        val cy = gridStartY + r * (cellH + gap)
+                        val isHoliday = (r to c) in holidayCells
+                        if (isHoliday) {
+                            drawRoundRect(
+                                color = Color(0xFFF59E0B).copy(alpha = 0.30f * goldPulse),
+                                topLeft = Offset(cx - 1.5.dp.toPx(), cy - 1.5.dp.toPx()),
+                                size = Size(cellW + 3.dp.toPx(), cellH + 3.dp.toPx()),
+                                cornerRadius = CornerRadius(4.dp.toPx())
+                            )
+                            drawRoundRect(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFFFDE68A).copy(alpha = goldPulse),
+                                        Color(0xFFF59E0B).copy(alpha = 0.92f)
+                                    ),
+                                    start = Offset(cx, cy),
+                                    end = Offset(cx + cellW, cy + cellH)
+                                ),
+                                topLeft = Offset(cx, cy),
+                                size = Size(cellW, cellH),
+                                cornerRadius = CornerRadius(3.dp.toPx())
+                            )
+                        } else {
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.30f),
+                                topLeft = Offset(cx, cy),
+                                size = Size(cellW, cellH),
+                                cornerRadius = CornerRadius(2.5.dp.toPx())
+                            )
+                        }
+                    }
+                }
+
+                // لمعة انسيابية هادئة تمر عبر الشبكة
+                val sweepX = w * shimmerProgress
+                drawLine(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFFFEF3C7).copy(alpha = 0.42f),
+                            Color.Transparent
+                        ),
+                        start = Offset(sweepX - w * 0.25f, topOffset),
+                        end = Offset(sweepX + w * 0.25f, h)
+                    ),
+                    start = Offset(sweepX - w * 0.14f, topOffset + 2.dp.toPx()),
+                    end = Offset(sweepX + w * 0.14f, h - 2.dp.toPx()),
+                    strokeWidth = 7.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color.White.copy(alpha = 0.16f),
+            border = BorderStroke(0.8.dp, Color(0xFFFDE68A).copy(alpha = 0.50f))
+        ) {
+            Crossfade(
+                targetState = captions[captionIndex],
+                animationSpec = tween(durationMillis = 480),
+                label = "holiday_header_caption_crossfade"
+            ) { labelText ->
+                Text(
+                    text = labelText,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFFEFCE8),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}

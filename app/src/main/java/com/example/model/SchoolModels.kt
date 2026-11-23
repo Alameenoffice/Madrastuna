@@ -855,6 +855,7 @@ data class UserAccount(
     val schoolId: String = "",
     val canModerateActivities: Boolean = false,
     val canManageCanteen: Boolean = false,
+    val canManageTransport: Boolean = false,
     val gender: String = "",
     val ageYears: Int = 0,
     val isBusDriverAccount: Boolean = false

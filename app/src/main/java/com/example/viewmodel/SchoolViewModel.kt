@@ -4279,6 +4279,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         photoBase64: String = "",
         canModerateActivities: Boolean = false,
         canManageCanteen: Boolean = false,
+        canManageTransport: Boolean = false,
         gender: String = "ذكر",
         ageYears: Int = 0
     ): UserAccount? {
@@ -4336,6 +4337,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             schoolId = sid,
             canModerateActivities = canModerateActivities,
             canManageCanteen = canManageCanteen,
+            canManageTransport = canManageTransport,
             gender = gender.ifBlank { "ذكر" },
             ageYears = ageYears.coerceAtLeast(0)
         )
@@ -4357,6 +4359,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         photoBase64: String = "",
         canModerateActivities: Boolean? = null,
         canManageCanteen: Boolean? = null,
+        canManageTransport: Boolean? = null,
         gender: String? = null,
         ageYears: Int? = null
     ) {
@@ -4400,6 +4403,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                     schoolId = sid,
                     canModerateActivities = canModerateActivities ?: acc.canModerateActivities,
                     canManageCanteen = canManageCanteen ?: acc.canManageCanteen,
+                    canManageTransport = canManageTransport ?: acc.canManageTransport,
                     gender = gender?.takeIf { it.isNotBlank() } ?: acc.gender,
                     ageYears = ageYears?.coerceAtLeast(0) ?: acc.ageYears
                 )
@@ -4506,6 +4510,65 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
     fun canUserManageCanteen(user: UserAccount? = _currentUser.value): Boolean {
         if (user == null) return false
         return user.role == UserRole.ADMIN || (user.role == UserRole.TEACHER && user.canManageCanteen)
+    }
+
+    /**
+     * التحقق من صلاحية التحكم بالنقل والخطوط المدرسية (RBAC):
+     * تُمنح حصراً لـ:
+     * 1) المدير (ADMIN)
+     * 2) السائق المعتمد (Driver) على مركبته فقط
+     * 3) أي أستاذ منحه المدير صلاحية canManageTransport == true
+     */
+    fun canUserManageTransport(user: UserAccount? = _currentUser.value): Boolean {
+        if (user == null) return false
+        if (user.role == UserRole.ADMIN) return true
+        if (user.isDriverInSchoolConfig(_schoolConfig.value)) return true
+        return user.role == UserRole.TEACHER && user.canManageTransport
+    }
+
+    fun canUserControlTransportRoute(
+        targetRouteId: String = "ALL",
+        user: UserAccount? = _currentUser.value
+    ): Boolean {
+        if (user == null) return false
+        if (user.role == UserRole.ADMIN) return true
+        val isDriver = user.isDriverInSchoolConfig(_schoolConfig.value)
+        if (!isDriver && user.role == UserRole.TEACHER && user.canManageTransport) return true
+        if (isDriver) {
+            val assignedRouteId = user.assignedClasses.trim()
+            if (assignedRouteId.isBlank()) return false
+            if (targetRouteId.isBlank() || targetRouteId.equals("ALL", ignoreCase = true)) return false
+            return targetRouteId.equals(assignedRouteId, ignoreCase = true)
+        }
+        return false
+    }
+
+    fun setTeacherTransportManagementPermission(teacherId: String, enabled: Boolean) {
+        if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN))) return
+        val sid = _schoolConfig.value.schoolId
+        var targetName = ""
+        val updated = _accounts.value.map { acc ->
+            if (acc.id == teacherId && acc.role == UserRole.TEACHER && !acc.isEffectiveBusDriver) {
+                targetName = acc.fullName
+                acc.copy(canManageTransport = enabled)
+            } else acc
+        }
+        _accounts.value = updated
+        repo.saveAccounts(updated, sid)
+        _currentUser.value?.let { curr ->
+            if (curr.id == teacherId) {
+                _currentUser.value = updated.firstOrNull { it.id == teacherId } ?: curr
+            }
+        }
+        val label = targetName.ifBlank { "الأستاذ" }
+        showToastAlert(
+            message = if (enabled) {
+                "تم منح صلاحية التحكم بالنقل والخطوط لـ ($label) وحفظها فوراً"
+            } else {
+                "تم سحب صلاحية التحكم بالنقل من ($label) وحفظها فوراً"
+            },
+            isSuccess = true
+        )
     }
 
     fun toggleAccountActive(accountId: String) {
@@ -6572,8 +6635,8 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         scanMode: BusBoardingScanMode
     ): StudentRecord? {
         val user = _currentUser.value ?: return null
-        if (!user.isBusDriverAccount && user.role != UserRole.ADMIN && user.role != UserRole.TEACHER) {
-            showToastAlert("هذه الصلاحية مخصصة للسائق المعتمد أو إدارة المدرسة فقط", isSuccess = false)
+        if (!canUserManageTransport(user)) {
+            showToastAlert("هذه الصلاحية مخصصة للمدير أو السائق المعتمد أو مشرف النقل المخوّل فقط", isSuccess = false)
             return null
         }
 
@@ -6718,6 +6781,30 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         isHolidayOverride: Boolean = false
     ) {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val currUser = _currentUser.value
+        if (!canUserManageTransport(currUser)) {
+            showToastAlert("عذراً، لا تملك صلاحية التحكم بحركة النقل والخطوط المدرسية", isSuccess = false)
+            return
+        }
+        val isDriverOnly = currUser != null && currUser.role != UserRole.ADMIN && currUser.isDriverInSchoolConfig(_schoolConfig.value)
+        val effectiveTargetRouteId = if (isDriverOnly) {
+            val driverRouteId = currUser.assignedClasses.trim()
+            if (driverRouteId.isBlank()) {
+                showToastAlert("لا توجد مركبة معيّنة على حساب السائق حالياً", isSuccess = false)
+                return
+            }
+            if (targetRouteId.isNotBlank() &&
+                !targetRouteId.equals("ALL", ignoreCase = true) &&
+                !targetRouteId.equals(driverRouteId, ignoreCase = true)
+            ) {
+                showToastAlert("يسمح للسائق بالتحكم بمركبته المعيّنة فقط", isSuccess = false)
+                return
+            }
+            driverRouteId
+        } else {
+            targetRouteId
+        }
+
         val sid = _schoolConfig.value.schoolId
         val nowMillis = System.currentTimeMillis()
         val nowDateObj = Date(nowMillis)
@@ -6725,10 +6812,10 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
         val nowStamp = SimpleDateFormat("yyyy/MM/dd hh:mm a", Locale("ar")).format(nowDateObj)
 
         val currentEffectiveRoutes = _schoolConfig.value.effectiveBusRoutesList
-        val isAllVehicles = targetRouteId.isBlank() || targetRouteId.equals("ALL", ignoreCase = true)
+        val isAllVehicles = !isDriverOnly && (effectiveTargetRouteId.isBlank() || effectiveTargetRouteId.equals("ALL", ignoreCase = true))
         val matchedSingleRoute = if (!isAllVehicles) {
             currentEffectiveRoutes.firstOrNull {
-                it.id == targetRouteId || it.routeAreaName.equals(targetRouteId, ignoreCase = true)
+                it.id == effectiveTargetRouteId || it.routeAreaName.equals(effectiveTargetRouteId, ignoreCase = true)
             }
         } else null
 
@@ -6842,12 +6929,36 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun endBusTrip(targetRouteId: String = "ALL") {
         if (!validateSessionAndSchoolAccess(setOf(UserRole.ADMIN, UserRole.TEACHER))) return
+        val currUser = _currentUser.value
+        if (!canUserManageTransport(currUser)) {
+            showToastAlert("عذراً، لا تملك صلاحية إنهاء رحلات النقل والخطوط المدرسية", isSuccess = false)
+            return
+        }
+        val isDriverOnly = currUser != null && currUser.role != UserRole.ADMIN && currUser.isDriverInSchoolConfig(_schoolConfig.value)
+        val effectiveTargetRouteId = if (isDriverOnly) {
+            val driverRouteId = currUser.assignedClasses.trim()
+            if (driverRouteId.isBlank()) {
+                showToastAlert("لا توجد مركبة معيّنة على حساب السائق حالياً", isSuccess = false)
+                return
+            }
+            if (targetRouteId.isNotBlank() &&
+                !targetRouteId.equals("ALL", ignoreCase = true) &&
+                !targetRouteId.equals(driverRouteId, ignoreCase = true)
+            ) {
+                showToastAlert("يسمح للسائق بالتحكم بمركبته المعيّنة فقط", isSuccess = false)
+                return
+            }
+            driverRouteId
+        } else {
+            targetRouteId
+        }
+
         val sid = _schoolConfig.value.schoolId
         val currentEffectiveRoutes = _schoolConfig.value.effectiveBusRoutesList
-        val isAllVehicles = targetRouteId.isBlank() || targetRouteId.equals("ALL", ignoreCase = true)
+        val isAllVehicles = !isDriverOnly && (effectiveTargetRouteId.isBlank() || effectiveTargetRouteId.equals("ALL", ignoreCase = true))
         val matchedSingleRoute = if (!isAllVehicles) {
             currentEffectiveRoutes.firstOrNull {
-                it.id == targetRouteId || it.routeAreaName.equals(targetRouteId, ignoreCase = true)
+                it.id == effectiveTargetRouteId || it.routeAreaName.equals(effectiveTargetRouteId, ignoreCase = true)
             }
         } else null
 

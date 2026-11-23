@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -1035,17 +1036,20 @@ fun DashboardScreen(
                         )
                     }
 
-                    // School Bus & Transport Executive Telemetry Summary Card
+                    // School Bus & Transport Executive Telemetry Summary Card (RBAC-enforced)
                     val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
+                    val canManageTransportOnDashboard = remember(currentUser, schoolConfig) {
+                        viewModel.canUserManageTransport(currentUser)
+                    }
                     val isParentOrStudentBusSubscribed = (!isAdmin && !isTeacher) && scopedStudents.any { it.isBusSubscribed }
                     if ((featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE) &&
-                        (isAdmin || isTeacher || isParentOrStudentBusSubscribed)
+                        (canManageTransportOnDashboard || isParentOrStudentBusSubscribed)
                     ) {
                         SchoolBusQuickAlertsCard(
                             busSubscribersCount = busSubscribersCount,
                             schoolConfig = schoolConfig,
                             todayHolidayLabel = todayHolidayLabel,
-                            canControlTrip = isAdmin || isTeacher,
+                            canControlTrip = canManageTransportOnDashboard,
                             onSendBusAlert = { eventType, isHolidayOverride ->
                                 viewModel.sendBusTrackingAlert(eventType = eventType, isHolidayOverride = isHolidayOverride)
                             },
@@ -3076,8 +3080,9 @@ fun DailyAttendanceScreen(
                 }
             }
 
-            // School Bus Executive Telemetry Card in Attendance section
-            if ((schoolConfig.schoolType == SchoolType.PRIVATE || featureSettings.busTrackingEnabled) && canEdit) {
+            // School Bus Executive Telemetry Card in Attendance section (RBAC-enforced)
+            val canManageTransportInAttendance = viewModel.canUserManageTransport(currentUser)
+            if ((schoolConfig.schoolType == SchoolType.PRIVATE || featureSettings.busTrackingEnabled) && canManageTransportInAttendance) {
                 item {
                     val busSubscribersCount = students.count { it.isBusSubscribed && it.isActive }
                     val attTodayIso = remember { ArabicCalendarDateHelper.todayIsoDate() }
@@ -3089,7 +3094,7 @@ fun DailyAttendanceScreen(
                         busSubscribersCount = busSubscribersCount,
                         schoolConfig = schoolConfig,
                         todayHolidayLabel = attTodayHolidayLabel,
-                        canControlTrip = true,
+                        canControlTrip = canManageTransportInAttendance,
                         onSendBusAlert = { eventType, isHolidayOverride ->
                             viewModel.sendBusTrackingAlert(eventType = eventType, isHolidayOverride = isHolidayOverride)
                         },
@@ -4057,9 +4062,14 @@ fun DailyAttendanceScreen(
 private fun formatBusTimestampPretty(raw: String): String {
     val trimmed = raw.trim()
     if (trimmed.isBlank()) return "تحديث مباشر الآن"
-    return Regex("""(\d{4})[-/]?(\d{2})[-/]?(\d{2})""").replace(trimmed) { match ->
-        "${match.groupValues[1]}/${match.groupValues[2]}/${match.groupValues[3]}"
+    val withCleanDate = Regex("""(\d{4})[-/]?(\d{2})[-/]?(\d{2})""").replace(trimmed) { match ->
+        formatCleanDate(match.value)
     }
+    // استخدام مسافة غير قابلة للكسر قبل (ص / م / AM / PM) لمنع نزول الحرف لسطر منفرد أبداً
+    return withCleanDate
+        .replace(Regex("""\s+(ص|م|AM|PM)\b"""), "\u00A0$1")
+        .replace("  ", " ")
+        .trim()
 }
 
 @Composable
@@ -9101,6 +9111,11 @@ fun LiveOperationsRadarScreen(
         list
     }
 
+    val formattedSelectedDate = remember(selectedDateIso) { formatCleanDate(selectedDateIso) }
+    val presentRatePercent = remember(presentTodayCount, totalStudentsCount) {
+        if (totalStudentsCount > 0) ((presentTodayCount * 100f) / totalStudentsCount).toInt().coerceIn(0, 100) else 0
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -9108,50 +9123,37 @@ fun LiveOperationsRadarScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(top = 12.dp, bottom = 28.dp)
     ) {
-        // 1) بطاقة موجز الدوام وحركة البوابة اليومية
+        // 0) الترويسة الزمردية الموحّدة لموجز الدوام اليومي مع مؤشّر الحضور الزجاجي الحي
+        item {
+            ThreeDHeroHeaderCard(
+                title = "موجز الدوام اليومي",
+                subtitle = "إحصائية الحضور وحركة البوابة والصفوف • $formattedSelectedDate",
+                rightPillText = "الحاضرون: $presentTodayCount / $totalStudentsCount",
+                rightPillIcon = Icons.Filled.HowToReg,
+                leftPillText = "المتواجدون الآن: $insideNowTodayCount",
+                leftPillIcon = Icons.Filled.QrCodeScanner,
+                customTrailingContent = {
+                    LiveAttendancePulseHeaderWidget(
+                        presentPercent = presentRatePercent,
+                        isHoliday = isHolidayToday
+                    )
+                }
+            )
+        }
+
+        // 1) بطاقة الإحصائيات التفصيلية وحركة بوابة المدرسة اليومية
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, DeepEmerald.copy(alpha = 0.35f)),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.28f)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            ThreeDIllustrationBox(
-                                type = ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK,
-                                modifier = Modifier.size(58.dp)
-                            )
-                            Column {
-                                Text(
-                                    text = "موجز الدوام وحركة البوابة اليومية",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = DeepForestGreen
-                                )
-                                Text(
-                                    text = "إحصائية اليوم لحضور الطلبة وحركة الدخول والانصراف في الصفوف ($selectedDateIso)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = TextMutedGreen,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
-
                     if (isHolidayToday) {
                         Surface(
                             modifier = Modifier
@@ -9184,20 +9186,65 @@ fun LiveOperationsRadarScreen(
                         }
                     }
 
-                    // إحصائية الحضور والغياب اليوم (الإجمالي | الحاضرون | الغائبون | المجازون | بانتظار الرصد) بدون أي بتر للحروف نهائياً
-                    Text(
-                        text = "أولاً: إحصائية الحضور والغياب والإجازات اليوم (اضغط لعرض الأسماء):",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = DeepForestGreen
-                    )
+                    // عنوان منظم لقسم الإحصائيات
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFD1FAE5),
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Assessment,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "إحصائية الحضور والغياب اليوم",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DeepForestGreen,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFF0FDF4),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.28f))
+                        ) {
+                            Text(
+                                text = "اضغط لعرض الأسماء",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = DeepEmerald,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    // شبكة بطاقات الإحصائيات المنظمة (الصف الأول: الإجمالي | الحاضرون | الغائبون — الصف الثاني: المجازون | بانتظار الرصد)
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             listOf(
                                 Triple("الإجمالي", "$totalStudentsCount", DeepEmerald to LiveRadarDrillFilter.ALL),
@@ -9208,25 +9255,33 @@ fun LiveOperationsRadarScreen(
                                 Surface(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .clickable {
                                             drillTarget = LiveRadarDrillTarget(
-                                                title = "كشف $lbl في المدرسة ($selectedDateIso)",
+                                                title = "كشف $lbl في المدرسة ($formattedSelectedDate)",
                                                 initialFilter = filterType
                                             )
                                         }
                                         .testTag("live_radar_counter_${filterType.name}"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    color = col.copy(alpha = 0.10f),
-                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, col.copy(alpha = 0.38f))
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = col.copy(alpha = 0.08f),
+                                    border = androidx.compose.foundation.BorderStroke(1.1.dp, col.copy(alpha = 0.30f))
                                 ) {
                                     Column(
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 6.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
                                     ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(24.dp)
+                                                .height(3.dp)
+                                                .clip(RoundedCornerShape(50))
+                                                .background(col.copy(alpha = 0.70f))
+                                        )
                                         Text(
                                             text = valTxt,
-                                            style = MaterialTheme.typography.titleMedium,
+                                            style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = col,
                                             maxLines = 1
@@ -9246,7 +9301,7 @@ fun LiveOperationsRadarScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             listOf(
                                 Triple("المجازون", "$excusedTodayCount", InfoBlue to LiveRadarDrillFilter.EXCUSED),
@@ -9259,21 +9314,21 @@ fun LiveOperationsRadarScreen(
                                         .clip(RoundedCornerShape(14.dp))
                                         .clickable {
                                             drillTarget = LiveRadarDrillTarget(
-                                                title = "كشف $lbl في المدرسة ($selectedDateIso)",
+                                                title = "كشف $lbl في المدرسة ($formattedSelectedDate)",
                                                 initialFilter = filterType
                                             )
                                         }
                                         .testTag("live_radar_counter_${filterType.name}"),
                                     shape = RoundedCornerShape(14.dp),
-                                    color = col.copy(alpha = 0.10f),
-                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, col.copy(alpha = 0.38f))
+                                    color = col.copy(alpha = 0.08f),
+                                    border = androidx.compose.foundation.BorderStroke(1.1.dp, col.copy(alpha = 0.30f))
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(vertical = 8.dp, horizontal = 10.dp),
+                                            .padding(vertical = 9.dp, horizontal = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
                                             text = lbl,
@@ -9283,10 +9338,9 @@ fun LiveOperationsRadarScreen(
                                             maxLines = 1,
                                             softWrap = false
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
                                         Surface(
                                             shape = RoundedCornerShape(50),
-                                            color = col.copy(alpha = 0.18f)
+                                            color = col.copy(alpha = 0.16f)
                                         ) {
                                             Text(
                                                 text = valTxt,
@@ -9295,7 +9349,7 @@ fun LiveOperationsRadarScreen(
                                                 color = col,
                                                 maxLines = 1,
                                                 softWrap = false,
-                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 2.dp)
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
@@ -9304,11 +9358,12 @@ fun LiveOperationsRadarScreen(
                         }
                     }
 
-                    // بطاقة حركة بوابة المدرسة اليوم (مع كبسولة واسعة غير مقطوعة نهائياً: اضغط على أي مؤشر لعرض الأسماء)
+                    // صندوق حركة بوابة المدرسة اليوم بتدرج زمردي مصقول وترتيب بصري واضح
                     Surface(
                         shape = RoundedCornerShape(18.dp),
-                        color = Color(0xFF059669),
-                        shadowElevation = 6.dp,
+                        color = Color.Transparent,
+                        shadowElevation = 4.dp,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GoldAccent.copy(alpha = 0.45f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .wrapContentHeight()
@@ -9316,9 +9371,13 @@ fun LiveOperationsRadarScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .wrapContentHeight()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(Color(0xFF065F46), Color(0xFF047857))
+                                    )
+                                )
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -9327,54 +9386,56 @@ fun LiveOperationsRadarScreen(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(
-                                        imageVector = if (isHolidayToday) Icons.Filled.Lock else Icons.Filled.QrCodeScanner,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color.White.copy(alpha = 0.18f),
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = if (isHolidayToday) Icons.Filled.Lock else Icons.Filled.QrCodeScanner,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFDE68A),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                     Text(
                                         text = if (isHolidayToday) {
-                                            "حركة بوابة المدرسة اليوم (البوابة مغلقة - عطلة)"
+                                            "حركة بوابة المدرسة (عطلة)"
                                         } else {
                                             "حركة بوابة المدرسة اليوم"
                                         },
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        maxLines = 2
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.22f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 5.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "اضغط على أي مؤشر لعرض الأسماء",
-                                        fontSize = 11.5.sp,
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color.White,
                                         maxLines = 1,
-                                        softWrap = false
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.16f),
+                                    border = androidx.compose.foundation.BorderStroke(0.8.dp, Color.White.copy(alpha = 0.30f))
+                                ) {
+                                    Text(
+                                        text = "اضغط للتفاصيل",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFEFCE8),
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                 }
                             }
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(7.dp)
                             ) {
                                 listOf(
                                     Triple("دخلوا صباحاً", "$checkedInTodayCount طالب", LiveRadarDrillFilter.CHECKED_IN),
@@ -9385,24 +9446,25 @@ fun LiveOperationsRadarScreen(
                                     Surface(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .clip(RoundedCornerShape(12.dp))
+                                            .clip(RoundedCornerShape(13.dp))
                                             .clickable {
                                                 drillTarget = LiveRadarDrillTarget(
-                                                    title = "كشف الطلاب: ${filterType.arabicTitle} ($selectedDateIso)",
+                                                    title = "كشف الطلاب: ${filterType.arabicTitle} ($formattedSelectedDate)",
                                                     initialFilter = filterType
                                                 )
                                             }
                                             .testTag("live_gate_counter_${filterType.name}"),
-                                        shape = RoundedCornerShape(12.dp),
-                                        color = if (isInsideCard) Color.White else Color.White.copy(alpha = 0.18f),
+                                        shape = RoundedCornerShape(13.dp),
+                                        color = if (isInsideCard) Color.White else Color.White.copy(alpha = 0.14f),
                                         border = androidx.compose.foundation.BorderStroke(
                                             1.dp,
-                                            Color.White.copy(alpha = if (isInsideCard) 0.9f else 0.38f)
+                                            if (isInsideCard) GoldAccent.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.28f)
                                         )
                                     ) {
                                         Column(
-                                            modifier = Modifier.padding(vertical = 7.dp, horizontal = 4.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(2.dp)
                                         ) {
                                             Text(
                                                 text = valTxt,
@@ -9414,9 +9476,9 @@ fun LiveOperationsRadarScreen(
                                             )
                                             Text(
                                                 text = lbl,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = if (isInsideCard) DeepForestGreen else Color.White.copy(alpha = 0.95f),
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isInsideCard) DeepForestGreen else Color(0xFFD1FAE5),
                                                 maxLines = 1,
                                                 softWrap = false
                                             )
@@ -9487,7 +9549,7 @@ fun LiveOperationsRadarScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
@@ -9496,9 +9558,9 @@ fun LiveOperationsRadarScreen(
                             modifier = Modifier.weight(1f)
                         ) {
                             Surface(
-                                shape = RoundedCornerShape(10.dp),
+                                shape = RoundedCornerShape(11.dp),
                                 color = Color(0xFFECFDF5),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.35f))
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.32f))
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Class,
@@ -9509,22 +9571,50 @@ fun LiveOperationsRadarScreen(
                                         .size(18.dp)
                                 )
                             }
-                            Column {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "الصف: ${card.gradeClass}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = DeepForestGreen,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.32f))
+                                    ) {
+                                        Text(
+                                            text = "شعبة ${card.sectionName}",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepEmerald,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                                 Text(
-                                    text = "الصف: ${card.gradeClass} — شعبة (${card.sectionName})",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = DeepForestGreen
-                                )
-                                Text(
-                                    text = "اضغط على أي مؤشر أدناه لفتح كشف أسماء الطلاب فوراً",
+                                    text = "اضغط على أي مؤشر لفتح كشف الأسماء فوراً",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = TextMutedGreen
+                                    color = TextMutedGreen,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                         NoWrapBadge(
-                            text = "العدد الكلي: ${card.students.size} طالب",
+                            text = "العدد الكلي: ${card.students.size}",
                             icon = Icons.Filled.Groups,
                             containerColor = DeepEmerald,
                             contentColor = Color.White
@@ -9660,17 +9750,31 @@ fun LiveOperationsRadarScreen(
                                 initialFilter = LiveRadarDrillFilter.ALL
                             )
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color(0xFFF0FDF4),
+                            contentColor = DeepForestGreen
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.1.dp, DeepEmerald.copy(alpha = 0.55f)),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                     ) {
-                        Icon(Icons.Filled.Visibility, contentDescription = null, tint = DeepEmerald, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Filled.Visibility,
+                            contentDescription = null,
+                            tint = DeepEmerald,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "عرض كشف الأسماء التفصيلي وتوقيتات الدخول والمغادرة وأرقام أولياء الأمور",
-                            style = MaterialTheme.typography.labelSmall,
+                            text = "عرض كشف الأسماء التفصيلي",
+                            style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.ExtraBold,
-                            color = DeepForestGreen
+                            color = DeepForestGreen,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -11073,11 +11177,22 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val students by viewModel.students.collectAsState()
+    val accounts by viewModel.accounts.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
 
     val isAdmin = currentUser?.role == UserRole.ADMIN
     val isTeacher = currentUser?.role == UserRole.TEACHER
-    val canControlFleet = isAdmin || isTeacher
+    val isDriverUser = remember(currentUser, schoolConfig) {
+        currentUser?.isDriverInSchoolConfig(schoolConfig) == true && currentUser?.role != UserRole.ADMIN
+    }
+    val driverAssignedRouteId = remember(currentUser, isDriverUser) {
+        if (isDriverUser) currentUser?.assignedClasses?.trim().orEmpty() else ""
+    }
+    val canManageTransport = remember(currentUser, schoolConfig) {
+        viewModel.canUserManageTransport(currentUser)
+    }
+    val canControlFleet = canManageTransport
+    val isUnauthorizedTeacher = isTeacher && !canManageTransport
 
     val scopedStudents = remember(students, currentUser, selectedParentChildId) {
         viewModel.getScopedStudentsForUser(currentUser).filter { it.isActive }
@@ -11098,7 +11213,9 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
     var showVerifiedDriverIdModal by remember { mutableStateOf(false) }
     var showEditDriverSettingsModal by remember { mutableStateOf(false) }
     var selectedTransportAdminTab by remember { mutableIntStateOf(0) }
-    var selectedTripTargetRouteId by remember { mutableStateOf("ALL") }
+    var selectedTripTargetRouteId by remember(driverAssignedRouteId, isDriverUser) {
+        mutableStateOf(if (isDriverUser && driverAssignedRouteId.isNotBlank()) driverAssignedRouteId else "ALL")
+    }
 
     val availableClasses = remember(subscribedStudents) {
         subscribedStudents.map { ArabicTextNormalizer.cleanPureClassName(it.gradeClass) }
@@ -11290,19 +11407,19 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                         .padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 28.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Top Frosted Capsules
+                    // Top Frosted Capsules (متوازنة بالكامل دون قص أو اقتطاع لأي شارة)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color.White.copy(alpha = 0.18f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.42f))
+                            color = Color.White.copy(alpha = 0.16f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.36f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
@@ -11310,10 +11427,15 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                     imageVector = Icons.Filled.DirectionsBus,
                                     contentDescription = null,
                                     tint = Color(0xFFFDE68A),
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = if (canControlFleet) "إدارة الأسطول والنقل المدرسي" else "متابعة خط النقل المدرسي",
+                                    text = when {
+                                        isAdmin -> "إدارة الأسطول"
+                                        isDriverUser -> "مركبة السائق"
+                                        canControlFleet -> "إشراف النقل"
+                                        else -> "متابعة النقل"
+                                    },
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
@@ -11323,13 +11445,15 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             }
                         }
 
+                        Spacer(modifier = Modifier.weight(1f))
+
                         Surface(
                             shape = RoundedCornerShape(50),
                             color = Color.White.copy(alpha = 0.18f),
                             border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.55f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
@@ -11337,10 +11461,10 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                     imageVector = Icons.Filled.VerifiedUser,
                                     contentDescription = null,
                                     tint = Color(0xFF6EE7B7),
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Text(
-                                    text = if (canControlFleet) {
+                                    text = if (canControlFleet || isUnauthorizedTeacher) {
                                         "${subscribedStudents.size} طالب مشمول بالخط"
                                     } else {
                                         myChildForParent?.fullNameWithFather ?: "حساب الطالب"
@@ -11355,7 +11479,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                         }
                     }
 
-                    // Title + 3D Isometric Bezier School Bus & Modern Fleet Animation on Left
+                    // Title + Frosted Glass Canvas Route Signal Header Widget
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -11368,7 +11492,7 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             Text(
                                 text = "النقل والخطوط المدرسية",
                                 style = MaterialTheme.typography.headlineSmall,
-                                fontSize = 22.sp,
+                                fontSize = 21.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White
                             )
@@ -11379,26 +11503,42 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                     "متابعة المسار التفاعلي المباشر لرحلة الخط المدرسي وتفاصيل المركبة والسائق المعتمد"
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 color = Color.White.copy(alpha = 0.92f),
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 19.sp
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
 
-                        // 3D Isometric Bezier School Bus & Modern Fleet Animation
-                        ThreeDIsometricBezierSchoolBusHeroAnimation(
-                            modifier = Modifier.size(110.dp)
-                        )
+                        SmartTransportRouteHeaderWidget()
                     }
                 }
             }
         }
 
         // 2) المسار التفاعلي المباشر لحركة الخط (يظهر للمدير/المشرف أو للطالب المشترك فعلياً بالخط)
-        if (canControlFleet || myChildForParent?.isBusSubscribed == true) {
+        if (canControlFleet || isUnauthorizedTeacher || myChildForParent?.isBusSubscribed == true) {
             item {
+                val routeStatusPillText = remember(fleetResolvedStatus.operationalState, localFleetBusTimestampText) {
+                    when (fleetResolvedStatus.operationalState) {
+                        TransportOperationalState.HOLIDAY_STOPPED -> "متوقف • عطلة رسمية"
+                        TransportOperationalState.STANDBY_OFF_HOURS -> "وضع الاستعداد"
+                        TransportOperationalState.ACTIVE -> formatBusTimestampPretty(localFleetBusTimestampText)
+                    }
+                }
+                val routeStatusPillColor = when (fleetResolvedStatus.operationalState) {
+                    TransportOperationalState.HOLIDAY_STOPPED -> Color(0xFFB45309)
+                    TransportOperationalState.STANDBY_OFF_HOURS -> Color(0xFF64748B)
+                    TransportOperationalState.ACTIVE -> Color(0xFF047857)
+                }
+                val routeStatusPillBg = when (fleetResolvedStatus.operationalState) {
+                    TransportOperationalState.HOLIDAY_STOPPED -> Color(0xFFFEF3C7)
+                    TransportOperationalState.STANDBY_OFF_HOURS -> Color(0xFFF1F5F9)
+                    TransportOperationalState.ACTIVE -> Color(0xFFECFDF5)
+                }
+
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -11407,35 +11547,39 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             text = "المسار التفاعلي المباشر لحركة الخط",
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF065F46)
+                            color = DeepForestGreen,
+                            maxLines = 2,
+                            lineHeight = 19.sp,
+                            modifier = Modifier.weight(1f)
                         )
-                        Text(
-                            text = when (fleetResolvedStatus.operationalState) {
-                                TransportOperationalState.HOLIDAY_STOPPED -> "الخط متوقف • عطلة رسمية"
-                                TransportOperationalState.STANDBY_OFF_HOURS -> "وضع الاستعداد"
-                                TransportOperationalState.ACTIVE -> formatBusTimestampPretty(localFleetBusTimestampText)
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = when (fleetResolvedStatus.operationalState) {
-                                TransportOperationalState.HOLIDAY_STOPPED -> Color(0xFFB45309)
-                                TransportOperationalState.STANDBY_OFF_HOURS -> Color(0xFF64748B)
-                                TransportOperationalState.ACTIVE -> Color(0xFF047857)
-                            }
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = routeStatusPillBg,
+                            border = BorderStroke(1.dp, routeStatusPillColor.copy(alpha = 0.30f))
+                        ) {
+                            Text(
+                                text = routeStatusPillText,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = routeStatusPillColor,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                        }
                     }
 
                     FullWidthBezierWaveRoadTrack(
                         resolvedStatus = fleetResolvedStatus,
                         lastUpdatedTimestamp = if (fleetResolvedStatus.isActivelyRunning) {
-                            localFleetBusTimestampText
+                            formatBusTimestampPretty(localFleetBusTimestampText)
                         } else {
                             ""
                         }
@@ -11444,8 +11588,58 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
             }
         }
 
-        // 3) فصل تام بين واجهة ولي الأمر/الطالب وواجهة المدير/المشرف
-        if (!canControlFleet) {
+        // 3) فصل تام بين الأستاذ غير المخوّل، وولي الأمر/الطالب، والمدير/السائق/مشرف النقل
+        if (isUnauthorizedTeacher) {
+            item {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .testTag("transport_read_only_teacher_notice"),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color(0xFFF0FDF4),
+                    border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.35f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = DeepEmerald.copy(alpha = 0.12f),
+                            modifier = Modifier.size(52.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.Lock,
+                                    contentDescription = null,
+                                    tint = DeepEmerald,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "عرض للمتابعة فقط",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "صلاحية تشغيل الرحلات والتحكم بالخطوط المدرسية محصورة بالمدير أو السائق المعيّن أو الأستاذ المخوّل كـ (مشرف نقل) من إعدادات الإدارة.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF475569),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 19.sp
+                        )
+                    }
+                }
+            }
+        } else if (!canControlFleet) {
             // =========================================================================
             // واجهة الطالب وولي الأمر الخاصة بطفله فقط (بدون قائمة طلاب المدرسة أو شريط البحث)
             // =========================================================================
@@ -11956,17 +12150,19 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
             }
         } else {
             // =========================================================================
-            // شريط التبويبات التفاعلي الأفقي (4 تبويبات منظمة) للمدير والمشرف لمنع تكدس البطاقات
+            // شريط التبويبات التفاعلي المصقول بهوية زمردية متجانسة وتسميات كاملة غير مقصوصة
             // =========================================================================
             item {
-                val adminTransportTabs = remember(isAdmin) {
+                val adminTransportTabs = remember(isAdmin, isDriverUser) {
                     buildList {
                         add(Triple(0, "التحكم بالرحلات", Icons.Filled.DirectionsBus))
-                        add(Triple(1, "متابعة المركبات والطلبة", Icons.Filled.Commute))
+                        add(Triple(1, "المركبات والطلبة", Icons.Filled.Commute))
                         if (isAdmin) {
-                            add(Triple(2, "إدارة الخطوط والسائقين", Icons.Filled.Badge))
+                            add(Triple(2, "الخطوط والسائقون", Icons.Filled.Badge))
                         }
-                        add(Triple(3, "طلاب النقل المدرسي", Icons.Filled.Groups))
+                        if (!isDriverUser) {
+                            add(Triple(3, "طلبة النقل", Icons.Filled.Groups))
+                        }
                     }
                 }
                 Card(
@@ -11975,14 +12171,14 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                         .padding(horizontal = 16.dp)
                         .testTag("transport_admin_tabs_bar"),
                     shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF042F24)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                    border = BorderStroke(1.2.dp, Color(0xFFFBBF24))
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                    border = BorderStroke(1.1.dp, DeepEmerald.copy(alpha = 0.24f))
                 ) {
                     LazyRow(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -11990,30 +12186,32 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                             val isSelectedTab = selectedTransportAdminTab == tabIdx
                             Surface(
                                 onClick = { selectedTransportAdminTab = tabIdx },
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isSelectedTab) Color(0xFFFBBF24) else Color(0xFF065F46),
+                                shape = RoundedCornerShape(13.dp),
+                                color = if (isSelectedTab) DeepEmerald else Color(0xFFF0FDF4),
                                 border = BorderStroke(
                                     1.dp,
-                                    if (isSelectedTab) Color(0xFFFFFBEB) else Color(0xFF34D399).copy(alpha = 0.55f)
+                                    if (isSelectedTab) GoldAccent.copy(alpha = 0.65f) else DeepEmerald.copy(alpha = 0.22f)
                                 ),
-                                modifier = Modifier.testTag("transport_admin_tab_$tabIdx")
+                                modifier = Modifier
+                                    .height(42.dp)
+                                    .testTag("transport_admin_tab_$tabIdx")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    modifier = Modifier.padding(horizontal = 13.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
                                         imageVector = tabIcon,
                                         contentDescription = null,
-                                        tint = if (isSelectedTab) Color(0xFF042F24) else Color(0xFFFDE68A),
-                                        modifier = Modifier.size(18.dp)
+                                        tint = if (isSelectedTab) Color(0xFFFDE68A) else DeepEmerald,
+                                        modifier = Modifier.size(17.dp)
                                     )
                                     Text(
                                         text = tabTitle,
                                         fontSize = 12.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = if (isSelectedTab) Color(0xFF042F24) else Color.White,
+                                        color = if (isSelectedTab) Color.White else DeepForestGreen,
                                         maxLines = 1,
                                         softWrap = false
                                     )
@@ -12130,32 +12328,41 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color(0xFF065F46)
                                     )
+                                    val visibleRoutesForTripSelector = remember(registeredRoutesForTrip, isDriverUser, driverAssignedRouteId) {
+                                        if (isDriverUser && driverAssignedRouteId.isNotBlank()) {
+                                            registeredRoutesForTrip.filter { it.id == driverAssignedRouteId }
+                                        } else {
+                                            registeredRoutesForTrip
+                                        }
+                                    }
                                     LazyRow(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("trip_target_vehicle_selector_row"),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        item(key = "trip_target_ALL") {
-                                            val isAllSelected = selectedTripTargetRouteId == "ALL"
-                                            FilterChip(
-                                                selected = isAllSelected,
-                                                onClick = { selectedTripTargetRouteId = "ALL" },
-                                                label = {
-                                                    Text(
-                                                        text = "تحديد الكل (جميع المركبات)",
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        fontSize = 12.sp
-                                                    )
-                                                },
-                                                colors = FilterChipDefaults.filterChipColors(
-                                                    selectedContainerColor = Color(0xFF065F46),
-                                                    selectedLabelColor = Color(0xFFFDE68A)
-                                                ),
-                                                modifier = Modifier.testTag("trip_target_chip_ALL")
-                                            )
+                                        if (!isDriverUser) {
+                                            item(key = "trip_target_ALL") {
+                                                val isAllSelected = selectedTripTargetRouteId == "ALL"
+                                                FilterChip(
+                                                    selected = isAllSelected,
+                                                    onClick = { selectedTripTargetRouteId = "ALL" },
+                                                    label = {
+                                                        Text(
+                                                            text = "تحديد الكل (جميع المركبات)",
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            fontSize = 12.sp
+                                                        )
+                                                    },
+                                                    colors = FilterChipDefaults.filterChipColors(
+                                                        selectedContainerColor = Color(0xFF065F46),
+                                                        selectedLabelColor = Color(0xFFFDE68A)
+                                                    ),
+                                                    modifier = Modifier.testTag("trip_target_chip_ALL")
+                                                )
+                                            }
                                         }
-                                        items(registeredRoutesForTrip, key = { "trip_target_${it.id}" }) { rItem ->
+                                        items(visibleRoutesForTripSelector, key = { "trip_target_${it.id}" }) { rItem ->
                                             val isRouteSelected = selectedTripTargetRouteId == rItem.id
                                             val rLabel = "${rItem.routeAreaName.ifBlank { "الخط المدرسي" }} (السائق: ${rItem.driverName.ifBlank { "معتمد" }})"
                                             FilterChip(
@@ -12833,6 +13040,159 @@ fun SchoolTransportFleetScreen(viewModel: SchoolViewModel) {
                                         fontWeight = FontWeight.ExtraBold,
                                         fontSize = 12.sp
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // بطاقة صلاحيات الكادر التدريسي في إعدادات النقل (منح/سحب صفة مشرف نقل فورياً في Firebase)
+                item {
+                    val eligibleTeachersForTransport = remember(accounts, schoolConfig.schoolId) {
+                        accounts.filter { acc ->
+                            acc.role == UserRole.TEACHER &&
+                                !acc.isEffectiveBusDriver &&
+                                (acc.schoolId.isBlank() || acc.schoolId == schoolConfig.schoolId)
+                        }
+                    }
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .testTag("transport_settings_staff_rbac_card"),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        border = BorderStroke(1.1.dp, DeepEmerald.copy(alpha = 0.28f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFD1FAE5),
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.VerifiedUser,
+                                                contentDescription = null,
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    Column {
+                                        Text(
+                                            text = "صلاحيات الكادر (مشرفو النقل)",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                        Text(
+                                            text = "منح أو سحب صلاحية التحكم بحركة النقل والخطوط للأساتذة فوراً",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF475569)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (eligibleTeachersForTransport.isEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "لا توجد حسابات كادر تدريسي مسجلة حالياً لمنحها صلاحية الإشراف على النقل.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFF64748B),
+                                        modifier = Modifier.padding(12.dp)
+                                    )
+                                }
+                            } else {
+                                eligibleTeachersForTransport.forEach { staffAcc ->
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = if (staffAcc.canManageTransport) Color(0xFFECFDF5) else Color(0xFFF8FAFC),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (staffAcc.canManageTransport) DeepEmerald.copy(alpha = 0.45f) else Color(0xFFE2E8F0)
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .padding(end = 8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = staffAcc.fullName,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    )
+                                                    if (staffAcc.canManageTransport) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = DeepEmerald
+                                                        ) {
+                                                            Text(
+                                                                text = "مشرف نقل",
+                                                                fontSize = 9.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color.White,
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                Text(
+                                                    text = "منح صلاحية التحكم بحركة النقل والخطوط",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFF475569),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Switch(
+                                                checked = staffAcc.canManageTransport,
+                                                onCheckedChange = { enabled ->
+                                                    viewModel.setTeacherTransportManagementPermission(staffAcc.id, enabled)
+                                                },
+                                                modifier = Modifier.testTag("transport_settings_teacher_switch_${staffAcc.id}")
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -15643,6 +16003,343 @@ fun DriverExclusiveScannerScreen(
         }
     }
 }
+
+/**
+ * وحدة زجاجية مصقولة لموجز الدوام اليومي تعرض مؤشّر حضور دائري حي بـ Compose Canvas
+ * مع نقطة ضوئية ذهبية تدور بهدوء وتبدّل ناعم للعبارات عبر Crossfade.
+ */
+@Composable
+private fun LiveAttendancePulseHeaderWidget(
+    presentPercent: Int,
+    isHoliday: Boolean
+) {
+    val captions = remember {
+        listOf(
+            "رصد حيّ للدوام",
+            "حركة البوابة الذكية",
+            "كشوفات فورية للصفوف"
+        )
+    }
+    var captionIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2800L)
+            captionIndex = (captionIndex + 1) % captions.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "live_attendance_ring_anim")
+    val orbitAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "attendance_orbit_angle"
+    )
+    val haloScale by infiniteTransition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "attendance_halo_pulse"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.width(108.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White.copy(alpha = 0.14f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.34f)),
+            modifier = Modifier.size(64.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(8.dp)
+                ) {
+                    val cx = size.width / 2f
+                    val cy = size.height / 2f
+                    val radius = size.minDimension * 0.42f
+
+                    // هالة نبض ناعمة خلف المؤشّر
+                    drawCircle(
+                        color = Color(0xFF6EE7B7).copy(alpha = 0.14f),
+                        radius = radius * haloScale * 1.12f,
+                        center = Offset(cx, cy)
+                    )
+
+                    // مسار الحلقة الخلفي
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.22f),
+                        radius = radius,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+                    )
+
+                    // قوس نسبة الحضور المتدرّج (زمردي إلى ذهبي دافئ)
+                    val sweep = if (isHoliday) 360f else (presentPercent.coerceIn(8, 100) / 100f) * 360f
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = if (isHoliday) {
+                                listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFFDE68A))
+                            } else {
+                                listOf(Color(0xFF6EE7B7), Color(0xFFFDE68A), Color(0xFF34D399), Color(0xFF6EE7B7))
+                            }
+                        ),
+                        startAngle = -90f,
+                        sweepAngle = sweep,
+                        useCenter = false,
+                        topLeft = Offset(cx - radius, cy - radius),
+                        size = Size(radius * 2f, radius * 2f),
+                        style = Stroke(width = 4.2.dp.toPx(), cap = StrokeCap.Round)
+                    )
+
+                    // نقطة ضوئية ذهبية هادئة تتحرك على محيط المؤشّر
+                    val rad = Math.toRadians((orbitAngle - 90f).toDouble())
+                    val dotX = cx + (radius * cos(rad)).toFloat()
+                    val dotY = cy + (radius * sin(rad)).toFloat()
+                    drawCircle(
+                        color = Color(0xFFFDE68A).copy(alpha = 0.38f),
+                        radius = 4.5.dp.toPx(),
+                        center = Offset(dotX, dotY)
+                    )
+                    drawCircle(
+                        color = Color(0xFFFEF3C7),
+                        radius = 2.4.dp.toPx(),
+                        center = Offset(dotX, dotY)
+                    )
+                }
+
+                Text(
+                    text = if (isHoliday) "عطلة" else "$presentPercent%",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color.White.copy(alpha = 0.16f),
+            border = BorderStroke(0.8.dp, Color(0xFFFDE68A).copy(alpha = 0.50f))
+        ) {
+            Crossfade(
+                targetState = captions[captionIndex],
+                animationSpec = tween(durationMillis = 480),
+                label = "live_attendance_caption_crossfade"
+            ) { caption ->
+                Text(
+                    text = caption,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFFEFCE8),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * وحدة زجاجية مصقولة لقسم "النقل والخطوط المدرسية":
+ * ترسم بـ Compose Canvas مساراً مضيئاً منحنياً تتحرك عليه نقطة إشارة زمردية وذهبية
+ * بانسيابية هادئة (rememberInfiniteTransition)، مع تبدّل عبارات متجددة عبر Crossfade.
+ */
+@Composable
+private fun SmartTransportRouteHeaderWidget() {
+    val captions = remember {
+        listOf(
+            "مسارٌ آمن ومباشر",
+            "تنبيهات فورية للوصول",
+            "إشراف كامل على الخطوط"
+        )
+    }
+    var captionIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2800L)
+            captionIndex = (captionIndex + 1) % captions.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "smart_transport_route_beacon")
+    val routeT by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "transport_beacon_progress"
+    )
+    val beaconPulse by infiniteTransition.animateFloat(
+        initialValue = 0.78f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "transport_beacon_pulse"
+    )
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.width(114.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = Color.White.copy(alpha = 0.14f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.34f)),
+            modifier = Modifier.size(66.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(10.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+
+                // نقاط المنحنى التكعيبي (Cubic Bezier) للمسار المضيء
+                val p0 = Offset(w * 0.14f, h * 0.80f)
+                val p1 = Offset(w * 0.20f, h * 0.18f)
+                val p2 = Offset(w * 0.80f, h * 0.82f)
+                val p3 = Offset(w * 0.86f, h * 0.20f)
+
+                val routePath = Path().apply {
+                    moveTo(p0.x, p0.y)
+                    cubicTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y)
+                }
+
+                // هالة ضوئية خلفية ناعمة للمسار
+                drawPath(
+                    path = routePath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF6EE7B7).copy(alpha = 0.26f),
+                            Color(0xFFFDE68A).copy(alpha = 0.30f)
+                        ),
+                        start = p0,
+                        end = p3
+                    ),
+                    style = Stroke(width = 7.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // خط المسار الأساسي المضيء
+                drawPath(
+                    path = routePath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF34D399),
+                            Color(0xFFA7F3D0),
+                            Color(0xFFFDE68A)
+                        ),
+                        start = p0,
+                        end = p3
+                    ),
+                    style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // عقدتا البداية والنهاية (نقطة الانطلاق والمدرسة)
+                drawCircle(
+                    color = Color(0xFF6EE7B7).copy(alpha = 0.35f),
+                    radius = 5.5.dp.toPx(),
+                    center = p0
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 2.6.dp.toPx(),
+                    center = p0
+                )
+                drawCircle(
+                    color = Color(0xFFFDE68A).copy(alpha = 0.40f),
+                    radius = 5.5.dp.toPx(),
+                    center = p3
+                )
+                drawCircle(
+                    color = Color(0xFFF59E0B),
+                    radius = 2.8.dp.toPx(),
+                    center = p3
+                )
+
+                // حساب الإحداثيات الدقيقة لنقطة الإشارة على منحنى بيزيير عند اللحظة routeT
+                val u = 1f - routeT
+                val tt = routeT * routeT
+                val uu = u * u
+                val uuu = uu * u
+                val ttt = tt * routeT
+                val bx = uuu * p0.x + 3f * uu * routeT * p1.x + 3f * u * tt * p2.x + ttt * p3.x
+                val by = uuu * p0.y + 3f * uu * routeT * p1.y + 3f * u * tt * p2.y + ttt * p3.y
+                val beaconCenter = Offset(bx, by)
+
+                // هالة الإشارة المتحركة (زمردي وذهبي)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = 0.65f),
+                            Color(0xFF34D399).copy(alpha = 0.25f),
+                            Color.Transparent
+                        ),
+                        center = beaconCenter,
+                        radius = 9.dp.toPx() * beaconPulse
+                    ),
+                    radius = 9.dp.toPx() * beaconPulse,
+                    center = beaconCenter
+                )
+                drawCircle(
+                    color = Color(0xFF065F46),
+                    radius = 4.2.dp.toPx(),
+                    center = beaconCenter
+                )
+                drawCircle(
+                    color = Color(0xFFFDE68A),
+                    radius = 2.5.dp.toPx(),
+                    center = beaconCenter
+                )
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color.White.copy(alpha = 0.16f),
+            border = BorderStroke(0.8.dp, Color(0xFFFDE68A).copy(alpha = 0.50f))
+        ) {
+            Crossfade(
+                targetState = captions[captionIndex],
+                animationSpec = tween(durationMillis = 480),
+                label = "transport_header_caption_crossfade"
+            ) { caption ->
+                Text(
+                    text = caption,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFFEFCE8),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+
 
 
 

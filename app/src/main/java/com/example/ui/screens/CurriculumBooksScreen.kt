@@ -12,6 +12,7 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -59,6 +60,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -70,6 +72,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -1881,28 +1886,69 @@ fun InAppGoogleDriveBookViewerModal(
         properties = DialogProperties(
             dismissOnBackPress = true,
             dismissOnClickOutside = false,
-            usePlatformDefaultWidth = false
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
         )
     ) {
+        // إلغاء الشريط الأسود خلف شريط الحالة العلوي بالكامل وتفعيل Edge-to-Edge حقيقي بأيقونات داكنة واضحة
+        val dialogView = LocalView.current
+        SideEffect {
+            val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
+            if (dialogWindow != null) {
+                WindowCompat.setDecorFitsSystemWindows(dialogWindow, false)
+                @Suppress("DEPRECATION")
+                dialogWindow.statusBarColor = android.graphics.Color.TRANSPARENT
+                @Suppress("DEPRECATION")
+                dialogWindow.navigationBarColor = android.graphics.Color.TRANSPARENT
+                dialogWindow.setDimAmount(0f)
+                dialogWindow.setBackgroundDrawableResource(android.R.color.transparent)
+                val insetsController = WindowCompat.getInsetsController(dialogWindow, dialogView)
+                insetsController.isAppearanceLightStatusBars = !isDarkMode
+                insetsController.isAppearanceLightNavigationBars = !isDarkMode
+            }
+        }
+
+        val rootGradient = remember(isDarkMode) {
+            if (isDarkMode) {
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF042F24), Color(0xFF061512))
+                )
+            } else {
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFFECFDF5), Color(0xFFF6FEF9), Color(0xFFFFFFFF))
+                )
+            }
+        }
+
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Surface(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .testTag("in_app_book_viewer_modal"),
-                color = if (isDarkMode) Color(0xFF061512) else Color(0xFFF8FAFC)
+                    .background(rootGradient)
+                    .testTag("in_app_book_viewer_modal")
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    // Top Bar: Current Book Title + Clear "إغلاق / رجوع للمناهج" Button
-                    Surface(
-                        color = Color(0xFF042F24),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.fillMaxWidth()
+                    // شريط علوي ممتد بانسيابية خلف شريط الحالة بتدرج نعناعي أبيض نظيف دون أي شريط أسود
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (isDarkMode) {
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color(0xFF042F24), Color(0xFF064E3B))
+                                    )
+                                } else {
+                                    Brush.verticalGradient(
+                                        colors = listOf(Color(0xFFECFDF5), Color(0xFFF4FDF8))
+                                    )
+                                }
+                            )
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .statusBarsPadding()
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1915,14 +1961,18 @@ fun InAppGoogleDriveBookViewerModal(
                             ) {
                                 Surface(
                                     shape = CircleShape,
-                                    color = GoldAccent.copy(alpha = 0.20f),
-                                    border = BorderStroke(1.dp, GoldAccent.copy(alpha = 0.70f)),
+                                    color = if (isDarkMode) GoldAccent.copy(alpha = 0.20f) else Color.White,
+                                    border = BorderStroke(
+                                        1.1.dp,
+                                        if (isDarkMode) GoldAccent.copy(alpha = 0.70f) else DeepEmerald.copy(alpha = 0.28f)
+                                    ),
+                                    shadowElevation = if (isDarkMode) 0.dp else 2.dp,
                                     modifier = Modifier.size(38.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         AnimatedCurriculumCrestCanvasIcon(
-                                            accentColor = GoldAccent,
-                                            secondaryColor = Color(0xFF34D399),
+                                            accentColor = if (isDarkMode) GoldAccent else DeepEmerald,
+                                            secondaryColor = if (isDarkMode) Color(0xFF34D399) else GoldAccent,
                                             modifier = Modifier.size(22.dp)
                                         )
                                     }
@@ -1932,14 +1982,15 @@ fun InAppGoogleDriveBookViewerModal(
                                         text = book.subjectTitle,
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
+                                        color = if (isDarkMode) Color.White else DeepForestGreen,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "${book.stage.shortBadge} • ${book.gradeClass}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = Color(0xFFA7F3D0),
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -1948,26 +1999,33 @@ fun InAppGoogleDriveBookViewerModal(
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                IconButton(
+                                Surface(
                                     onClick = {
                                         isLoadingPage = true
                                         webViewInstance?.loadUrl(embedPreviewUrl)
                                     },
+                                    shape = CircleShape,
+                                    color = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color.White,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isDarkMode) Color.White.copy(alpha = 0.24f) else DeepEmerald.copy(alpha = 0.24f)
+                                    ),
                                     modifier = Modifier
-                                        .size(36.dp)
+                                        .size(38.dp)
                                         .testTag("in_app_book_viewer_reload_btn")
                                 ) {
-                                    Canvas(modifier = Modifier.size(18.dp)) {
-                                        val r = size.minDimension * 0.38f
-                                        drawArc(
-                                            color = Color(0xFFA7F3D0),
-                                            startAngle = 35f,
-                                            sweepAngle = 285f,
-                                            useCenter = false,
-                                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
-                                        )
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Canvas(modifier = Modifier.size(17.dp)) {
+                                            drawArc(
+                                                color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
+                                                startAngle = 35f,
+                                                sweepAngle = 285f,
+                                                useCenter = false,
+                                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                                            )
+                                        }
                                     }
                                 }
 
@@ -1975,7 +2033,7 @@ fun InAppGoogleDriveBookViewerModal(
                                     onClick = onCloseViewer,
                                     shape = RoundedCornerShape(50),
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFF059669),
+                                        containerColor = DeepEmerald,
                                         contentColor = Color.White
                                     ),
                                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
@@ -1984,13 +2042,20 @@ fun InAppGoogleDriveBookViewerModal(
                                         .testTag("in_app_book_viewer_close_btn")
                                 ) {
                                     Text(
-                                        text = "إغلاق / رجوع للمناهج",
+                                        text = "إغلاق / رجوع",
                                         style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.ExtraBold
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
                         }
+
+                        HorizontalDivider(
+                            thickness = 1.dp,
+                            color = if (isDarkMode) Color.White.copy(alpha = 0.10f) else DeepEmerald.copy(alpha = 0.14f)
+                        )
                     }
 
                     // Full-Screen Embedded WebView for `/preview` Book Reading
@@ -2706,12 +2771,27 @@ private fun RoyalBookFlippingPreparationOverlay(
     book: CurriculumBookItem,
     isDarkMode: Boolean
 ) {
+    val loadingHints = remember {
+        listOf(
+            "جاري تجهيز صفحات الكتاب المدرسي...",
+            "تحسين وضوح القراءة داخل المنصة...",
+            "لحظات ويصبح الكتاب جاهزاً للتصفح..."
+        )
+    }
+    var hintIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2200L)
+            hintIndex = (hintIndex + 1) % loadingHints.size
+        }
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "royal_3d_book_prep")
     val shimmerProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1650, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "book_page_shimmer_progress"
@@ -2720,10 +2800,19 @@ private fun RoyalBookFlippingPreparationOverlay(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            animation = tween(durationMillis = 3600, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "book_light_wave_phase"
+    )
+    val haloBreath by infiniteTransition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "book_halo_breath"
     )
 
     Box(
@@ -2735,38 +2824,56 @@ private fun RoyalBookFlippingPreparationOverlay(
                         listOf(
                             Color(0xFF042F24),
                             Color(0xFF064E3B),
-                            Color(0xFF0F172A)
+                            Color(0xFF061512)
                         )
                     } else {
                         listOf(
-                            Color(0xFFECFDF5),
-                            Color(0xFFD1FAE5),
-                            Color(0xFFF8FAFC)
+                            Color(0xFFF4FDF8),
+                            Color(0xFFE6FBF0),
+                            Color(0xFFFFFFFF)
                         )
                     }
                 )
-            ),
+            )
+            .navigationBarsPadding(),
         contentAlignment = Alignment.Center
     ) {
-        // Ambient light waves in the background
+        // تموّجات هندسية هادئة منسجمة مع هوية قسم المناهج الدراسية
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        DeepEmerald.copy(alpha = if (isDarkMode) 0.22f else 0.10f),
+                        GoldAccent.copy(alpha = if (isDarkMode) 0.10f else 0.06f),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.5f, h * 0.45f),
+                    radius = w * 0.62f * haloBreath
+                ),
+                radius = w * 0.62f * haloBreath,
+                center = Offset(w * 0.5f, h * 0.45f)
+            )
             for (band in 0..2) {
                 val path = Path().apply {
-                    val baseY = h * (0.28f + band * 0.22f)
+                    val baseY = h * (0.26f + band * 0.24f)
                     moveTo(0f, baseY)
                     var x = 0f
                     while (x <= w) {
-                        val y = baseY + sin((x / w) * 2f * PI + wavePhase + band).toFloat() * 24.dp.toPx()
+                        val y = baseY + sin((x / w) * 2f * PI + wavePhase + band * 0.9f).toFloat() * 18.dp.toPx()
                         lineTo(x, y)
-                        x += 24f
+                        x += 22f
                     }
                 }
                 drawPath(
                     path = path,
-                    color = GoldAccent.copy(alpha = if (isDarkMode) 0.12f else 0.18f),
-                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                    color = if (band == 1) {
+                        GoldAccent.copy(alpha = if (isDarkMode) 0.14f else 0.16f)
+                    } else {
+                        DeepEmerald.copy(alpha = if (isDarkMode) 0.14f else 0.08f)
+                    },
+                    style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
         }
@@ -2774,26 +2881,47 @@ private fun RoyalBookFlippingPreparationOverlay(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp),
-            shape = RoundedCornerShape(28.dp),
+                .widthIn(max = 420.dp)
+                .padding(horizontal = 24.dp),
+            shape = RoundedCornerShape(30.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.88f) else Color.White.copy(alpha = 0.95f)
+                containerColor = if (isDarkMode) Color(0xFF064E3B).copy(alpha = 0.90f) else Color.White.copy(alpha = 0.96f)
             ),
-            border = BorderStroke(1.5.dp, GoldAccent.copy(alpha = 0.75f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+            border = BorderStroke(
+                1.2.dp,
+                if (isDarkMode) GoldAccent.copy(alpha = 0.55f) else DeepEmerald.copy(alpha = 0.20f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Large 3D Opening & Closing Book Vector Animation in the center of the preparation overlay
-                OpeningAndClosing3DBookVectorAnimation(
-                    modifier = Modifier.size(148.dp),
-                    isDarkMode = isDarkMode
-                )
+                // هالة دائرية ناعمة تحت الكتاب المفتوح المتحرك لإبراز عمقه البصري
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(164.dp)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF10B981).copy(alpha = if (isDarkMode) 0.24f else 0.14f),
+                                    Color(0xFFFDE68A).copy(alpha = if (isDarkMode) 0.12f else 0.12f),
+                                    Color.Transparent
+                                )
+                            ),
+                            radius = size.minDimension * 0.48f * haloBreath
+                        )
+                    }
+                    OpeningAndClosing3DBookVectorAnimation(
+                        modifier = Modifier.size(152.dp),
+                        isDarkMode = isDarkMode
+                    )
+                }
 
                 Text(
                     text = book.subjectTitle,
@@ -2803,19 +2931,43 @@ private fun RoyalBookFlippingPreparationOverlay(
                     textAlign = TextAlign.Center
                 )
 
-                Text(
-                    text = "${book.stage.arabicTitle} • ${book.gradeClass}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
-                    textAlign = TextAlign.Center
-                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (isDarkMode) Color.White.copy(alpha = 0.12f) else Color(0xFFECFDF5),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isDarkMode) GoldAccent.copy(alpha = 0.45f) else DeepEmerald.copy(alpha = 0.26f)
+                    )
+                ) {
+                    Text(
+                        text = "${book.stage.arabicTitle} • ${book.gradeClass}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDarkMode) Color(0xFFA7F3D0) else DeepEmerald,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp)
+                    )
+                }
 
-                // Smooth Animated Shimmer Progress Bar
+                Crossfade(
+                    targetState = loadingHints[hintIndex],
+                    animationSpec = tween(durationMillis = 420),
+                    label = "book_loading_hint_crossfade"
+                ) { hintText ->
+                    Text(
+                        text = hintText,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isDarkMode) Color(0xFFD1FAE5) else Color(0xFF475569),
+                        textAlign = TextAlign.Center
+                    )
+                }
+
+                // شريط تقدم زمردي-ذهبي مصقول بانسيابية ناعمة
                 Canvas(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
+                        .height(7.dp)
                         .clip(RoundedCornerShape(50))
                 ) {
                     val barW = size.width
@@ -2825,20 +2977,27 @@ private fun RoyalBookFlippingPreparationOverlay(
                         size = Size(barW, barH),
                         cornerRadius = CornerRadius(barH / 2f)
                     )
-                    val activeSegmentW = barW * 0.48f
-                    val startX = (barW + activeSegmentW) * shimmerProgress - activeSegmentW
-                    drawRoundRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                DeepEmerald,
-                                GoldAccent,
-                                DeepEmerald
-                            )
-                        ),
-                        topLeft = Offset(startX.coerceIn(0f, barW), 0f),
-                        size = Size(activeSegmentW.coerceAtMost(barW - startX.coerceAtLeast(0f)), barH),
-                        cornerRadius = CornerRadius(barH / 2f)
-                    )
+                    val activeSegmentW = barW * 0.46f
+                    val rawStartX = (barW + activeSegmentW) * shimmerProgress - activeSegmentW
+                    val clampedStart = rawStartX.coerceIn(0f, barW)
+                    val clampedEnd = (rawStartX + activeSegmentW).coerceIn(0f, barW)
+                    val drawW = (clampedEnd - clampedStart).coerceAtLeast(0f)
+                    if (drawW > 0f) {
+                        drawRoundRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xFF10B981),
+                                    GoldAccent,
+                                    DeepEmerald
+                                ),
+                                startX = clampedStart,
+                                endX = clampedEnd
+                            ),
+                            topLeft = Offset(clampedStart, 0f),
+                            size = Size(drawW, barH),
+                            cornerRadius = CornerRadius(barH / 2f)
+                        )
+                    }
                 }
             }
         }

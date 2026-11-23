@@ -2,6 +2,7 @@ package com.example.staffattendance
 
 import android.annotation.SuppressLint
 import android.view.MotionEvent
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
@@ -57,6 +58,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -793,31 +795,27 @@ fun SchoolGeofenceLeafletMap(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
+    val latestOnCoordinatesChanged by rememberUpdatedState(onCoordinatesChanged)
     var isSatelliteMode by remember { mutableStateOf(true) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<NominatimPlaceResult>>(emptyList()) }
     var searchError by remember { mutableStateOf<String?>(null) }
-    var mapReady by remember { mutableStateOf(false) }
+    var pageFinished by remember { mutableStateOf(false) }
+    var mapVisualReady by remember { mutableStateOf(false) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
-    // مزامنة الإحداثيات ونصف القطر والطبقة مع Leaflet عند تغيّرها من Kotlin (السلايدر أو زر موقعي الحالي أو اللصق)
-    LaunchedEffect(latitude, longitude, radiusMeters, isSatelliteMode, mapReady) {
-        if (mapReady) {
-            val js = String.format(
-                Locale.US,
-                "if(window.updateSchoolZone){window.updateSchoolZone(%.6f, %.6f, %d, %s);}",
-                latitude,
-                longitude,
-                radiusMeters.coerceIn(50, 300),
-                if (isSatelliteMode) "true" else "false"
-            )
-            webViewRef?.evaluateJavascript(js, null)
+    // إخفاء مؤشر التحميل تلقائياً كحد أقصى بعد ثوانٍ قليلة في حال تأخر إشارة الشبكة
+    LaunchedEffect(pageFinished) {
+        if (pageFinished && !mapVisualReady) {
+            delay(1800L)
+            mapVisualReady = true
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
+            webViewRef?.stopLoading()
             webViewRef?.destroy()
             webViewRef = null
         }
@@ -1028,19 +1026,42 @@ fun SchoolGeofenceLeafletMap(
                 .border(1.2.dp, DeepEmerald.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
                 .background(Color(0xFFE2E8F0))
         ) {
+            val layerType = if (isSatelliteMode) "satellite" else "streets"
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
                         webViewRef = this
+                        setBackgroundColor(android.graphics.Color.parseColor("#E2E8F0"))
+
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
-                        settings.cacheMode = WebSettings.LOAD_DEFAULT
+                        @Suppress("DEPRECATION")
+                        settings.databaseEnabled = true
                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        settings.loadsImagesAutomatically = true
+                        settings.blockNetworkImage = false
+                        settings.cacheMode = WebSettings.LOAD_DEFAULT
+                        settings.userAgentString =
+                            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
                         webChromeClient = WebChromeClient()
                         webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView?, url: String?) {
-                                mapReady = true
+                                pageFinished = true
+                                val syncJs = String.format(
+                                    Locale.US,
+                                    "if(window.updateSchoolZone){window.updateSchoolZone(%.6f, %.6f, %d, '%s');}",
+                                    latitude,
+                                    longitude,
+                                    radiusMeters.coerceIn(50, 300),
+                                    if (isSatelliteMode) "satellite" else "streets"
+                                )
+                                view?.evaluateJavascript(syncJs, null)
                             }
                         }
 
@@ -1062,18 +1083,85 @@ fun SchoolGeofenceLeafletMap(
                                 @JavascriptInterface
                                 fun onMapCoordsPicked(lat: Double, lng: Double) {
                                     post {
-                                        onCoordinatesChanged(lat, lng)
+                                        latestOnCoordinatesChanged(lat, lng)
+                                    }
+                                }
+
+                                @JavascriptInterface
+                                fun onMapRendered() {
+                                    post {
+                                        mapVisualReady = true
                                     }
                                 }
                             },
                             "AndroidMapBridge"
                         )
 
-                        val html = buildLeafletGeofenceHtml(latitude, longitude, radiusMeters, isSatelliteMode)
-                        loadDataWithBaseURL("https://leafletjs.com/", html, "text/html", "UTF-8", null)
+                        // تحميل الـ HTML مرة واحدة فقط داخل factory باستخدام loadDataWithBaseURL
+                        val htmlContent = buildLeafletGeofenceHtml(
+                            initLat = latitude,
+                            initLng = longitude,
+                            initRadius = radiusMeters.coerceIn(50, 300),
+                            initLayerType = layerType
+                        )
+                        loadDataWithBaseURL(
+                            "https://smart-school.local/",
+                            htmlContent,
+                            "text/html",
+                            "UTF-8",
+                            null
+                        )
+                    }
+                },
+                update = { webView ->
+                    // عدم إعادة تحميل HTML مطلقاً؛ فقط تحديث فوري عبر JavaScript بعد اكتمال الصفحة
+                    if (pageFinished) {
+                        val js = String.format(
+                            Locale.US,
+                            "if(window.updateSchoolZone){window.updateSchoolZone(%.6f, %.6f, %d, '%s');}",
+                            latitude,
+                            longitude,
+                            radiusMeters.coerceIn(50, 300),
+                            layerType
+                        )
+                        webView.evaluateJavascript(js, null)
                     }
                 }
             )
+
+            // مؤشر تحميل لطيف يختفي فور رسم الخريطة وبلاطاتها
+            if (!mapVisualReady) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.2.dp,
+                                color = DeepEmerald
+                            )
+                            Text(
+                                text = "جارٍ تحميل خريطة النطاق الجغرافي...",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = DeepEmerald
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         Text(
@@ -1120,107 +1208,219 @@ private fun buildLeafletGeofenceHtml(
     initLat: Double,
     initLng: Double,
     initRadius: Int,
-    initSatellite: Boolean
+    initLayerType: String
 ): String {
     val latStr = String.format(Locale.US, "%.6f", initLat)
     val lngStr = String.format(Locale.US, "%.6f", initLng)
-    val satFlag = if (initSatellite) "true" else "false"
+    val safeLayer = if (initLayerType == "streets") "streets" else "satellite"
     return """
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link id="leaflet-css-primary" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+        onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';" />
   <style>
-    html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; background: #e2e8f0; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; background: #e2e8f0;
+    }
+    #map {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      width: 100%; height: 100%; background: #d9e6df;
+    }
     .school-pin {
-      width: 24px; height: 24px; border-radius: 50%;
+      width: 26px; height: 26px; border-radius: 50%;
       background: #059669; border: 3px solid #ffffff;
-      box-shadow: 0 3px 10px rgba(6, 78, 59, 0.45);
+      box-shadow: 0 3px 12px rgba(6, 78, 59, 0.55);
+      box-sizing: border-box;
+    }
+    .school-pin::after {
+      content: ''; display: block; width: 8px; height: 8px;
+      border-radius: 50%; background: #fde68a;
+      margin: 6px auto 0 auto;
     }
   </style>
 </head>
 <body>
   <div id="map"></div>
   <script>
-    var currentLat = $latStr;
-    var currentLng = $lngStr;
-    var currentRadius = $initRadius;
-    var isSat = $satFlag;
+    var pendingState = {
+      lat: $latStr,
+      lng: $lngStr,
+      radius: $initRadius,
+      layerType: '$safeLayer'
+    };
+    var map = null;
+    var marker = null;
+    var circle = null;
+    var activeTileLayer = null;
+    var activeLayerKey = '';
+    var notifiedRendered = false;
 
-    var map = L.map('map', { zoomControl: true, attributionControl: false })
-      .setView([currentLat, currentLng], 17);
+    function notifyAndroidRendered() {
+      if (!notifiedRendered) {
+        notifiedRendered = true;
+        if (window.AndroidMapBridge && window.AndroidMapBridge.onMapRendered) {
+          window.AndroidMapBridge.onMapRendered();
+        }
+      }
+    }
 
-    var satelliteLayer = L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 19 }
-    );
-    var streetLayer = L.tileLayer(
-      'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19 }
-    );
+    function createTileLayerWithFallback(primaryUrl, fallbackUrl, opts) {
+      var fallbackSwitched = false;
+      var errorCount = 0;
+      var layer = L.tileLayer(primaryUrl, opts);
+      layer.on('load', function() {
+        notifyAndroidRendered();
+      });
+      layer.on('tileload', function() {
+        notifyAndroidRendered();
+      });
+      layer.on('tileerror', function() {
+        errorCount++;
+        if (!fallbackSwitched && errorCount >= 2 && map && activeTileLayer === layer) {
+          fallbackSwitched = true;
+          map.removeLayer(layer);
+          var fb = L.tileLayer(fallbackUrl, opts);
+          fb.on('tileload', function() { notifyAndroidRendered(); });
+          fb.on('load', function() { notifyAndroidRendered(); });
+          activeTileLayer = fb;
+          fb.addTo(map);
+        }
+      });
+      return layer;
+    }
 
-    if (isSat) { satelliteLayer.addTo(map); } else { streetLayer.addTo(map); }
-
-    var pinIcon = L.divIcon({
-      className: '',
-      html: '<div class="school-pin"></div>',
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
-    });
-
-    var marker = L.marker([currentLat, currentLng], { draggable: true, icon: pinIcon }).addTo(map);
-    var circle = L.circle([currentLat, currentLng], {
-      radius: currentRadius,
-      color: '#059669',
-      weight: 2.5,
-      fillColor: '#10b981',
-      fillOpacity: 0.24
-    }).addTo(map);
+    function applyTileLayer(layerType) {
+      if (!map) return;
+      var normalized = (layerType === 'streets') ? 'streets' : 'satellite';
+      if (activeLayerKey === normalized && activeTileLayer) return;
+      activeLayerKey = normalized;
+      if (activeTileLayer) {
+        map.removeLayer(activeTileLayer);
+      }
+      if (normalized === 'satellite') {
+        activeTileLayer = createTileLayerWithFallback(
+          'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          { maxZoom: 20, tileSize: 256 }
+        );
+      } else {
+        activeTileLayer = createTileLayerWithFallback(
+          'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+          'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          { maxZoom: 20, subdomains: 'abcd', tileSize: 256 }
+        );
+      }
+      activeTileLayer.addTo(map);
+    }
 
     function emitCoords(lat, lng) {
-      currentLat = lat;
-      currentLng = lng;
-      marker.setLatLng([lat, lng]);
-      circle.setLatLng([lat, lng]);
+      pendingState.lat = lat;
+      pendingState.lng = lng;
+      if (marker) marker.setLatLng([lat, lng]);
+      if (circle) circle.setLatLng([lat, lng]);
       if (window.AndroidMapBridge && window.AndroidMapBridge.onMapCoordsPicked) {
         window.AndroidMapBridge.onMapCoordsPicked(lat, lng);
       }
     }
 
-    map.on('click', function(e) {
-      emitCoords(e.latlng.lat, e.latlng.lng);
-    });
+    window.updateSchoolZone = function(lat, lng, radius, layerType) {
+      var prevLat = pendingState.lat;
+      var prevLng = pendingState.lng;
+      pendingState.lat = lat;
+      pendingState.lng = lng;
+      pendingState.radius = radius;
+      pendingState.layerType = layerType || pendingState.layerType;
+      if (!map || !marker || !circle) return;
 
-    marker.on('dragend', function(e) {
-      var pos = marker.getLatLng();
-      emitCoords(pos.lat, pos.lng);
-    });
-
-    window.updateSchoolZone = function(lat, lng, radius, satellite) {
-      var moved = Math.abs(lat - currentLat) > 0.00001 || Math.abs(lng - currentLng) > 0.00001;
-      currentLat = lat;
-      currentLng = lng;
-      currentRadius = radius;
+      var moved = Math.abs(lat - prevLat) > 0.00001 || Math.abs(lng - prevLng) > 0.00001;
       marker.setLatLng([lat, lng]);
       circle.setLatLng([lat, lng]);
       circle.setRadius(radius);
       if (moved) {
-        map.panTo([lat, lng], { animate: true });
+        map.setView([lat, lng], map.getZoom() < 16 ? 17 : map.getZoom(), { animate: true });
       }
-      if (satellite !== isSat) {
-        isSat = satellite;
-        if (isSat) {
-          if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
-          if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
-        } else {
-          if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
-          if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
-        }
-      }
+      applyTileLayer(pendingState.layerType);
+      map.invalidateSize(true);
     };
+
+    function initLeafletMap() {
+      if (typeof L === 'undefined' || map) return;
+      map = L.map('map', {
+        zoomControl: true,
+        attributionControl: false,
+        tap: true
+      }).setView([pendingState.lat, pendingState.lng], 17);
+
+      applyTileLayer(pendingState.layerType);
+
+      var pinIcon = L.divIcon({
+        className: '',
+        html: '<div class="school-pin"></div>',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+
+      marker = L.marker([pendingState.lat, pendingState.lng], {
+        draggable: true,
+        icon: pinIcon
+      }).addTo(map);
+
+      circle = L.circle([pendingState.lat, pendingState.lng], {
+        radius: pendingState.radius,
+        color: '#059669',
+        weight: 2.5,
+        fillColor: '#10b981',
+        fillOpacity: 0.26
+      }).addTo(map);
+
+      map.on('click', function(e) {
+        emitCoords(e.latlng.lat, e.latlng.lng);
+      });
+
+      marker.on('dragend', function() {
+        var pos = marker.getLatLng();
+        emitCoords(pos.lat, pos.lng);
+      });
+
+      setTimeout(function() {
+        if (map) {
+          map.invalidateSize(true);
+          notifyAndroidRendered();
+        }
+      }, 350);
+      setTimeout(function() {
+        if (map) map.invalidateSize(true);
+      }, 850);
+      window.addEventListener('resize', function() {
+        if (map) map.invalidateSize(true);
+      });
+    }
+
+    function loadScript(src, onLoad, onError) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.async = false;
+      s.onload = onLoad;
+      s.onerror = onError;
+      document.head.appendChild(s);
+    }
+
+    // تحميل Leaflet من jsDelivr مع Fallback تلقائي إلى cdnjs
+    loadScript(
+      'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+      function() { initLeafletMap(); },
+      function() {
+        loadScript(
+          'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js',
+          function() { initLeafletMap(); },
+          function() { notifyAndroidRendered(); }
+        );
+      }
+    );
   </script>
 </body>
 </html>

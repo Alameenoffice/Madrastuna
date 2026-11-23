@@ -821,6 +821,9 @@ fun AuthenticatedMainPlatform(
     val canManageCanteen = remember(currentUser) {
         viewModel.canUserManageCanteen(currentUser)
     }
+    val canManageTransport = remember(currentUser, schoolConfig) {
+        viewModel.canUserManageTransport(currentUser)
+    }
     val isStudentSubscribedToTransport = remember(currentUser, parentChildren, loggedInStudentRecord) {
         when (currentUser?.role) {
             UserRole.STUDENT -> loggedInStudentRecord?.isBusSubscribed == true
@@ -853,7 +856,7 @@ fun AuthenticatedMainPlatform(
         viewModel.navigateToSection(AppSection.DASHBOARD)
     }
 
-    val allSections = remember(schoolConfig.schoolType, featureSettings, currentUser) {
+    val allSections = remember(schoolConfig.schoolType, featureSettings, currentUser, canManageTransport) {
         buildList {
             add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
             if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
@@ -869,7 +872,13 @@ fun AuthenticatedMainPlatform(
                 add(AppSection.STAFF_ATTENDANCE_ADMIN to Icons.Filled.Fingerprint)
             }
             add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
-            if (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE || currentUser?.role == UserRole.ADMIN) {
+            val canSeeTransportNav = when (currentUser?.role) {
+                UserRole.ADMIN -> true
+                UserRole.TEACHER -> canManageTransport
+                UserRole.STUDENT, UserRole.PARENT -> featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE
+                else -> false
+            }
+            if (canSeeTransportNav) {
                 add(AppSection.SCHOOL_TRANSPORT to Icons.Filled.DirectionsBus)
             }
             add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)
@@ -1014,7 +1023,7 @@ fun AuthenticatedMainPlatform(
         gesturesEnabled = isSideDrawerEnabled,
         drawerContent = {
             if (isSideDrawerEnabled) {
-                val academicGroupSections = remember(currentUser, schoolConfig.schoolType, featureSettings) {
+                val academicGroupSections = remember(currentUser, schoolConfig.schoolType, featureSettings, canManageTransport) {
                     buildList {
                         add(AppSection.DASHBOARD to Icons.Filled.Dashboard)
                         if (currentUser?.role == UserRole.STUDENT || currentUser?.role == UserRole.PARENT) {
@@ -1030,7 +1039,13 @@ fun AuthenticatedMainPlatform(
                             add(AppSection.STAFF_ATTENDANCE_ADMIN to Icons.Filled.Fingerprint)
                         }
                         add(AppSection.ATTENDANCE to Icons.Filled.HowToReg)
-                        if (featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE || currentUser?.role == UserRole.ADMIN) {
+                        val canSeeTransportDrawer = when (currentUser?.role) {
+                            UserRole.ADMIN -> true
+                            UserRole.TEACHER -> canManageTransport
+                            UserRole.STUDENT, UserRole.PARENT -> featureSettings.busTrackingEnabled || schoolConfig.schoolType == SchoolType.PRIVATE
+                            else -> false
+                        }
+                        if (canSeeTransportDrawer) {
                             add(AppSection.SCHOOL_TRANSPORT to Icons.Filled.DirectionsBus)
                         }
                         add(AppSection.STUDENT_COMPREHENSIVE_ARCHIVE to Icons.Filled.FolderShared)

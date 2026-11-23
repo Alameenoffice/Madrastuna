@@ -1,5 +1,19 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,8 +35,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -152,9 +169,9 @@ fun AdminAccountsScreen(
                     else -> "إدارة الحسابات والمستخدمين"
                 }
                 val heroSubtitle = when (activeDirectoryTab) {
-                    0 -> "استعراض الأساتذة بنمط القائمة المدمجة (Compact View)، إدارة المواد والصفوف المرنة، ومؤشرات الإشراف الفعلي."
-                    1 -> "فرز فوري لأسماء الطلبة حسب الصف والشعبة أبجدياً مع أداة النقل الفوري بين الصفوف والشعب."
-                    else -> "مرتبط ديناميكياً بالصفوف والشعب المسجلة (${registeredClasses.size} صفوف). اختر الصفوف والمواد لـ$staffPlural والطلاب."
+                    0 -> "إدارة شاملة لحسابات الكادر التدريسي والطلبة وتوزيع المواد والصفوف بمرونة عالية"
+                    1 -> "إدارة شاملة لحسابات الكادر التدريسي والطلبة وتوزيع المواد والصفوف بمرونة عالية"
+                    else -> "إدارة شاملة لحسابات الكادر التدريسي والطلبة وتوزيع المواد والصفوف بمرونة عالية"
                 }
                 ThreeDHeroHeaderCard(
                     title = heroTitle,
@@ -163,16 +180,18 @@ fun AdminAccountsScreen(
                     rightPillIcon = Icons.Filled.School,
                     leftPillText = "${students.size} طالب • ${accounts.count { it.role == UserRole.TEACHER && !it.isDriverInSchoolConfig(schoolConfig) }} $staffSingular",
                     leftPillIcon = Icons.Filled.Groups,
-                    illustrationType = ThreeDIllustrationType.USER_MANAGEMENT_AVATARS_3D
+                    customTrailingContent = {
+                        TeamOrbitNetworkHeaderWidget()
+                    }
                 )
 
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .shadow(8.dp, RoundedCornerShape(22.dp)),
+                        .shadow(6.dp, RoundedCornerShape(22.dp)),
                     shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.20f))
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
@@ -188,63 +207,66 @@ fun AdminAccountsScreen(
                                     showTeacherDialog = true
                                 },
                                 modifier = Modifier
-                                    .weight(0.92f)
-                                    .height(46.dp)
+                                    .weight(0.95f)
+                                    .height(48.dp)
                                     .testTag("add_teacher_button"),
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFF059669),
                                     contentColor = Color.White
                                 ),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.PersonAdd,
                                     contentDescription = null,
                                     tint = Color.White,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = "+ إضافة $staffIndefinite",
-                                    fontSize = 11.2.sp,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
-                                    softWrap = false
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
 
-                            Button(
+                            OutlinedButton(
                                 onClick = {
                                     editingStudent = null
                                     showStudentDialog = true
                                 },
                                 modifier = Modifier
-                                    .weight(1.15f)
-                                    .height(46.dp)
+                                    .weight(1.12f)
+                                    .height(48.dp)
                                     .testTag("add_student_parent_button"),
                                 shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF0F3D5E),
-                                    contentColor = Color.White
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color(0xFFECFDF5),
+                                    contentColor = Color(0xFF065F46)
                                 ),
-                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                                border = BorderStroke(1.3.dp, Color(0xFF059669).copy(alpha = 0.55f)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.GroupAdd,
                                     contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(15.dp)
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = "+ إضافة طالب وولي أمر",
-                                    fontSize = 11.2.sp,
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF065F46),
                                     maxLines = 1,
-                                    softWrap = false
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -256,18 +278,20 @@ fun AdminAccountsScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(46.dp)
+                                .height(48.dp)
                                 .testTag("open_annual_promotion_engine_btn"),
                             shape = RoundedCornerShape(14.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = DeepEmerald,
+                                containerColor = Color(0xFF065F46),
                                 contentColor = Color.White
                             ),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.65f)),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.WorkspacePremium,
                                 contentDescription = null,
+                                tint = Color(0xFFFDE68A),
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -530,39 +554,92 @@ fun AdminAccountsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // Right side: Serial number inside geometric circle (36.dp) + Column(weight(1f)) with Full Name + Specialty & Student Count
+                            // Right side: SmartWelcomeProfileAvatar + Column(weight(1f)) with Full Name + Specialty & Student Count
+                            val teacherPersona = remember(teacher.id, teacher.gender, teacher.fullName, schoolConfig.schoolGenderType) {
+                                resolveSmartAvatarPersona(
+                                    role = UserRole.TEACHER,
+                                    gender = teacher.gender,
+                                    schoolGenderType = schoolConfig.schoolGenderType,
+                                    fullName = teacher.fullName,
+                                    isBusDriver = false
+                                )
+                            }
+                            val teacherAvatarBadge = remember(teacher.isActive) {
+                                DailyStatusBadgeSpec(
+                                    label = if (teacher.isActive) "نشط" else "مجمّد",
+                                    ringColors = if (teacher.isActive) {
+                                        listOf(Color(0xFF34D399), Color(0xFFFDE68A), Color(0xFF059669))
+                                    } else {
+                                        listOf(Color(0xFF94A3B8), Color(0xFFCBD5E1))
+                                    },
+                                    pillBackground = if (teacher.isActive) Color(0xFF065F46) else Color(0xFF64748B),
+                                    pillBorder = Color.White,
+                                    pillTextColor = Color.White,
+                                    dotColor = Color.White,
+                                    pulseDot = false
+                                )
+                            }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = AdaptiveSoftSurface,
-                                    border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "${idx + 1}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = DeepForestGreen
-                                        )
-                                    }
-                                }
+                                SmartWelcomeProfileAvatar(
+                                    photoSource = teacher.photoBase64,
+                                    contentDescription = "صورة ${teacher.fullName}",
+                                    persona = teacherPersona,
+                                    statusBadge = teacherAvatarBadge,
+                                    onClick = { selectedTeacherForSlideOver = teacher },
+                                    avatarSize = 48.dp,
+                                    showStatusBadge = false
+                                )
                                 Column(
                                     modifier = Modifier.weight(1f),
                                     verticalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
-                                    Text(
-                                        text = "${teacher.honorificTeacherTitle}: ${teacher.fullName}",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "${teacher.honorificTeacherTitle}: ${teacher.fullName}",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (teacher.canManageTransport && !teacher.isEffectiveBusDriver) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0xFFECFDF5),
+                                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                                modifier = Modifier.testTag("teacher_transport_supervisor_badge_${teacher.id}")
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DirectionsBus,
+                                                        contentDescription = null,
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(11.dp)
+                                                    )
+                                                    Text(
+                                                        text = "مشرف نقل",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepEmerald,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                     Text(
                                         text = "${teacher.specialty.ifBlank { primarySpecialtyLabel }} • ${teacher.formattedAssignedClassesForDisplay} • $realSupervisedCount طالب",
                                         style = MaterialTheme.typography.labelSmall,
@@ -691,27 +768,46 @@ fun AdminAccountsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // Right side: Serial number inside geometric circle (36.dp) + Column(weight(1f)) with Full Name + Class & Attendance Status
+                            // Right side: SmartWelcomeProfileAvatar + Column(weight(1f)) with Full Name + Class & Attendance Status
+                            val studentPersona = remember(stu.id, stu.gender, stu.studentName, schoolConfig.schoolGenderType) {
+                                resolveSmartAvatarPersona(
+                                    role = UserRole.STUDENT,
+                                    gender = stu.gender,
+                                    schoolGenderType = schoolConfig.schoolGenderType,
+                                    fullName = stu.studentName,
+                                    isBusDriver = false
+                                )
+                            }
+                            val studentAvatarBadge = remember(stu.enrollmentStatusEnum, realAbsentDays) {
+                                val isHealthy = stu.enrollmentStatusEnum == StudentEnrollmentStatus.ACTIVE && realAbsentDays == 0
+                                DailyStatusBadgeSpec(
+                                    label = attendanceDisciplineSummary,
+                                    ringColors = when {
+                                        stu.enrollmentStatusEnum != StudentEnrollmentStatus.ACTIVE -> listOf(Color(0xFFFCA5A5), Color(0xFFDC2626))
+                                        isHealthy -> listOf(Color(0xFF34D399), Color(0xFF059669))
+                                        else -> listOf(Color(0xFFFDE68A), Color(0xFFD97706))
+                                    },
+                                    pillBackground = if (isHealthy) Color(0xFF065F46) else Color(0xFFB45309),
+                                    pillBorder = Color.White,
+                                    pillTextColor = Color.White,
+                                    dotColor = Color.White,
+                                    pulseDot = false
+                                )
+                            }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = AdaptiveSoftSurface,
-                                    border = BorderStroke(1.2.dp, AdaptiveSoftBorder),
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = "${idx + 1}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = DeepForestGreen
-                                        )
-                                    }
-                                }
+                                SmartWelcomeProfileAvatar(
+                                    photoSource = stu.photoBase64,
+                                    contentDescription = "صورة ${stu.studentName}",
+                                    persona = studentPersona,
+                                    statusBadge = studentAvatarBadge,
+                                    onClick = { selectedStudentForSlideOver = stu },
+                                    avatarSize = 48.dp,
+                                    showStatusBadge = false
+                                )
                                 Column(
                                     modifier = Modifier.weight(1f),
                                     verticalArrangement = Arrangement.spacedBy(3.dp)
@@ -1357,6 +1453,69 @@ fun AdminAccountsScreen(
                                         }
                                     }
 
+                                    // مفتاح فوري للمدير لمنح أو سحب صلاحية التحكم بحركة النقل والخطوط
+                                    if (!liveTeacher.isEffectiveBusDriver) {
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = if (liveTeacher.canManageTransport) Color(0xFFECFDF5) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (liveTeacher.canManageTransport) DeepEmerald.copy(alpha = 0.55f) else AdaptiveSoftBorder
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.DirectionsBus,
+                                                        contentDescription = null,
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Column {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "منح صلاحية التحكم بحركة النقل والخطوط",
+                                                                style = MaterialTheme.typography.labelLarge,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = DeepForestGreen
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = if (liveTeacher.canManageTransport) {
+                                                                "مفعّلة • يظهر كـ (مشرف نقل) ويمكنه تشغيل ومتابعة الرحلات"
+                                                            } else {
+                                                                "متوقفة افتراضياً • السماح للأستاذ بالتحكم بحركة النقل والخطوط"
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                                Switch(
+                                                    checked = liveTeacher.canManageTransport,
+                                                    onCheckedChange = { granted ->
+                                                        viewModel.setTeacherTransportManagementPermission(liveTeacher.id, granted)
+                                                    },
+                                                    modifier = Modifier.testTag("slide_over_teacher_manage_transport_switch")
+                                                )
+                                            }
+                                        }
+                                    }
+
                                     Button(
                                         onClick = {
                                             val specialtyStr = assignedSubjsSet.joinToString("، ")
@@ -1375,6 +1534,7 @@ fun AdminAccountsScreen(
                                                 photoBase64 = liveTeacher.photoBase64,
                                                 canModerateActivities = liveTeacher.canModerateActivities,
                                                 canManageCanteen = liveTeacher.canManageCanteen,
+                                                canManageTransport = liveTeacher.canManageTransport,
                                                 gender = editedGender,
                                                 ageYears = editedAge
                                             )
@@ -2047,6 +2207,7 @@ fun AdminAccountsScreen(
         var teacherPhotoBase64 by remember(currentEditing) { mutableStateOf(currentEditing?.photoBase64 ?: "") }
         var canModerateActivities by remember(currentEditing) { mutableStateOf(currentEditing?.canModerateActivities ?: false) }
         var canManageCanteen by remember(currentEditing) { mutableStateOf(currentEditing?.canManageCanteen ?: false) }
+        var canManageTransport by remember(currentEditing) { mutableStateOf(currentEditing?.canManageTransport ?: false) }
         var teacherGender by remember(currentEditing) { mutableStateOf(currentEditing?.gender ?: "") }
         var teacherAgeYears by remember(currentEditing) { mutableStateOf(currentEditing?.effectiveAgeYears ?: 0) }
 
@@ -2415,6 +2576,56 @@ fun AdminAccountsScreen(
                         }
                     }
                     item {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (canManageTransport) Color(0xFFECFDF5) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (canManageTransport) DeepEmerald.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.DirectionsBus,
+                                        contentDescription = null,
+                                        tint = DeepEmerald,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "منح صلاحية التحكم بحركة النقل والخطوط",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "تعيين $staffSingular كـ (مشرف نقل) للتحكم بالرحلات وإرسال تنبيهات الوصول",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = canManageTransport,
+                                    onCheckedChange = { canManageTransport = it },
+                                    modifier = Modifier.testTag("teacher_manage_transport_switch")
+                                )
+                            }
+                        }
+                    }
+                    item {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
                                 value = username,
@@ -2478,6 +2689,7 @@ fun AdminAccountsScreen(
                                         photoBase64 = teacherPhotoBase64,
                                         canModerateActivities = canModerateActivities,
                                         canManageCanteen = canManageCanteen,
+                                        canManageTransport = canManageTransport,
                                         gender = teacherGender,
                                         ageYears = teacherAgeYears
                                     )
@@ -2493,6 +2705,7 @@ fun AdminAccountsScreen(
                                         photoBase64 = teacherPhotoBase64,
                                         canModerateActivities = canModerateActivities,
                                         canManageCanteen = canManageCanteen,
+                                        canManageTransport = canManageTransport,
                                         gender = teacherGender,
                                         ageYears = teacherAgeYears
                                     )
@@ -4180,4 +4393,185 @@ fun AnnualPromotionReportModalDialog(
     }
 }
 
+/**
+ * البصمة الخاصة بقسم "إدارة الحسابات (الكادر التدريسي والإشراف الأكاديمي)":
+ * وحدة زجاجية بـ Compose Canvas تعرض شبكة نقاط/أفراد هندسية مترابطة بخطوط زمردية وذهبية تنبض بنعومة متناغمة،
+ * مع تبدّل بانزلاق أفقي ناعم بين 3 عبارات.
+ */
+@Composable
+private fun TeamOrbitNetworkHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "إدارة الكادر والطلبة",
+            "توزيع مرن للصفوف",
+            "إشراف أكاديمي مباشر"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2800L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
 
+    val infiniteTransition = rememberInfiniteTransition(label = "team_orbit_network")
+    val pulsePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "team_network_pulse"
+    )
+    val signalProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "team_signal_travel"
+    )
+
+    Surface(
+        modifier = modifier.width(138.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val center = Offset(w * 0.50f, h * 0.50f)
+                val rx = w * 0.34f
+                val ry = h * 0.36f
+
+                // مدار هندسي خفيف يربط الفريق
+                drawCircle(
+                    color = Color(0xFF6EE7B7).copy(alpha = 0.25f),
+                    radius = minOf(rx, ry) * 1.12f,
+                    center = center,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                val nodeAnglesDeg = listOf(-90.0, -18.0, 54.0, 126.0, 198.0)
+                val nodes = nodeAnglesDeg.map { deg ->
+                    val rad = deg * kotlin.math.PI / 180.0
+                    Offset(
+                        x = center.x + (rx * kotlin.math.cos(rad)).toFloat(),
+                        y = center.y + (ry * kotlin.math.sin(rad)).toFloat()
+                    )
+                }
+
+                // خطوط الترابط الزمردية والذهبية بين النقاط والمركز
+                nodes.forEachIndexed { i, pt ->
+                    val nextPt = nodes[(i + 1) % nodes.size]
+                    val lineAlpha = 0.32f + 0.24f * (0.5f + 0.5f * kotlin.math.sin(pulsePhase.toDouble() + i * 1.2).toFloat())
+                    drawLine(
+                        color = Color(0xFF6EE7B7).copy(alpha = lineAlpha),
+                        start = pt,
+                        end = nextPt,
+                        strokeWidth = 1.2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = if (i % 2 == 0) Color(0xFFFDE68A).copy(alpha = lineAlpha) else Color.White.copy(alpha = lineAlpha * 0.85f),
+                        start = center,
+                        end = pt,
+                        strokeWidth = 1.3.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+
+                    // نبضة ضوئية لطيفة تتحرك من المركز نحو نقاط الفريق
+                    val travelX = center.x + (pt.x - center.x) * signalProgress
+                    val travelY = center.y + (pt.y - center.y) * signalProgress
+                    if (i % 2 == 0) {
+                        drawCircle(
+                            color = Color(0xFFFDE68A).copy(alpha = (1f - signalProgress) * 0.85f),
+                            radius = 2.2.dp.toPx(),
+                            center = Offset(travelX, travelY)
+                        )
+                    }
+                }
+
+                // رسم نقاط الأفراد المحيطية مع هالة نبض ناعمة
+                nodes.forEachIndexed { i, pt ->
+                    val nodeWave = 0.5f + 0.5f * kotlin.math.sin(pulsePhase.toDouble() + i * 1.25).toFloat()
+                    drawCircle(
+                        color = if (i % 2 == 0) Color(0xFFFDE68A).copy(alpha = 0.28f * nodeWave) else Color(0xFF6EE7B7).copy(alpha = 0.34f * nodeWave),
+                        radius = (5.2f + 2.4f * nodeWave).dp.toPx(),
+                        center = pt
+                    )
+                    drawCircle(
+                        color = if (i % 2 == 0) Color(0xFFFDE68A) else Color(0xFFA7F3D0),
+                        radius = 3.4.dp.toPx(),
+                        center = pt
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 1.4.dp.toPx(),
+                        center = pt
+                    )
+                }
+
+                // النقطة المركزية (الإشراف الأكاديمي)
+                val centerPulse = 0.5f + 0.5f * kotlin.math.sin(pulsePhase.toDouble()).toFloat()
+                drawCircle(
+                    color = Color(0xFFFDE68A).copy(alpha = 0.30f + 0.18f * centerPulse),
+                    radius = (8.5f + 2.5f * centerPulse).dp.toPx(),
+                    center = center
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFFFDE68A), Color(0xFF10B981)),
+                        center = center,
+                        radius = 6.dp.toPx()
+                    ),
+                    radius = 5.4.dp.toPx(),
+                    center = center
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 2.dp.toPx(),
+                    center = center
+                )
+            }
+
+            // تبدّل بانزلاق أفقي ناعم بين العبارات الثلاث
+            AnimatedContent(
+                targetState = phrases[phraseIndex],
+                transitionSpec = {
+                    (slideInHorizontally(animationSpec = tween(380)) { width -> width / 2 } + fadeIn(tween(340)))
+                        .togetherWith(
+                            slideOutHorizontally(animationSpec = tween(320)) { width -> -width / 2 } + fadeOut(tween(260))
+                        )
+                },
+                label = "team_orbit_phrase_slide"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}

@@ -834,6 +834,7 @@ class SchoolRepository(context: Context) {
                         schoolId = itemSchoolId,
                         canModerateActivities = o.optBoolean("canModerateActivities", false),
                         canManageCanteen = o.optBoolean("canManageCanteen", false),
+                        canManageTransport = o.optBoolean("canManageTransport", false),
                         gender = o.optString("gender", "").trim().let { if (it == "غير محدد") "" else it },
                         ageYears = o.optInt("ageYears", o.optInt("age", 0)).coerceAtLeast(0),
                         isBusDriverAccount = o.optBoolean("isBusDriverAccount", false) ||
@@ -890,6 +891,7 @@ class SchoolRepository(context: Context) {
                 put("schoolId", schoolId)
                 put("canModerateActivities", acc.canModerateActivities)
                 put("canManageCanteen", acc.canManageCanteen)
+                put("canManageTransport", acc.canManageTransport)
                 put("gender", if (acc.isGenderSpecified) InputSanitizer.sanitize(acc.normalizedGenderLabel) else "")
                 put("ageYears", acc.effectiveAgeYears)
                 put("age", acc.effectiveAgeYears)

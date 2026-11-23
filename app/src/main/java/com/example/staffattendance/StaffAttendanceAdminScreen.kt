@@ -64,6 +64,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -77,10 +78,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.AppSection
@@ -434,13 +438,18 @@ fun StaffAttendanceAdminScreen(
                                     shape = RoundedCornerShape(12.dp),
                                     color = DeepEmerald.copy(alpha = 0.08f)
                                 ) {
-                                    Text(
-                                        text = String.format(Locale.US, "%.4f, %.4f", zoneLat, zoneLon),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = DeepEmerald,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp)
-                                    )
+                                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                        Text(
+                                            text = String.format(Locale.US, "%.4f, %.4f", zoneLat, zoneLon),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                textDirection = TextDirection.Ltr
+                                            ),
+                                            fontWeight = FontWeight.Bold,
+                                            color = DeepEmerald,
+                                            maxLines = 1,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp)
+                                        )
+                                    }
                                 }
                             }
 

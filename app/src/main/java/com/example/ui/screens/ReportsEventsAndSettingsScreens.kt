@@ -4,8 +4,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,14 +32,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -2454,7 +2462,7 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 1) Top 3D Account Summary Header Card
+        // 1) Top Emerald Hero Header with Smart Sliders Glass Unit
         val cleanUserAddr = ArabicTextNormalizer.cleanDefaultAddress(currentUser?.address ?: "")
         ThreeDHeroHeaderCard(
             title = currentUser?.fullName ?: "مستخدم المنصة",
@@ -2467,7 +2475,9 @@ fun SettingsScreen(
             rightPillIcon = Icons.Filled.School,
             leftPillText = currentUser?.role?.arabicTitle ?: "إعدادات الحساب",
             leftPillIcon = Icons.Filled.VerifiedUser,
-            illustrationType = ThreeDIllustrationType.SETTINGS_ROTATING_GEARS_3D
+            customTrailingContent = {
+                SettingsSmartSlidersHeaderWidget()
+            }
         )
 
         // 2) 3D Categorized Settings Hub Selector Grid (5 Organized Categories)
@@ -2594,13 +2604,15 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = Color(0xFF065F46),
-                            modifier = Modifier.size(42.dp)
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .size(42.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -2611,16 +2623,23 @@ fun SettingsScreen(
                                 )
                             }
                         }
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             Text(
                                 text = "العام الدراسي المعتمد للمدرسة",
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    lineHeight = 23.sp
+                                ),
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF065F46)
                             )
                             Text(
                                 text = "ينعكس تلقائياً في الهوية الرقمية للطالب، والتقويم المدرسي، والشهادات، والواجهة الرسمية للمدرسة.",
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    lineHeight = 19.sp
+                                ),
                                 color = Color(0xFF047857),
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -3916,3 +3935,165 @@ fun SettingsScreen(
         )
     }
 }
+
+/**
+ * البصمة الخاصة بقسم "الإعدادات":
+ * وحدة زجاجية مصقولة بـ Compose Canvas تعرض 3 أشرطة ضبط حديثة تتحرك مؤشراتها بنعومة هادئة وبلمعة ذهبية خفيفة،
+ * مع تبدّل عبر Crossfade بين 3 عبارات.
+ */
+@Composable
+private fun SettingsSmartSlidersHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "تحكم كامل بالمنصة",
+            "أمان ونسخ احتياطي",
+            "تخصيص مرن للمدرسة"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2800L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "settings_smart_sliders")
+    val sliderPhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "settings_knobs_phase"
+    )
+    val goldSweep by infiniteTransition.animateFloat(
+        initialValue = -0.25f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "settings_gold_gleam"
+    )
+
+    Surface(
+        modifier = modifier.width(136.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val leftX = w * 0.12f
+                val rightX = w * 0.88f
+                val trackLen = rightX - leftX
+                val trackH = 4.2.dp.toPx()
+
+                val ys = listOf(h * 0.22f, h * 0.50f, h * 0.78f)
+                val knobFractions = listOf(
+                    0.28f + 0.44f * (0.5f + 0.5f * kotlin.math.sin(sliderPhase.toDouble()).toFloat()),
+                    0.26f + 0.48f * (0.5f + 0.5f * kotlin.math.sin(sliderPhase.toDouble() + 2.2).toFloat()),
+                    0.30f + 0.42f * (0.5f + 0.5f * kotlin.math.sin(sliderPhase.toDouble() + 4.3).toFloat())
+                )
+
+                val gleamCenterX = leftX + trackLen * goldSweep
+
+                ys.forEachIndexed { idx, cy ->
+                    // مسار الضبط الخلفي الزجاجي
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.22f),
+                        topLeft = Offset(leftX, cy - trackH / 2f),
+                        size = Size(trackLen, trackH),
+                        cornerRadius = CornerRadius(trackH, trackH)
+                    )
+
+                    val knobX = leftX + trackLen * knobFractions[idx]
+                    val activeLen = (knobX - leftX).coerceAtLeast(trackH)
+
+                    // الجزء النشط الزمردي بلمعة ذهبية خفيفة
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0xFF34D399),
+                                Color(0xFFA7F3D0),
+                                Color(0xFFFDE68A)
+                            ),
+                            startX = leftX,
+                            endX = rightX
+                        ),
+                        topLeft = Offset(leftX, cy - trackH / 2f),
+                        size = Size(activeLen, trackH),
+                        cornerRadius = CornerRadius(trackH, trackH)
+                    )
+
+                    // وميض ذهبي خفيف يمر بهدوء على الشريط
+                    drawLine(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0xFFFDE68A).copy(alpha = 0.65f),
+                                Color.Transparent
+                            ),
+                            startX = gleamCenterX - 18.dp.toPx(),
+                            endX = gleamCenterX + 18.dp.toPx()
+                        ),
+                        start = Offset(leftX, cy),
+                        end = Offset(rightX, cy),
+                        strokeWidth = trackH * 0.9f,
+                        cap = StrokeCap.Round
+                    )
+
+                    // هالة ومؤشر الضبط الدائري (Knob)
+                    val knobR = 5.4.dp.toPx()
+                    drawCircle(
+                        color = Color(0xFFFDE68A).copy(alpha = 0.32f),
+                        radius = knobR * 1.48f,
+                        center = Offset(knobX, cy)
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = knobR,
+                        center = Offset(knobX, cy)
+                    )
+                    drawCircle(
+                        color = if (idx == 1) Color(0xFFF59E0B) else Color(0xFF059669),
+                        radius = knobR * 0.45f,
+                        center = Offset(knobX, cy)
+                    )
+                }
+            }
+
+            Crossfade(
+                targetState = phrases[phraseIndex],
+                animationSpec = tween(420),
+                label = "settings_sliders_phrase_crossfade"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
