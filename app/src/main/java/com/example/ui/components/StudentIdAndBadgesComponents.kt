@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -28,6 +29,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
@@ -77,11 +80,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -3155,24 +3160,47 @@ fun ParentStudentCanteenWalletCard(
     var showTransactions by remember(defaultShowTransactions) { mutableStateOf(defaultShowTransactions) }
     val spentToday = student.getSpentToday(todayIso)
 
+    val studentGradeSubtitle = remember(student.fullNameWithFather, student.gradeClass, student.sectionName) {
+        buildString {
+            append(student.fullNameWithFather)
+            if (student.gradeClass.isNotBlank()) {
+                append(" • ")
+                append(student.gradeClass)
+                if (student.sectionName.isNotBlank()) {
+                    append(" (${student.sectionName})")
+                }
+            }
+        }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .testTag("parent_student_canteen_wallet_card"),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF059669)),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF047857)),
+        border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.45f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF043B2C),
+                            Color(0xFF065F46),
+                            Color(0xFF059669)
+                        )
+                    )
+                )
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // رأس البطاقة: اسم الطالب والصف/الشعبة بدون المعرف البرمجي، مع زر باركود الحانوت بمحاذاة أنيقة
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
@@ -3183,34 +3211,46 @@ fun ParentStudentCanteenWalletCard(
                     Box(
                         modifier = Modifier
                             .size(42.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.18f)),
+                            .clip(RoundedCornerShape(13.dp))
+                            .background(Color.White.copy(alpha = 0.16f))
+                            .border(1.dp, Color(0xFFFDE68A).copy(alpha = 0.45f), RoundedCornerShape(13.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AccountBalanceWallet,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
+                            imageVector = Icons.Filled.AccountBalanceWallet,
+                            contentDescription = "محفظة الحانوت",
+                            tint = Color(0xFFFDE68A),
+                            modifier = Modifier.size(21.dp)
                         )
                     }
-                    Column {
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text(
                             text = "محفظة حانوت المدرسة الذكية",
                             style = MaterialTheme.typography.titleSmall,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
                             color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${student.fullNameWithFather} • ${student.walletBarcode}",
+                            text = studentGradeSubtitle,
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.92f)
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            color = Color(0xFFD1FAE5),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
                 Surface(
                     modifier = Modifier
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(50))
                         .clickable { onOpenWalletBarcodePass() }
                         .testTag("open_wallet_qr_pass_btn"),
                     shape = RoundedCornerShape(50),
@@ -3218,104 +3258,148 @@ fun ParentStudentCanteenWalletCard(
                     shadowElevation = 2.dp
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.QrCode2,
-                            contentDescription = null,
+                            imageVector = Icons.Filled.QrCode2,
+                            contentDescription = "باركود الحانوت",
                             tint = Color(0xFF047857),
                             modifier = Modifier.size(16.dp)
                         )
                         Text(
                             text = "باركود الحانوت",
                             style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.5.sp,
                             color = Color(0xFF047857),
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
             }
 
-            // Metrics Row
+            // صف البطاقات الإحصائية الثلاث بارتفاع موحّد وتوسيط متناسق
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(78.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = Color.White.copy(alpha = 0.16f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                    border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.45f))
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Text(
                             text = "الرصيد الحالي",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.9f),
-                            fontSize = 10.sp
+                            color = Color(0xFFECFDF5),
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2
                         )
+                        Spacer(modifier = Modifier.height(5.dp))
                         Text(
-                            text = "${"%,d".format(java.util.Locale.US, student.walletBalance)} د.ع",
+                            text = "${"%,d".format(java.util.Locale.US, student.walletBalance)}\u00A0د.ع",
                             style = MaterialTheme.typography.titleSmall,
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
+                            fontSize = 13.5.sp,
+                            color = Color(0xFFFDE68A),
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+
                 Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.White.copy(alpha = 0.16f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(78.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Text(
                             text = "الحد اليومي المسموح",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.9f),
-                            fontSize = 10.sp
+                            color = Color(0xFFECFDF5),
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2
                         )
+                        Spacer(modifier = Modifier.height(5.dp))
                         Text(
                             text = if (student.dailySpendLimit > 0) {
-                                "${"%,d".format(java.util.Locale.US, student.dailySpendLimit)} د.ع"
+                                "${"%,d".format(java.util.Locale.US, student.dailySpendLimit)}\u00A0د.ع"
                             } else {
                                 "مفتوح"
                             },
                             style = MaterialTheme.typography.titleSmall,
+                            fontSize = 13.5.sp,
                             color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
+
                 Surface(
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.White.copy(alpha = 0.16f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(78.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
                         Text(
                             text = "ما تم صرفه اليوم",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.9f),
-                            fontSize = 10.sp
+                            color = Color(0xFFECFDF5),
+                            fontSize = 10.sp,
+                            lineHeight = 13.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2
                         )
+                        Spacer(modifier = Modifier.height(5.dp))
                         Text(
-                            text = "${"%,d".format(java.util.Locale.US, spentToday)} د.ع",
+                            text = "${"%,d".format(java.util.Locale.US, spentToday)}\u00A0د.ع",
                             style = MaterialTheme.typography.titleSmall,
+                            fontSize = 13.5.sp,
                             color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -3325,17 +3409,17 @@ fun ParentStudentCanteenWalletCard(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = DangerRed.copy(alpha = 0.85f),
+                    color = DangerRed.copy(alpha = 0.88f),
                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Block,
-                            contentDescription = null,
+                            imageVector = Icons.Filled.Block,
+                            contentDescription = "المحفظة مجمدة",
                             tint = Color.White,
                             modifier = Modifier.size(18.dp)
                         )
@@ -3343,100 +3427,183 @@ fun ParentStudentCanteenWalletCard(
                             text = "تنبيه: محفظة الطالب مجمدة مؤقتاً من قِبل الإدارة المدرسية ولا يمكن الشراء بها حالياً.",
                             style = MaterialTheme.typography.labelSmall,
                             color = Color.White,
-                            fontWeight = FontWeight.ExtraBold
+                            fontWeight = FontWeight.ExtraBold,
+                            lineHeight = 17.sp
                         )
                     }
                 }
             }
 
-            // Parent Daily Spend Limit Controls
+            // صندوق تحديد الحد الأقصى للشراء اليومي (شبكة 2×3 مرتبة + صف أفقي موحّد الارتفاع 50.dp)
             if (isParentRole) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White.copy(alpha = 0.14f),
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White.copy(alpha = 0.13f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = "تحديد الحد الأقصى للشراء اليومي للطالب (د.ع) — (0 = مفتوح بدون سقف):",
+                            text = "تحديد الحد الأقصى للشراء اليومي (د.ع) • (0 = مفتوح بدون سقف)",
                             style = MaterialTheme.typography.labelSmall,
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp,
                             color = Color.White,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.ExtraBold
                         )
-                        FlowRow(
+
+                        val quickLimits = remember { listOf(0, 1000, 1500, 2000, 3000, 5000) }
+                        val parsedCur = limitInput.filter { it.isDigit() }.toIntOrNull() ?: 0
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            verticalArrangement = Arrangement.spacedBy(7.dp)
                         ) {
-                            val quickLimits = listOf(0, 1000, 1500, 2000, 3000, 5000)
-                            val parsedCur = limitInput.filter { it.isDigit() }.toIntOrNull() ?: 0
-                            quickLimits.forEach { lim ->
-                                val isSel = parsedCur == lim
-                                Surface(
-                                    modifier = Modifier
-                                        .clickable {
-                                            limitInput = lim.toString()
-                                            onUpdateDailyLimit(lim) { _, msg -> statusMessage = msg }
-                                        }
-                                        .testTag("parent_quick_limit_$lim"),
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isSel) Color.White else Color.White.copy(alpha = 0.18f),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isSel) Color.White else Color.White.copy(alpha = 0.35f)
-                                    )
+                            quickLimits.chunked(3).forEach { rowLimits ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                                 ) {
-                                    Text(
-                                        text = if (lim == 0) "مفتوح (0)" else "${"%,d".format(java.util.Locale.US, lim)} د.ع",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = if (isSel) Color(0xFF047857) else Color.White,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                                    )
+                                    rowLimits.forEach { lim ->
+                                        val isSel = parsedCur == lim
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(38.dp)
+                                                .clip(RoundedCornerShape(11.dp))
+                                                .clickable {
+                                                    limitInput = lim.toString()
+                                                    onUpdateDailyLimit(lim) { _, msg -> statusMessage = msg }
+                                                }
+                                                .testTag("parent_quick_limit_$lim"),
+                                            shape = RoundedCornerShape(11.dp),
+                                            color = if (isSel) Color.White else Color.White.copy(alpha = 0.16f),
+                                            border = BorderStroke(
+                                                width = if (isSel) 1.4.dp else 1.dp,
+                                                color = if (isSel) Color(0xFFFDE68A) else Color.White.copy(alpha = 0.30f)
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = if (lim == 0) {
+                                                        "مفتوح"
+                                                    } else {
+                                                        "${"%,d".format(java.util.Locale.US, lim)}\u00A0د.ع"
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontSize = 11.5.sp,
+                                                    color = if (isSel) Color(0xFF047857) else Color.White,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
 
+                        // صف أفقي واحد موحّد الارتفاع (50.dp) لحقل المبلغ المخصّص وزر حفظ السقف
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            OutlinedTextField(
-                                value = limitInput,
-                                onValueChange = { limitInput = it.filter { ch -> ch.isDigit() } },
-                                label = { Text("الحد اليومي (د.ع)", color = Color.White) },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(50.dp),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = Color.White,
-                                    unfocusedBorderColor = Color.White.copy(alpha = 0.55f),
-                                    cursorColor = Color.White
-                                )
-                            )
+                                color = Color.White.copy(alpha = 0.14f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.48f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Box(
+                                        modifier = Modifier.weight(1f),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        if (limitInput.isEmpty()) {
+                                            Text(
+                                                text = "مبلغ مخصّص (د.ع)",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontSize = 12.5.sp,
+                                                color = Color.White.copy(alpha = 0.72f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        BasicTextField(
+                                            value = limitInput,
+                                            onValueChange = { limitInput = it.filter { ch -> ch.isDigit() } },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 14.sp
+                                            ),
+                                            cursorBrush = SolidColor(Color(0xFFFDE68A)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("parent_custom_limit_input")
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "د.ع",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFFDE68A),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+
                             Button(
                                 onClick = {
                                     val newLim = limitInput.filter { it.isDigit() }.toIntOrNull() ?: 0
                                     onUpdateDailyLimit(newLim) { _, msg -> statusMessage = msg }
                                 },
+                                modifier = Modifier
+                                    .height(50.dp)
+                                    .testTag("save_daily_limit_btn"),
                                 shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color.White,
                                     contentColor = Color(0xFF047857)
                                 )
                             ) {
-                                Icon(Icons.Default.Check, contentDescription = null, tint = Color(0xFF047857))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("حفظ السقف", color = Color(0xFF047857), fontWeight = FontWeight.ExtraBold)
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = Color(0xFF047857),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "حفظ السقف",
+                                    color = Color(0xFF047857),
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
 
@@ -3444,7 +3611,7 @@ fun ParentStudentCanteenWalletCard(
                             Text(
                                 text = statusMessage.orEmpty(),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White,
+                                color = Color(0xFFFDE68A),
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -3452,86 +3619,250 @@ fun ParentStudentCanteenWalletCard(
                 }
             }
 
-            // Toggle Transaction History
+            // شريط عنوان سجل حركات الشحن والشراء في صف واحد مرتب دون انقسام زر إخفاء/عرض السجل
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showTransactions = !showTransactions },
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { showTransactions = !showTransactions }
+                    .padding(vertical = 4.dp)
+                    .testTag("toggle_wallet_transactions_row"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
+                    modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.History,
+                        imageVector = Icons.Filled.History,
                         contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        tint = Color(0xFFFDE68A),
+                        modifier = Modifier.size(17.dp)
                     )
                     Text(
-                        text = "سجل حركات الشحن والشراء من الحانوت (${student.walletTransactions.size})",
+                        text = "سجل حركات الشحن والشراء (${student.walletTransactions.size})",
                         style = MaterialTheme.typography.labelSmall,
+                        fontSize = 12.sp,
                         color = Color.White,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    text = if (showTransactions) "إخفاء السجل" else "عرض السجل",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.ExtraBold
-                )
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White.copy(alpha = 0.18f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f))
+                ) {
+                    Text(
+                        text = if (showTransactions) "إخفاء السجل" else "عرض السجل",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
             }
 
             if (showTransactions) {
                 if (student.walletTransactions.isEmpty()) {
-                    Text(
-                        text = "لا توجد حركات مالية مسجلة في المحفظة حتى الآن.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.85f)
-                    )
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.White.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.24f))
+                    ) {
+                        Text(
+                            text = "لا توجد حركات مالية مسجلة في المحفظة حتى الآن.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFECFDF5),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp, horizontal = 10.dp)
+                        )
+                    }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         student.walletTransactions.take(15).forEach { tx ->
-                            val isRejected = tx.type == CanteenTransactionType.PURCHASE_REJECTED
+                            val rawDateClean = formatCleanDate(tx.date)
+                            val rawTimeClean = formatCleanDateTime(tx.timestamp)
+                            val formattedTxTime = when {
+                                rawTimeClean.isBlank() -> rawDateClean
+                                rawDateClean.isNotBlank() &&
+                                    !rawTimeClean.contains(rawDateClean) &&
+                                    !Regex("\\d{4}-\\d{2}-\\d{2}").containsMatchIn(rawTimeClean) ->
+                                    "$rawDateClean • $rawTimeClean"
+                                else -> rawTimeClean
+                            }.replace(" ص", "\u00A0ص").replace(" م", "\u00A0م")
+
+                            val cardBg = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Color(0xFFECFDF5)
+                                CanteenTransactionType.PURCHASE_APPROVED -> Color.White
+                                CanteenTransactionType.PURCHASE_REJECTED -> Color(0xFFFFF1F2)
+                            }
+                            val cardBorder = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Color(0xFF34D399)
+                                CanteenTransactionType.PURCHASE_APPROVED -> Color(0xFFA7F3D0)
+                                CanteenTransactionType.PURCHASE_REJECTED -> Color(0xFFFDA4AF)
+                            }
+                            val iconBg = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Color(0xFFD1FAE5)
+                                CanteenTransactionType.PURCHASE_APPROVED -> Color(0xFFECFDF5)
+                                CanteenTransactionType.PURCHASE_REJECTED -> Color(0xFFFFE4E6)
+                            }
+                            val iconTint = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Color(0xFF047857)
+                                CanteenTransactionType.PURCHASE_APPROVED -> Color(0xFF065F46)
+                                CanteenTransactionType.PURCHASE_REJECTED -> Color(0xFFDC2626)
+                            }
+                            val txIcon = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Icons.Filled.AddCard
+                                CanteenTransactionType.PURCHASE_APPROVED -> Icons.Filled.ShoppingCart
+                                CanteenTransactionType.PURCHASE_REJECTED -> Icons.Filled.WarningAmber
+                            }
+                            val badgeBg = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Color(0xFF047857)
+                                CanteenTransactionType.PURCHASE_APPROVED -> Color(0xFFECFDF5)
+                                CanteenTransactionType.PURCHASE_REJECTED -> Color(0xFFDC2626)
+                            }
+                            val badgeTextColor = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Color.White
+                                CanteenTransactionType.PURCHASE_APPROVED -> Color(0xFF065F46)
+                                CanteenTransactionType.PURCHASE_REJECTED -> Color.White
+                            }
+                            val badgeLabel = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> "شحن رصيد"
+                                CanteenTransactionType.PURCHASE_APPROVED -> "شراء ناجح"
+                                CanteenTransactionType.PURCHASE_REJECTED -> "شراء مرفوض"
+                            }
+                            val amountDisplay = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> "+${"%,d".format(java.util.Locale.US, tx.amount)}\u00A0د.ع"
+                                CanteenTransactionType.PURCHASE_APPROVED -> "-${"%,d".format(java.util.Locale.US, tx.amount)}\u00A0د.ع"
+                                CanteenTransactionType.PURCHASE_REJECTED -> "${"%,d".format(java.util.Locale.US, tx.amount)}\u00A0د.ع"
+                            }
+                            val amountColor = when (tx.type) {
+                                CanteenTransactionType.TOP_UP -> Color(0xFF047857)
+                                CanteenTransactionType.PURCHASE_APPROVED -> Color(0xFF0F172A)
+                                CanteenTransactionType.PURCHASE_REJECTED -> Color(0xFFB91C1C)
+                            }
+
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                color = Color.White.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(13.dp),
+                                color = cardBg,
                                 border = BorderStroke(
-                                    1.dp,
-                                    if (isRejected) DangerRed.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.35f)
+                                    width = if (tx.type == CanteenTransactionType.PURCHASE_REJECTED) 1.3.dp else 1.dp,
+                                    color = cardBorder
                                 )
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "${tx.type.arabicLabel}: ${"%,d".format(java.util.Locale.US, tx.amount)} د.ع",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (isRejected) Color(0xFFFEE2E2) else Color.White,
-                                            fontWeight = FontWeight.ExtraBold
-                                        )
-                                        Text(
-                                            text = "${tx.note} • ${tx.timestamp}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White.copy(alpha = 0.85f),
-                                            fontSize = 10.sp
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(iconBg),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = txIcon,
+                                            contentDescription = badgeLabel,
+                                            tint = iconTint,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
-                                    Text(
-                                        text = "${"%,d".format(java.util.Locale.US, tx.balanceAfter)} د.ع",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold
-                                    )
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = badgeBg
+                                            ) {
+                                                Text(
+                                                    text = badgeLabel,
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = badgeTextColor,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = amountDisplay,
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontSize = 12.5.sp,
+                                                color = amountColor,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                        if (tx.note.isNotBlank()) {
+                                            Text(
+                                                text = formatCleanDate(tx.note),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 10.5.sp,
+                                                lineHeight = 14.sp,
+                                                color = if (tx.type == CanteenTransactionType.PURCHASE_REJECTED) {
+                                                    Color(0xFF991B1B)
+                                                } else {
+                                                    Color(0xFF334155)
+                                                },
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        if (formattedTxTime.isNotBlank()) {
+                                            Text(
+                                                text = formattedTxTime,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF64748B),
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Column(
+                                        horizontalAlignment = Alignment.End,
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = "الرصيد",
+                                            fontSize = 9.5.sp,
+                                            color = Color(0xFF64748B),
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = "${"%,d".format(java.util.Locale.US, tx.balanceAfter)}\u00A0د.ع",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFF065F46),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -3573,14 +3904,15 @@ fun ParentStudentCanteenWalletDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 InlineDialogToastBanner(toastAlert = toastAlert, onDismiss = onDismissToast)
 
+                // رأس النافذة بتباعد وارتفاع سطر سليم يمنع تداخل العنوان مع الوصف
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -3589,29 +3921,33 @@ fun ParentStudentCanteenWalletDialog(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(13.dp))
                                 .background(Color(0xFFECFDF5))
-                                .border(1.dp, Color(0xFFA7F3D0), RoundedCornerShape(12.dp)),
+                                .border(1.dp, Color(0xFFA7F3D0), RoundedCornerShape(13.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.AccountBalanceWallet,
-                                contentDescription = null,
+                                imageVector = Icons.Filled.AccountBalanceWallet,
+                                contentDescription = "محفظة الطالب الذكية",
                                 tint = Color(0xFF059669),
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                        Column {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 text = "محفظة الطالب الذكية وسجل الحركات والحد اليومي",
                                 style = MaterialTheme.typography.titleSmall,
+                                fontSize = 14.5.sp,
+                                lineHeight = 20.sp,
                                 color = Color(0xFF065F46),
                                 fontWeight = FontWeight.ExtraBold
                             )
                             Text(
                                 text = "متابعة الرصيد والمشتريات وتحديد السقف اليومي للحانوت",
                                 style = MaterialTheme.typography.labelSmall,
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp,
                                 color = Color(0xFF475569)
                             )
                         }
@@ -3620,11 +3956,20 @@ fun ParentStudentCanteenWalletDialog(
                         onClick = onDismiss,
                         modifier = Modifier.testTag("close_parent_student_wallet_dialog_btn")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "إغلاق",
-                            tint = Color(0xFF065F46)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF1F5F9)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "إغلاق",
+                                tint = Color(0xFF065F46),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 

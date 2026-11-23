@@ -3670,6 +3670,107 @@ fun ExamsAndGradesScreen(
                             renderTopTabsHeader()
                         }
 
+                        // ترويسة مصغّرة وأنيقة لتبويب كشف درجات الطالب
+                        item(key = "student_grades_compact_mini_header_${myStu.id}") {
+                            val recordedSubjectsCount = remember(allSubjectsReport) {
+                                allSubjectsReport.count { hasAnyRecordedGrade(it) }
+                            }
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("student_grades_compact_mini_header"),
+                                shape = RoundedCornerShape(18.dp),
+                                shadowElevation = 3.dp
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            Brush.linearGradient(
+                                                colors = listOf(
+                                                    Color(0xFF042F24),
+                                                    Color(0xFF065F46),
+                                                    Color(0xFF059669)
+                                                )
+                                            )
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(Color.White.copy(alpha = 0.16f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AutoGraph,
+                                                    contentDescription = "سجل الدرجات",
+                                                    tint = Color(0xFFFDE68A),
+                                                    modifier = Modifier.size(21.dp)
+                                                )
+                                            }
+                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Text(
+                                                    text = myStu.fullNameWithFather,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "${myStu.gradeClass} • شعبة (${myStu.sectionName})",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFFD1FAE5),
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color.White.copy(alpha = 0.16f),
+                                            border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.55f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Verified,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFFDE68A),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = "مرصود $recordedSubjectsCount/${allSubjectsReport.size}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // لا يظهر أي ذكر لـ "كارت الدرجات الرسمي" إلا إذا اعتمدها المدير وأرسلها رسمياً
                         if (isFinalReportApprovedByPrincipal) {
                             item(key = "student_report_card_header_${myStu.id}") {
@@ -3761,21 +3862,21 @@ fun ExamsAndGradesScreen(
                             }
                         }
 
-                        // المرحلة الأولى (أ): شبكة اختيار المادة التفاعلية (Interactive Subject Selector) مع مؤشر النبض للدرجات الجديدة
+                        // المرحلة الأولى (أ): شبكة اختيار المادة التفاعلية المدمجة والمتوازنة مع مؤشر حالة كل مادة
                         item(key = "interactive_subject_selector_${myStu.id}") {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("interactive_subject_selector_card"),
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.28f)),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                                border = BorderStroke(1.dp, Color(0xFFD1FAE5)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(14.dp),
+                                        .padding(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Row(
@@ -3790,47 +3891,65 @@ fun ExamsAndGradesScreen(
                                         ) {
                                             Surface(
                                                 shape = RoundedCornerShape(10.dp),
-                                                color = DeepEmerald.copy(alpha = 0.12f),
-                                                modifier = Modifier.size(38.dp)
+                                                color = Color(0xFFECFDF5),
+                                                modifier = Modifier.size(34.dp)
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
                                                     Icon(
                                                         imageVector = Icons.Filled.MenuBook,
                                                         contentDescription = null,
                                                         tint = DeepEmerald,
-                                                        modifier = Modifier.size(20.dp)
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
                                             }
-                                            Column {
+                                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                                                 Text(
-                                                    text = "درجات المواد الدراسية • ${myStu.fullNameWithFather}",
+                                                    text = "اختر المادة الدراسية",
                                                     style = MaterialTheme.typography.titleSmall,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = DeepForestGreen
                                                 )
                                                 Text(
-                                                    text = "اختر المادة الدراسية لعرض سجل درجاتها الكامل بالتفصيل",
+                                                    text = "اضغط على أي مادة لعرض سجل درجاتها المنظّم أدناه",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    fontWeight = FontWeight.SemiBold
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
                                         }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                        ) {
+                                            Text(
+                                                text = "${allSubjectsReport.size} مواد",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF065F46),
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                            )
+                                        }
                                     }
 
-                                    // عرض المواد في صفوف ثنائية مريحة وواضحة بدون أي اقتطاع لاسم المادة
+                                    // شبكة بطاقات مدمجة ومتناسقة الارتفاع مع معالجة ذكية للمادة الفردية الأخيرة دون فراغ جانبي
                                     val chunkedSubjects = remember(allSubjectsReport) {
                                         allSubjectsReport.chunked(2)
                                     }
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalArrangement = Arrangement.spacedBy(7.dp)
                                     ) {
                                         chunkedSubjects.forEach { rowSubjects ->
+                                            val isSingleOddRow = rowSubjects.size == 1
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(7.dp)
                                             ) {
                                                 rowSubjects.forEach { subjRecord ->
                                                     val isSelected = subjRecord.subjectName == selectedSubjectRecord?.subjectName
@@ -3850,94 +3969,145 @@ fun ExamsAndGradesScreen(
                                                         },
                                                         modifier = Modifier
                                                             .weight(1f)
+                                                            .height(if (isSingleOddRow) 50.dp else 56.dp)
                                                             .testTag("subject_selector_chip_${subjRecord.subjectName}"),
-                                                        shape = RoundedCornerShape(14.dp),
+                                                        shape = RoundedCornerShape(13.dp),
                                                         color = when {
                                                             isSelected -> Color(0xFF065F46)
                                                             isUnseenNewGrade -> Color(0xFFECFDF5)
+                                                            hasRecorded -> Color(0xFFF0FDF4)
                                                             else -> Color(0xFFF8FAFC)
                                                         },
                                                         border = BorderStroke(
-                                                            width = if (isSelected || isUnseenNewGrade) 1.6.dp else 1.dp,
+                                                            width = if (isSelected || isUnseenNewGrade) 1.5.dp else 1.dp,
                                                             color = when {
                                                                 isSelected -> Color(0xFFFBBF24)
                                                                 isUnseenNewGrade -> Color(0xFF10B981)
-                                                                else -> Color(0xFFCBD5E1)
+                                                                hasRecorded -> Color(0xFFA7F3D0)
+                                                                else -> Color(0xFFE2E8F0)
                                                             }
                                                         ),
-                                                        shadowElevation = if (isSelected) 4.dp else 1.dp
+                                                        shadowElevation = if (isSelected) 3.dp else 0.dp
                                                     ) {
-                                                        Column(
+                                                        Row(
                                                             modifier = Modifier
-                                                                .fillMaxWidth()
-                                                                .padding(horizontal = 10.dp, vertical = 10.dp),
-                                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                                .fillMaxSize()
+                                                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(7.dp)
                                                         ) {
-                                                            Row(
-                                                                modifier = Modifier.fillMaxWidth(),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(28.dp)
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(
+                                                                        when {
+                                                                            isSelected -> Color.White.copy(alpha = 0.16f)
+                                                                            hasRecorded -> Color(0xFFD1FAE5)
+                                                                            else -> Color(0xFFE2E8F0).copy(alpha = 0.7f)
+                                                                        }
+                                                                    ),
+                                                                contentAlignment = Alignment.Center
                                                             ) {
                                                                 Icon(
-                                                                    imageVector = if (isSelected) Icons.Filled.AutoStories else Icons.Filled.Book,
+                                                                    imageVector = when {
+                                                                        isSelected -> Icons.Filled.AutoStories
+                                                                        hasRecorded -> Icons.Filled.CheckCircle
+                                                                        else -> Icons.Filled.Book
+                                                                    },
                                                                     contentDescription = null,
-                                                                    tint = if (isSelected) Color(0xFFFDE68A) else DeepEmerald,
-                                                                    modifier = Modifier.size(16.dp)
+                                                                    tint = when {
+                                                                        isSelected -> Color(0xFFFDE68A)
+                                                                        hasRecorded -> Color(0xFF059669)
+                                                                        else -> Color(0xFF64748B)
+                                                                    },
+                                                                    modifier = Modifier.size(15.dp)
                                                                 )
+                                                            }
 
-                                                                if (isUnseenNewGrade) {
-                                                                    // مؤشر الإشعار التفاعلي للدرجة الجديدة (New Grade Pulse Indicator)
-                                                                    Surface(
-                                                                        shape = RoundedCornerShape(50),
-                                                                        color = if (isSelected) Color(0xFFFBBF24) else Color(0xFF059669),
-                                                                        modifier = Modifier.graphicsLayer {
-                                                                            scaleX = newGradePulseScale * 0.92f
-                                                                            scaleY = newGradePulseScale * 0.92f
-                                                                            alpha = newGradePulseAlpha
-                                                                        }
-                                                                    ) {
-                                                                        Row(
-                                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
-                                                                            verticalAlignment = Alignment.CenterVertically,
-                                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                                        ) {
-                                                                            Box(
-                                                                                modifier = Modifier
-                                                                                    .size(6.dp)
-                                                                                    .background(
-                                                                                        if (isSelected) Color(0xFF042F24) else Color(0xFFFDE68A),
-                                                                                        CircleShape
-                                                                                    )
-                                                                            )
-                                                                            Text(
-                                                                                text = "رصد جديد",
-                                                                                fontSize = 9.5.sp,
-                                                                                fontWeight = FontWeight.ExtraBold,
-                                                                                color = if (isSelected) Color(0xFF042F24) else Color.White
-                                                                            )
-                                                                        }
-                                                                    }
-                                                                } else if (hasRecorded) {
+                                                            Column(
+                                                                modifier = Modifier.weight(1f),
+                                                                verticalArrangement = Arrangement.Center
+                                                            ) {
+                                                                Text(
+                                                                    text = subjRecord.subjectName,
+                                                                    fontSize = 12.sp,
+                                                                    lineHeight = 14.5.sp,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                                                    maxLines = if (isSingleOddRow) 1 else 2,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                                if (!isSingleOddRow && !isUnseenNewGrade) {
                                                                     Text(
-                                                                        text = "${subjRecord.annualEffortScore}/${subjRecord.maxScoreScale}",
-                                                                        fontSize = 10.5.sp,
-                                                                        fontWeight = FontWeight.ExtraBold,
-                                                                        color = if (isSelected) Color(0xFFFDE68A) else DeepEmerald
+                                                                        text = if (hasRecorded) {
+                                                                            "السعي ${subjRecord.annualEffortScore}/${subjRecord.maxScoreScale}"
+                                                                        } else {
+                                                                            "بانتظار الرصد"
+                                                                        },
+                                                                        fontSize = 9.5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = when {
+                                                                            isSelected -> Color(0xFFFDE68A)
+                                                                            hasRecorded -> Color(0xFF047857)
+                                                                            else -> Color(0xFF64748B)
+                                                                        },
+                                                                        maxLines = 1,
+                                                                        overflow = TextOverflow.Ellipsis
                                                                     )
                                                                 }
                                                             }
 
-                                                            Text(
-                                                                text = subjRecord.subjectName,
-                                                                fontSize = 13.sp,
-                                                                fontWeight = FontWeight.ExtraBold,
-                                                                color = if (isSelected) Color.White else Color(0xFF0F172A)
-                                                            )
+                                                            if (isUnseenNewGrade) {
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(50),
+                                                                    color = if (isSelected) Color(0xFFFBBF24) else Color(0xFF059669),
+                                                                    modifier = Modifier.graphicsLayer {
+                                                                        scaleX = newGradePulseScale * 0.92f
+                                                                        scaleY = newGradePulseScale * 0.92f
+                                                                        alpha = newGradePulseAlpha
+                                                                    }
+                                                                ) {
+                                                                    Text(
+                                                                        text = "جديد",
+                                                                        fontSize = 9.5.sp,
+                                                                        fontWeight = FontWeight.ExtraBold,
+                                                                        color = if (isSelected) Color(0xFF042F24) else Color.White,
+                                                                        maxLines = 1,
+                                                                        softWrap = false,
+                                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                                    )
+                                                                }
+                                                            } else if (isSingleOddRow) {
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(50),
+                                                                    color = when {
+                                                                        isSelected -> Color.White.copy(alpha = 0.16f)
+                                                                        hasRecorded -> Color(0xFFD1FAE5)
+                                                                        else -> Color(0xFFE2E8F0)
+                                                                    }
+                                                                ) {
+                                                                    Text(
+                                                                        text = if (hasRecorded) {
+                                                                            "السعي ${subjRecord.annualEffortScore}/${subjRecord.maxScoreScale}"
+                                                                        } else {
+                                                                            "بانتظار الرصد"
+                                                                        },
+                                                                        fontSize = 10.sp,
+                                                                        fontWeight = FontWeight.ExtraBold,
+                                                                        color = when {
+                                                                            isSelected -> Color(0xFFFDE68A)
+                                                                            hasRecorded -> Color(0xFF065F46)
+                                                                            else -> Color(0xFF475569)
+                                                                        },
+                                                                        maxLines = 1,
+                                                                        softWrap = false,
+                                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                                                    )
+                                                                }
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                if (rowSubjects.size == 1) {
-                                                    Spacer(modifier = Modifier.weight(1f))
                                                 }
                                             }
                                         }
@@ -3946,7 +4116,7 @@ fun ExamsAndGradesScreen(
                             }
                         }
 
-                        // المرحلة الثانية (ب): بطاقة استعراض درجات المادة المختارة (Selected Subject Interactive Grade Showcase)
+                        // المرحلة الثانية (ب): بطاقة استعراض درجات المادة المختارة بشكل منظّم وواضح مباشرةً أسفل اختيار المادة
                         selectedSubjectRecord?.let { g ->
                             item(key = "selected_subject_grade_showcase_${myStu.id}") {
                                 androidx.compose.animation.AnimatedContent(
@@ -3961,8 +4131,8 @@ fun ExamsAndGradesScreen(
                                     }
                                     val statusText = when {
                                         !hasRecorded -> "بانتظار رصد الدرجات"
-                                        !activeGrade.isAllExamsCompleted -> "مستمر (${activeGrade.ratingLabel})"
-                                        activeGrade.normalizedPercentage >= 50 -> "ناجح (${activeGrade.ratingLabel})"
+                                        !activeGrade.isAllExamsCompleted -> "مستمر • ${activeGrade.ratingLabel}"
+                                        activeGrade.normalizedPercentage >= 50 -> "ناجح • ${activeGrade.ratingLabel}"
                                         else -> "راسب"
                                     }
                                     val effortProgress = if (activeGrade.maxScoreScale > 0 && activeGrade.annualEffortScore > 0) {
@@ -3975,15 +4145,15 @@ fun ExamsAndGradesScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("selected_subject_grade_showcase_card"),
-                                        shape = RoundedCornerShape(22.dp),
+                                        shape = RoundedCornerShape(20.dp),
                                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                        border = BorderStroke(1.5.dp, Color(0xFF059669)),
-                                        elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
+                                        border = BorderStroke(1.3.dp, Color(0xFF059669).copy(alpha = 0.45f)),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                                     ) {
                                         Column(
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            // ترويسة زمردية متموجة تعرض الاسم الكامل للمادة دون أي اقتطاع مع حلقة تقدم دائرية
+                                            // ترويسة المادة المختارة مع حلقة التقدم الدائرية
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -4020,13 +4190,13 @@ fun ExamsAndGradesScreen(
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                                                        .padding(horizontal = 15.dp, vertical = 14.dp),
                                                     horizontalArrangement = Arrangement.SpaceBetween,
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
                                                     Column(
                                                         modifier = Modifier.weight(1f),
-                                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                        verticalArrangement = Arrangement.spacedBy(5.dp)
                                                     ) {
                                                         Surface(
                                                             shape = RoundedCornerShape(50),
@@ -4035,47 +4205,48 @@ fun ExamsAndGradesScreen(
                                                         ) {
                                                             Text(
                                                                 text = statusText,
-                                                                fontSize = 11.sp,
+                                                                fontSize = 10.5.sp,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 color = Color(0xFFFDE68A),
-                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                                                             )
                                                         }
 
                                                         Text(
-                                                            text = "المادة: ${activeGrade.subjectName}",
+                                                            text = activeGrade.subjectName,
                                                             style = MaterialTheme.typography.titleMedium,
-                                                            fontSize = 18.sp,
+                                                            fontSize = 17.sp,
                                                             fontWeight = FontWeight.ExtraBold,
                                                             color = Color.White
                                                         )
 
                                                         Text(
-                                                            text = "الدرجة العظمى للمادة من (${activeGrade.maxScoreScale}) • التقدير العام: ${if (hasRecorded) activeGrade.ratingLabel else "لم تُرصد بعد"}",
-                                                            fontSize = 12.sp,
-                                                            fontWeight = FontWeight.Bold,
+                                                            text = "الدرجة العظمى من (${activeGrade.maxScoreScale}) • التقدير: ${if (hasRecorded) activeGrade.ratingLabel else "لم يُرصد بعد"}",
+                                                            fontSize = 11.5.sp,
+                                                            fontWeight = FontWeight.SemiBold,
                                                             color = Color(0xFFA7F3D0)
                                                         )
                                                     }
 
-                                                    Spacer(modifier = Modifier.width(12.dp))
+                                                    Spacer(modifier = Modifier.width(10.dp))
 
-                                                    // حلقة دائرية تفاعلية للسعي الفصلي / المعدل
                                                     Box(
-                                                        modifier = Modifier.size(68.dp),
+                                                        modifier = Modifier.size(64.dp),
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Canvas(modifier = Modifier.fillMaxSize()) {
                                                             drawCircle(
                                                                 color = Color.White.copy(alpha = 0.16f),
-                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
+                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 5.5.dp.toPx(), cap = StrokeCap.Round)
                                                             )
                                                             drawArc(
                                                                 color = Color(0xFFFBBF24),
                                                                 startAngle = -90f,
                                                                 sweepAngle = 360f * effortProgress,
                                                                 useCenter = false,
-                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6.dp.toPx(), cap = StrokeCap.Round)
+                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 5.5.dp.toPx(), cap = StrokeCap.Round)
                                                             )
                                                         }
                                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -4085,13 +4256,13 @@ fun ExamsAndGradesScreen(
                                                                 } else {
                                                                     "—"
                                                                 },
-                                                                fontSize = 16.sp,
+                                                                fontSize = 15.sp,
                                                                 fontWeight = FontWeight.ExtraBold,
                                                                 color = Color(0xFFFDE68A)
                                                             )
                                                             Text(
                                                                 text = "من ${activeGrade.maxScoreScale}",
-                                                                fontSize = 9.5.sp,
+                                                                fontSize = 9.sp,
                                                                 fontWeight = FontWeight.Bold,
                                                                 color = Color.White.copy(alpha = 0.85f)
                                                             )
@@ -4106,7 +4277,7 @@ fun ExamsAndGradesScreen(
                                                     .padding(14.dp),
                                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
-                                                // ملخص السعي الفصلي والحالة
+                                                // ملخص السعي الفصلي والمعدل النهائي بارتفاع موحّد
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4115,12 +4286,16 @@ fun ExamsAndGradesScreen(
                                                         shape = RoundedCornerShape(12.dp),
                                                         color = Color(0xFFF0FDF4),
                                                         border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                                                        modifier = Modifier.weight(1f)
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(62.dp)
                                                     ) {
                                                         Column(
-                                                            modifier = Modifier.padding(10.dp),
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .padding(horizontal = 8.dp),
                                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                            verticalArrangement = Arrangement.Center
                                                         ) {
                                                             Text(
                                                                 text = "السعي الفصلي",
@@ -4128,15 +4303,18 @@ fun ExamsAndGradesScreen(
                                                                 fontWeight = FontWeight.Bold,
                                                                 color = Color(0xFF047857)
                                                             )
+                                                            Spacer(modifier = Modifier.height(2.dp))
                                                             Text(
                                                                 text = if (activeGrade.annualEffortScore > 0) {
                                                                     "${activeGrade.annualEffortScore} / ${activeGrade.maxScoreScale}"
                                                                 } else {
                                                                     "لم تُرصد بعد"
                                                                 },
-                                                                fontSize = 13.sp,
+                                                                fontSize = 13.5.sp,
                                                                 fontWeight = FontWeight.ExtraBold,
-                                                                color = Color(0xFF064E3B)
+                                                                color = Color(0xFF064E3B),
+                                                                maxLines = 1,
+                                                                softWrap = false
                                                             )
                                                         }
                                                     }
@@ -4145,108 +4323,127 @@ fun ExamsAndGradesScreen(
                                                         shape = RoundedCornerShape(12.dp),
                                                         color = Color(0xFFF0FDF4),
                                                         border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
-                                                        modifier = Modifier.weight(1f)
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(62.dp)
                                                     ) {
                                                         Column(
-                                                            modifier = Modifier.padding(10.dp),
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .padding(horizontal = 8.dp),
                                                             horizontalAlignment = Alignment.CenterHorizontally,
-                                                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                                                            verticalArrangement = Arrangement.Center
                                                         ) {
                                                             Text(
-                                                                text = "المعدل النهائي للمادة",
+                                                                text = "المعدل النهائي",
                                                                 fontSize = 11.sp,
                                                                 fontWeight = FontWeight.Bold,
                                                                 color = Color(0xFF047857)
                                                             )
+                                                            Spacer(modifier = Modifier.height(2.dp))
                                                             Text(
                                                                 text = if (activeGrade.isAllExamsCompleted && activeGrade.finalAverage > 0) {
                                                                     "${activeGrade.finalAverage} / ${activeGrade.maxScoreScale}"
                                                                 } else {
                                                                     "لم تُرصد بعد"
                                                                 },
-                                                                fontSize = 13.sp,
+                                                                fontSize = 13.5.sp,
                                                                 fontWeight = FontWeight.ExtraBold,
-                                                                color = statusColor
+                                                                color = statusColor,
+                                                                maxLines = 1,
+                                                                softWrap = false
                                                             )
                                                         }
                                                     }
                                                 }
 
-                                                // شبكة بطاقات الدرجات التفصيلية (تميز بوضوح بين الدرجة المرصودة وبين "لم تُرصد بعد")
+                                                // شبكة الدرجات التفصيلية المنظّمة (3 أعمدة متوازنة: الشهر 1، الشهر 2، نصف السنة / الشهري الإضافي، اليومي، النهائي)
                                                 val gradeItems = buildList {
-                                                    add(Triple("امتحان يومي 1", activeGrade.dailyScore, false))
-                                                    activeGrade.extraDailyScores.forEachIndexed { idx, sc ->
-                                                        add(Triple("امتحان يومي ${idx + 2}", sc, false))
-                                                    }
-                                                    add(Triple("امتحان شهر 1", activeGrade.month1Score, false))
-                                                    add(Triple("امتحان شهر 2", activeGrade.month2Score, false))
+                                                    add(Triple("الشهر 1", activeGrade.month1Score, false))
+                                                    add(Triple("الشهر 2", activeGrade.month2Score, false))
+                                                    add(Triple("نصف السنة", activeGrade.midYearScore, false))
                                                     activeGrade.extraMonthlyScores.forEachIndexed { idx, sc ->
-                                                        add(Triple("امتحان شهر ${idx + 3}", sc, false))
+                                                        add(Triple("الشهر ${idx + 3}", sc, false))
                                                     }
-                                                    add(Triple("امتحان نصف السنة", activeGrade.midYearScore, false))
-                                                    add(Triple("الامتحان النهائي", activeGrade.finalExamScore, false))
+                                                    add(Triple("يومي 1", activeGrade.dailyScore, false))
+                                                    activeGrade.extraDailyScores.forEachIndexed { idx, sc ->
+                                                        add(Triple("يومي ${idx + 2}", sc, false))
+                                                    }
+                                                    add(Triple("النهائي", activeGrade.finalExamScore, false))
                                                     add(Triple("السعي النهائي", activeGrade.annualEffortScore, true))
                                                 }
 
-                                                gradeItems.chunked(2).forEach { pair ->
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                    ) {
-                                                        pair.forEach { (title, scoreVal, isHighlighted) ->
-                                                            val isRecorded = scoreVal > 0
-                                                            Surface(
-                                                                modifier = Modifier.weight(1f),
-                                                                shape = RoundedCornerShape(14.dp),
-                                                                color = when {
-                                                                    isHighlighted && isRecorded -> Color(0xFF042F24)
-                                                                    isRecorded -> Color(0xFFECFDF5)
-                                                                    else -> Color(0xFFF8FAFC)
-                                                                },
-                                                                border = BorderStroke(
-                                                                    width = if (isHighlighted) 1.4.dp else 1.dp,
-                                                                    color = when {
-                                                                        isHighlighted && isRecorded -> Color(0xFFFBBF24)
-                                                                        isRecorded -> Color(0xFF10B981)
-                                                                        else -> Color(0xFFE2E8F0)
-                                                                    }
-                                                                )
-                                                            ) {
-                                                                Column(
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    gradeItems.chunked(3).forEach { rowItems ->
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            rowItems.forEach { (title, scoreVal, isHighlighted) ->
+                                                                val isRecorded = scoreVal > 0
+                                                                Surface(
                                                                     modifier = Modifier
-                                                                        .fillMaxWidth()
-                                                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                                        .weight(1f)
+                                                                        .height(68.dp),
+                                                                    shape = RoundedCornerShape(13.dp),
+                                                                    color = when {
+                                                                        isHighlighted && isRecorded -> Color(0xFF042F24)
+                                                                        isRecorded -> Color(0xFFECFDF5)
+                                                                        else -> Color(0xFFF8FAFC)
+                                                                    },
+                                                                    border = BorderStroke(
+                                                                        width = if (isHighlighted && isRecorded) 1.4.dp else 1.dp,
+                                                                        color = when {
+                                                                            isHighlighted && isRecorded -> Color(0xFFFBBF24)
+                                                                            isRecorded -> Color(0xFF10B981)
+                                                                            else -> Color(0xFFE2E8F0)
+                                                                        }
+                                                                    )
                                                                 ) {
-                                                                    Text(
-                                                                        text = title,
-                                                                        fontSize = 11.5.sp,
-                                                                        fontWeight = FontWeight.Bold,
-                                                                        color = when {
-                                                                            isHighlighted && isRecorded -> Color(0xFFFDE68A)
-                                                                            isRecorded -> Color(0xFF065F46)
-                                                                            else -> Color(0xFF64748B)
-                                                                        }
-                                                                    )
-                                                                    Text(
-                                                                        text = if (isRecorded) {
-                                                                            "$scoreVal / ${activeGrade.maxScoreScale}"
-                                                                        } else {
-                                                                            "لم تُرصد بعد"
-                                                                        },
-                                                                        fontSize = if (isRecorded) 15.sp else 12.sp,
-                                                                        fontWeight = FontWeight.ExtraBold,
-                                                                        color = when {
-                                                                            isHighlighted && isRecorded -> Color.White
-                                                                            isRecorded -> Color(0xFF047857)
-                                                                            else -> Color(0xFF94A3B8)
-                                                                        }
-                                                                    )
+                                                                    Column(
+                                                                        modifier = Modifier
+                                                                            .fillMaxSize()
+                                                                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                                        verticalArrangement = Arrangement.Center
+                                                                    ) {
+                                                                        Text(
+                                                                            text = title,
+                                                                            fontSize = 11.sp,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            color = when {
+                                                                                isHighlighted && isRecorded -> Color(0xFFFDE68A)
+                                                                                isRecorded -> Color(0xFF065F46)
+                                                                                else -> Color(0xFF64748B)
+                                                                            },
+                                                                            maxLines = 1,
+                                                                            overflow = TextOverflow.Ellipsis,
+                                                                            textAlign = TextAlign.Center
+                                                                        )
+                                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                                        Text(
+                                                                            text = if (isRecorded) {
+                                                                                "$scoreVal/${activeGrade.maxScoreScale}"
+                                                                            } else {
+                                                                                "لم تُرصد"
+                                                                            },
+                                                                            fontSize = if (isRecorded) 14.sp else 11.sp,
+                                                                            fontWeight = FontWeight.ExtraBold,
+                                                                            color = when {
+                                                                                isHighlighted && isRecorded -> Color.White
+                                                                                isRecorded -> Color(0xFF047857)
+                                                                                else -> Color(0xFF94A3B8)
+                                                                            },
+                                                                            maxLines = 1,
+                                                                            softWrap = false,
+                                                                            textAlign = TextAlign.Center
+                                                                        )
+                                                                    }
                                                                 }
                                                             }
-                                                        }
-                                                        if (pair.size == 1) {
-                                                            Spacer(modifier = Modifier.weight(1f))
                                                         }
                                                     }
                                                 }
@@ -5360,7 +5557,7 @@ fun ExamsAndGradesScreen(
                         leftPillText = schoolConfig.academicYear,
                         leftPillIcon = Icons.Filled.CalendarMonth,
                         customTrailingContent = {
-                            ExamsAccuracyLiveBoardHeaderWidget()
+                            OfficialExamsCountdownHeaderWidget()
                         }
                     )
                 }
@@ -5376,9 +5573,94 @@ fun ExamsAndGradesScreen(
                     }
                 }
 
+                if (scopedExams.isEmpty()) {
+                    item(key = "official_exams_empty_state") {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("official_exams_empty_state_card"),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFD1FAE5)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 30.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(68.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.size(62.dp),
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.2.dp, Color(0xFFA7F3D0))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.EventNote,
+                                                contentDescription = "جدول الامتحانات",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(30.dp)
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .size(24.dp),
+                                        shape = CircleShape,
+                                        color = Color(0xFFFFFBEB),
+                                        border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Schedule,
+                                                contentDescription = null,
+                                                tint = Color(0xFFD97706),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                ) {
+                                    Text(
+                                        text = "بانتظار اعتماد الجدول الرسمي",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Text(
+                                    text = "لا توجد امتحانات مجدولة حالياً • ستظهر المواعيد هنا فور اعتمادها من الإدارة",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF064E3B),
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 23.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
                 items(scopedExams, key = { it.id }) { ex ->
                     val daysRemaining = ex.daysRemainingUntilExam()
-                    val cleanExamIsoDate = ArabicTextNormalizer.normalizeDateIso(ex.examDate.trim())
+                    val cleanExamIsoDate = formatCleanDate(
+                        ArabicTextNormalizer.normalizeDateIso(ex.examDate.trim()).ifBlank { ex.examDate.trim() }
+                    )
                     val examScale = viewModel.getDefaultMaxScoreForClassAndSubject(ex.gradeClass, ex.subjectName)
                     val formattedExamDateLabel = listOf(ex.dayName.trim(), cleanExamIsoDate)
                         .filter { it.isNotEmpty() }
@@ -7650,6 +7932,218 @@ private fun ExamsAccuracyLiveBoardHeaderWidget(
         }
     }
 }
+
+/**
+ * وحدة زجاجية مصقولة لتبويب «مواعيد الامتحانات الرسمية» تعرض ساعة عدّ تنازلي هندسية رشيقة
+ * بنبض ذهبي هادئ مع تبدّل عبر Crossfade:
+ * ("جدول امتحانات واضح" ← "عدّ تنازلي ذكي" ← "استعدادٌ وتفوّق").
+ */
+@Composable
+private fun OfficialExamsCountdownHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "جدول امتحانات واضح",
+            "عدّ تنازلي ذكي",
+            "استعدادٌ وتفوّق"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2800L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "official_exams_countdown_clock")
+    val pulseFactor by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "countdown_gold_pulse"
+    )
+    val sweepFraction by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.88f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "countdown_arc_sweep"
+    )
+    val handRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 9000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "countdown_hand_rotation"
+    )
+
+    Surface(
+        modifier = modifier
+            .widthIn(min = 128.dp, max = 148.dp)
+            .testTag("official_exams_countdown_header_widget"),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val cx = w * 0.50f
+                val cy = h * 0.52f
+                val dialR = (minOf(w, h) * 0.37f)
+
+                // هالة نبض ذهبية هادئة خلف ساعة العد التنازلي
+                val haloR = dialR * (1.28f + 0.18f * pulseFactor)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = 0.26f + 0.16f * pulseFactor),
+                            Color(0xFFF59E0B).copy(alpha = 0.08f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = haloR
+                    ),
+                    radius = haloR,
+                    center = Offset(cx, cy)
+                )
+
+                // قرص الساعة الزجاجي الهندسي
+                drawCircle(
+                    color = Color(0xFF042F24).copy(alpha = 0.45f),
+                    radius = dialR,
+                    center = Offset(cx, cy)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.26f),
+                    radius = dialR,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.6.dp.toPx())
+                )
+
+                // قوس العدّ التنازلي الذهبي المتوهج
+                val arcTopLeft = Offset(cx - dialR, cy - dialR)
+                val arcSize = Size(dialR * 2f, dialR * 2f)
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A),
+                            Color(0xFFF59E0B),
+                            Color(0xFF34D399),
+                            Color(0xFFFDE68A)
+                        ),
+                        center = Offset(cx, cy)
+                    ),
+                    startAngle = -90f,
+                    sweepAngle = 360f * sweepFraction,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // التاج العلوي الصغير للساعة الهندسية
+                drawLine(
+                    color = Color(0xFFFDE68A).copy(alpha = 0.85f),
+                    start = Offset(cx - 4.dp.toPx(), cy - dialR - 3.5.dp.toPx()),
+                    end = Offset(cx + 4.dp.toPx(), cy - dialR - 3.5.dp.toPx()),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // 4 علامات ربعية دقيقة داخل المينا
+                for (i in 0 until 4) {
+                    val deg = i * 90.0
+                    val rad = deg * kotlin.math.PI / 180.0
+                    val rStart = dialR * 0.72f
+                    val rEnd = dialR * 0.88f
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.7f),
+                        start = Offset(
+                            cx + (rStart * kotlin.math.cos(rad)).toFloat(),
+                            cy + (rStart * kotlin.math.sin(rad)).toFloat()
+                        ),
+                        end = Offset(
+                            cx + (rEnd * kotlin.math.cos(rad)).toFloat(),
+                            cy + (rEnd * kotlin.math.sin(rad)).toFloat()
+                        ),
+                        strokeWidth = 1.3.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                // عقرب الساعات الثابت الرشيق
+                val hourRad = (-45.0) * kotlin.math.PI / 180.0
+                drawLine(
+                    color = Color.White.copy(alpha = 0.9f),
+                    start = Offset(cx, cy),
+                    end = Offset(
+                        cx + (dialR * 0.44f * kotlin.math.cos(hourRad)).toFloat(),
+                        cy + (dialR * 0.44f * kotlin.math.sin(hourRad)).toFloat()
+                    ),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // عقرب العدّ التنازلي الدوار الذهبي
+                val minRad = (handRotation - 90f) * kotlin.math.PI / 180.0
+                drawLine(
+                    color = Color(0xFFFDE68A),
+                    start = Offset(cx, cy),
+                    end = Offset(
+                        cx + (dialR * 0.64f * kotlin.math.cos(minRad)).toFloat(),
+                        cy + (dialR * 0.64f * kotlin.math.sin(minRad)).toFloat()
+                    ),
+                    strokeWidth = 1.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // نقطة المحور المركزية الذهبية
+                drawCircle(
+                    color = Color(0xFFFBBF24),
+                    radius = 2.5.dp.toPx(),
+                    center = Offset(cx, cy)
+                )
+            }
+
+            Crossfade(
+                targetState = phrases[phraseIndex],
+                animationSpec = tween(420),
+                label = "official_exams_countdown_phrase"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
 
 
 

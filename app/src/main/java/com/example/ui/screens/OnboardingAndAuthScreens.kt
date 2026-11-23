@@ -8,23 +8,36 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +67,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -61,14 +75,17 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
+import kotlin.math.absoluteValue
 import kotlin.math.cos
 import kotlin.math.sin
 import com.example.model.*
+import com.example.reading.ReadingMascotCanvas
 import com.example.ui.components.*
 import com.example.ui.theme.*
 import com.example.util.ExternalIntents
@@ -77,6 +94,7 @@ import com.example.viewmodel.SchoolViewModel
 
 data class OnboardingSlideData(
     val badge: String,
+    val badgeIcon: ImageVector,
     val title: String,
     val description: String,
     val highlights: List<String>
@@ -95,6 +113,7 @@ fun OnboardingScreen(
         listOf(
             OnboardingSlideData(
                 badge = "ميزة تعليمية حصرية",
+                badgeIcon = Icons.Filled.MenuBook,
                 title = "واحة القراءة الذكية",
                 description = "رحلة تفاعلية ممتعة لتعليم القراءة العربية بالطريقة المقطعية العراقية بأسلوب بصري وصوتي حيّ يناسب طلبتنا.",
                 highlights = listOf(
@@ -104,7 +123,8 @@ fun OnboardingScreen(
                 )
             ),
             OnboardingSlideData(
-                badge = "منصة مدرستي المتكاملة",
+                badge = "بيئة تعليمية متكاملة",
+                badgeIcon = Icons.Filled.VerifiedUser,
                 title = "منصة مدرستي الذكية بهوية عصرية",
                 description = "منصة رقمية شاملة تربط الأسرة التربوية، الكادر التدريسي، أولياء الأمور، والطلبة في بيئة تعليمية موحدة وآمنة.",
                 highlights = listOf(
@@ -114,9 +134,10 @@ fun OnboardingScreen(
                 )
             ),
             OnboardingSlideData(
-                badge = "المتابعة اليومية الدقيقة",
-                title = "رصد الحضور والواجبات والدرجات لحظياً",
-                description = "متابعة يومية دقيقة لسجل الحضور والغياب، جدول الحصص الأسبوعي، التحضير اليومي، وكشف الدرجات التفصيلي مع حساب السعي والمعدل تلقائياً.",
+                badge = "متابعة ذكية ومباشرة",
+                badgeIcon = Icons.Filled.Insights,
+                title = "رصد الحضور والواجبات والدرجات",
+                description = "متابعة يومية دقيقة لسجل الحضور والغياب، جدول الحصص الأسبوعي، التحضير اليومي، وكشف الدرجات التفصيلي مع حساب السعي تلقائياً.",
                 highlights = listOf(
                     "تنبيه فوري لولي الأمر عند تسجيل غياب أو تأخر",
                     "نشر الواجبات البيتية والتحضير اليومي لكل صف وشعبة",
@@ -124,9 +145,10 @@ fun OnboardingScreen(
                 )
             ),
             OnboardingSlideData(
-                badge = "مجتمع تفاعلي ومنصة تواصل",
+                badge = "تفاعل ومجتمع تربوي",
+                badgeIcon = Icons.Filled.Forum,
                 title = "مجتمع تفاعلي ومنصة تواصل اجتماعي تربوية",
-                description = "مساحة اجتماعية آمنة وراقية تجمع الطلبة والأساتذة لمشاركة الإبداعات العلمية والفنية، التفاعل الإيجابي، ومتابعة الفعاليات والأخبار المدرسية لحظة بلحظة.",
+                description = "مساحة اجتماعية آمنة وراقية تجمع الطلبة والأساتذة لمشاركة الإبداعات العلمية والفنية ومتابعة الفعاليات والأخبار المدرسية بشكل مباشر ومنظّم.",
                 highlights = listOf(
                     "منصة تواصل اجتماعي طلابية لمشاركة المواهب والمشاريع العلمية والفنية",
                     "تفاعل حي ومباشر (إعجاب، تعليقات، ومتابعة للإبداعات المدرسية)",
@@ -136,293 +158,1601 @@ fun OnboardingScreen(
         )
     }
 
-    var currentSlide by remember { mutableIntStateOf(0) }
+    val colorScheme = MaterialTheme.colorScheme
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { slides.size })
+    val coroutineScope = rememberCoroutineScope()
 
-    SoftWaveMeshBackground(isDarkMode = isDarkMode) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent
-        ) { innerPadding ->
-            Column(
+    BackHandler(enabled = pagerState.currentPage > 0) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("onboarding_full_screen_root")
+    ) {
+        // 1. خلفية حية بملء الشاشة بالكامل (Edge-to-Edge) بهالتين ضوئيتين زمردية وذهبية تتحركان ببطء شديد
+        OnboardingAtmosphericBackground(
+            isDarkMode = isDarkMode,
+            activePage = pagerState.currentPage,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 2. المحتوى الرئيسي المتكيف مع statusBarsPadding() و navigationBarsPadding()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            // الشريط العلوي العائم والشفاف (Floating Transparent Top Bar)
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .padding(horizontal = 18.dp, vertical = 12.dp)
-                    .verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top Bar: School Platform Capsule + Theme Toggle + Skip Capsule
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                // شعار المنصة (يظهر مرة واحدة فقط هنا بأناقة وبساطة)
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (isDarkMode) {
+                        colorScheme.primary.copy(alpha = 0.16f)
+                    } else {
+                        Color.White.copy(alpha = 0.78f)
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (isDarkMode) {
+                            colorScheme.primary.copy(alpha = 0.36f)
+                        } else {
+                            colorScheme.primary.copy(alpha = 0.24f)
+                        }
+                    )
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = Color(0xFF059669).copy(alpha = 0.14f),
-                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.45f))
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFF047857), Color(0xFF10B981))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.School,
                                 contentDescription = null,
-                                tint = Color(0xFF047857),
-                                modifier = Modifier.size(16.dp)
+                                tint = Color(0xFFFEF08A),
+                                modifier = Modifier.size(13.dp)
                             )
-                            Text(
-                                text = "منصة مدرستي الذكية",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF047857),
-                                maxLines = 1,
-                                softWrap = false
+                        }
+                        Text(
+                            text = "منصة مدرستي الذكية",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDarkMode) Color(0xFFECFDF5) else Color(0xFF065F46),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // اليسار: زر تبديل المظهر + زر "تخطي" الزجاجي الهادئ (يختفي بنعومة في الشريحة الأخيرة)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        onClick = onToggleDarkMode,
+                        shape = CircleShape,
+                        color = if (isDarkMode) {
+                            Color.White.copy(alpha = 0.10f)
+                        } else {
+                            Color.White.copy(alpha = 0.80f)
+                        },
+                        border = BorderStroke(
+                            1.dp,
+                            if (isDarkMode) {
+                                Color.White.copy(alpha = 0.18f)
+                            } else {
+                                colorScheme.primary.copy(alpha = 0.20f)
+                            }
+                        ),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("onboarding_theme_toggle")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                                contentDescription = "تبديل المظهر الليلي والنهاري",
+                                tint = if (isDarkMode) Color(0xFFFDE68A) else Color(0xFF047857),
+                                modifier = Modifier.size(19.dp)
                             )
                         }
                     }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    AnimatedVisibility(
+                        visible = pagerState.currentPage < slides.lastIndex,
+                        enter = fadeIn(tween(260)) + scaleIn(tween(260), initialScale = 0.90f),
+                        exit = fadeOut(tween(220)) + scaleOut(tween(220), targetScale = 0.90f)
                     ) {
                         Surface(
-                            onClick = onToggleDarkMode,
-                            shape = CircleShape,
-                            color = if (isDarkMode) Color(0xFF1E293B) else Color.White,
-                            border = BorderStroke(1.dp, if (isDarkMode) Color(0xFF334155) else Color(0xFFE2E8F0)),
-                            shadowElevation = 3.dp,
+                            onClick = onFinishOnboarding,
+                            shape = RoundedCornerShape(50),
+                            color = if (isDarkMode) {
+                                Color.White.copy(alpha = 0.10f)
+                            } else {
+                                Color.White.copy(alpha = 0.78f)
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (isDarkMode) {
+                                    Color.White.copy(alpha = 0.18f)
+                                } else {
+                                    colorScheme.primary.copy(alpha = 0.22f)
+                                }
+                            ),
                             modifier = Modifier
-                                .size(36.dp)
-                                .testTag("onboarding_theme_toggle")
+                                .height(40.dp)
+                                .testTag("skip_onboarding_button")
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "تخطي",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDarkMode) Color(0xFFD1FAE5) else Color(0xFF065F46),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                                 Icon(
-                                    imageVector = if (isDarkMode) Icons.Filled.LightMode else Icons.Filled.DarkMode,
-                                    contentDescription = "تبديل الوضع الليلي والنهاري",
-                                    tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
-                                    modifier = Modifier.size(18.dp)
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "تخطي",
+                                    tint = if (isDarkMode) Color(0xFF6EE7B7) else Color(0xFF059669),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // محتوى الشرائح داخل HorizontalPager مع حركة Parallax انسيابية
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .testTag("onboarding_pager"),
+                beyondViewportPageCount = 1
+            ) { pageIndex ->
+                val slide = slides[pageIndex]
+                val pageOffset = (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                val absOffset = pageOffset.absoluteValue.coerceIn(0f, 1f)
+
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .widthIn(max = 560.dp)
+                        .padding(horizontal = 20.dp)
+                ) {
+                    val isCompactHeight = maxHeight < 520.dp
+                    val stageDiameter = (maxHeight * 0.34f).coerceIn(156.dp, 192.dp)
+
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // القسم العلوي: مسرح الأنيميشن الزجاجي المركزي (~40% من الارتفاع)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(0.41f)
+                                .graphicsLayer {
+                                    translationX = pageOffset * 46f
+                                    val scale = 1f - (absOffset * 0.09f)
+                                    scaleX = scale
+                                    scaleY = scale
+                                    alpha = 1f - (absOffset * 0.30f)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when (pageIndex) {
+                                0 -> OnboardingReadingOasisStage(
+                                    size = stageDiameter,
+                                    isDarkMode = isDarkMode
+                                )
+                                1 -> OnboardingUnifiedEcosystemStage(
+                                    size = stageDiameter,
+                                    isDarkMode = isDarkMode
+                                )
+                                2 -> OnboardingSmartTrackingStage(
+                                    size = stageDiameter,
+                                    isDarkMode = isDarkMode
+                                )
+                                else -> OnboardingSocialCommunityStage(
+                                    size = stageDiameter,
+                                    isDarkMode = isDarkMode
                                 )
                             }
                         }
 
-                        if (currentSlide < slides.lastIndex) {
+                        // القسم السفلي: المحتوى التحريري المنظّم (~59% من الارتفاع بدون صندوق أبيض ثقيل)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(0.59f)
+                                .graphicsLayer {
+                                    translationX = pageOffset * 20f
+                                    alpha = 1f - (absOffset * 0.22f)
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 8.dp else 10.dp)
+                        ) {
+                            // شارة كبسولية واحدة فقط واضحة وكاملة بدون أي اقتطاع
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = Color.White,
-                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                                shadowElevation = 2.dp,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable { onFinishOnboarding() }
-                                    .testTag("skip_onboarding_button")
+                                color = if (isDarkMode) {
+                                    colorScheme.primary.copy(alpha = 0.20f)
+                                } else {
+                                    colorScheme.primary.copy(alpha = 0.11f)
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isDarkMode) {
+                                        Color(0xFFFDE68A).copy(alpha = 0.42f)
+                                    } else {
+                                        colorScheme.primary.copy(alpha = 0.28f)
+                                    }
+                                )
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.FastForward,
-                                        contentDescription = "تخطي",
-                                        tint = Color(0xFF0F3D5E),
-                                        modifier = Modifier.size(15.dp)
+                                        imageVector = slide.badgeIcon,
+                                        contentDescription = null,
+                                        tint = if (isDarkMode) Color(0xFFFDE68A) else Color(0xFF047857),
+                                        modifier = Modifier.size(14.dp)
                                     )
                                     Text(
-                                        text = "تخطي",
+                                        text = slide.badge,
                                         fontSize = 11.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF0F3D5E),
+                                        color = if (isDarkMode) Color(0xFFFDE68A) else Color(0xFF065F46),
                                         maxLines = 1,
                                         softWrap = false
                                     )
                                 }
                             }
-                        }
-                    }
-                }
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                AnimatedContent(
-                    targetState = currentSlide,
-                    label = "onboarding_slide_transition"
-                ) { index ->
-                    val slide = slides[index]
-                    val slideIllustration = when (index) {
-                        0 -> ThreeDIllustrationType.READING_OASIS_BOOK
-                        1 -> ThreeDIllustrationType.BOOKS_GRADUATION_CAP
-                        2 -> ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK
-                        else -> ThreeDIllustrationType.SOCIAL_COMMUNITY_3D
-                    }
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        // 3D Seamless Wave Hero Section for the active Onboarding Slide
-                        ThreeDHeroHeaderCard(
-                            title = slide.title,
-                            subtitle = slide.description,
-                            rightPillText = if (index == 0) slide.badge else "",
-                            rightPillIcon = if (index == 0) Icons.Filled.AutoAwesome else Icons.Filled.School,
-                            leftPillText = "منصة مدرستي الذكية",
-                            leftPillIcon = Icons.Filled.VerifiedUser,
-                            illustrationType = slideIllustration
-                        )
-
-                        // 3D Glassmorphic Highlights Card
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .shadow(
-                                    elevation = 10.dp,
-                                    shape = RoundedCornerShape(24.dp),
-                                    ambientColor = Color(0xFF059669).copy(alpha = 0.16f),
-                                    spotColor = Color(0xFF0F3D5E).copy(alpha = 0.18f)
+                            // العنوان الرئيسي بخط عريض وواضح
+                            Text(
+                                text = slide.title,
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontSize = if (isCompactHeight) 19.sp else 21.sp,
+                                    lineHeight = if (isCompactHeight) 25.sp else 28.sp
                                 ),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isDarkMode) Color(0xFF1E293B) else Color.White
-                            ),
-                            border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
-                        ) {
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDarkMode) Color(0xFFF8FAFC) else Color(0xFF063A2C),
+                                textAlign = TextAlign.Center,
+                                maxLines = 2
+                            )
+
+                            // وصف موجز مريح للعين
+                            Text(
+                                text = slide.description,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = if (isCompactHeight) 12.sp else 13.sp,
+                                    lineHeight = if (isCompactHeight) 18.sp else 19.5.sp
+                                ),
+                                fontWeight = FontWeight.Medium,
+                                color = if (isDarkMode) Color(0xFFA7F3D0).copy(alpha = 0.86f) else Color(0xFF3F5B50),
+                                textAlign = TextAlign.Center,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(if (isCompactHeight) 2.dp else 4.dp))
+
+                            // قائمة المميزات الثلاث الخفيفة المدمجة بكبسولات زجاجية رقيقة بدون صندوق أبيض ثقيل
                             Column(
-                                modifier = Modifier.padding(18.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(if (isCompactHeight) 6.dp else 8.dp)
                             ) {
                                 slide.highlights.forEach { point ->
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = if (isDarkMode) {
+                                            Color.White.copy(alpha = 0.06f)
+                                        } else {
+                                            Color.White.copy(alpha = 0.68f)
+                                        },
+                                        border = BorderStroke(
+                                            width = 0.9.dp,
+                                            color = if (isDarkMode) {
+                                                Color(0xFF34D399).copy(alpha = 0.20f)
+                                            } else {
+                                                Color(0xFF10B981).copy(alpha = 0.18f)
+                                            }
+                                        )
                                     ) {
-                                        Surface(
-                                            shape = CircleShape,
-                                            color = Color(0xFFD1FAE5),
-                                            modifier = Modifier.size(30.dp)
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(
+                                                    horizontal = 12.dp,
+                                                    vertical = if (isCompactHeight) 7.dp else 9.dp
+                                                ),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                        if (isDarkMode) {
+                                                            Color(0xFF059669).copy(alpha = 0.28f)
+                                                        } else {
+                                                            Color(0xFFD1FAE5)
+                                                        }
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
                                                 Icon(
                                                     imageVector = Icons.Filled.CheckCircle,
                                                     contentDescription = null,
-                                                    tint = Color(0xFF059669),
-                                                    modifier = Modifier.size(18.dp)
+                                                    tint = if (isDarkMode) Color(0xFF34D399) else Color(0xFF059669),
+                                                    modifier = Modifier.size(15.dp)
                                                 )
                                             }
+                                            Text(
+                                                text = point,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontSize = if (isCompactHeight) 11.5.sp else 12.5.sp,
+                                                    lineHeight = if (isCompactHeight) 16.sp else 17.5.sp
+                                                ),
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isDarkMode) Color(0xFFECFDF5) else Color(0xFF0F2E24),
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
                                         }
-                                        Text(
-                                            text = point,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isDarkMode) Color.White else Color(0xFF0F172A)
-                                        )
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxWidth()
+            // شريط التنقل السفلي العائم (Bottom Action Dock)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // مؤشر الشرائح الأربع بتمدد سلس عبر animateDpAsState
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        slides.indices.forEach { idx ->
-                            val active = idx == currentSlide
-                            Box(
-                                modifier = Modifier
-                                    .height(9.dp)
-                                    .width(if (active) 32.dp else 10.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (active) Color(0xFF059669)
-                                        else Color(0xFF94A3B8).copy(alpha = 0.45f)
-                                    )
-                                    .clickable { currentSlide = idx }
-                            )
-                        }
+                    slides.indices.forEach { idx ->
+                        val isActive = idx == pagerState.currentPage
+                        val pillWidth by animateDpAsState(
+                            targetValue = if (isActive) 30.dp else 8.dp,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "onboarding_dot_width_$idx"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .height(8.dp)
+                                .width(pillWidth)
+                                .clip(CircleShape)
+                                .background(
+                                    if (isActive) {
+                                        Brush.horizontalGradient(
+                                            colors = listOf(Color(0xFF059669), Color(0xFFF59E0B))
+                                        )
+                                    } else {
+                                        Brush.horizontalGradient(
+                                            colors = listOf(
+                                                if (isDarkMode) Color.White.copy(alpha = 0.24f) else Color(0xFF065F46).copy(alpha = 0.22f),
+                                                if (isDarkMode) Color.White.copy(alpha = 0.24f) else Color(0xFF065F46).copy(alpha = 0.22f)
+                                            )
+                                        )
+                                    }
+                                )
+                                .clickable {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(idx)
+                                    }
+                                }
+                        )
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                // صف الأزرار المتوازن بارتداد Spring مرن
+                val isLastSlide = pagerState.currentPage == slides.lastIndex
+                val primaryInteraction = remember { MutableInteractionSource() }
+                val isPrimaryPressed by primaryInteraction.collectIsPressedAsState()
+                val primaryScale by animateFloatAsState(
+                    targetValue = if (isPrimaryPressed) 0.96f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    ),
+                    label = "onboarding_primary_btn_scale"
+                )
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                val prevInteraction = remember { MutableInteractionSource() }
+                val isPrevPressed by prevInteraction.collectIsPressedAsState()
+                val prevScale by animateFloatAsState(
+                    targetValue = if (isPrevPressed) 0.96f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    ),
+                    label = "onboarding_prev_btn_scale"
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AnimatedVisibility(
+                        visible = pagerState.currentPage > 0,
+                        enter = fadeIn(tween(240)) + scaleIn(tween(240), initialScale = 0.92f),
+                        exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.92f)
                     ) {
-                        if (currentSlide > 0) {
-                            OutlinedButton(
-                                onClick = { currentSlide-- },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 50.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.4.dp, Color(0xFF059669))
+                        Surface(
+                            onClick = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage((pagerState.currentPage - 1).coerceAtLeast(0))
+                                }
+                            },
+                            interactionSource = prevInteraction,
+                            shape = RoundedCornerShape(16.dp),
+                            color = if (isDarkMode) {
+                                Color.White.copy(alpha = 0.08f)
+                            } else {
+                                Color.White.copy(alpha = 0.82f)
+                            },
+                            border = BorderStroke(
+                                1.2.dp,
+                                if (isDarkMode) {
+                                    Color(0xFF34D399).copy(alpha = 0.40f)
+                                } else {
+                                    Color(0xFF059669).copy(alpha = 0.35f)
+                                }
+                            ),
+                            modifier = Modifier
+                                .height(52.dp)
+                                .widthIn(min = 108.dp)
+                                .graphicsLayer {
+                                    scaleX = prevScale
+                                    scaleY = prevScale
+                                }
+                                .testTag("onboarding_prev_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "السابق",
-                                    tint = Color(0xFF047857),
+                                    tint = if (isDarkMode) Color(0xFF6EE7B7) else Color(0xFF047857),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = "السابق",
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = Color(0xFF047857),
+                                    color = if (isDarkMode) Color(0xFFECFDF5) else Color(0xFF047857),
                                     fontWeight = FontWeight.ExtraBold,
                                     maxLines = 1,
                                     softWrap = false
                                 )
                             }
                         }
-
-                        Button(
-                            onClick = {
-                                if (currentSlide < slides.lastIndex) {
-                                    currentSlide++
-                                } else {
-                                    onFinishOnboarding()
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(if (currentSlide > 0) 1.5f else 1f)
-                                .heightIn(min = 50.dp)
-                                .testTag("start_now_button"),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF059669),
-                                contentColor = Color.White
-                            ),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "البدء الآن",
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (currentSlide == slides.lastIndex) "البدء الآن" else "التالي",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        onClick = {
+                            if (pagerState.currentPage < slides.lastIndex) {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                }
+                            } else {
+                                onFinishOnboarding()
+                            }
+                        },
+                        interactionSource = primaryInteraction,
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.Transparent,
+                        border = if (isLastSlide) {
+                            BorderStroke(1.3.dp, Color(0xFFFDE68A).copy(alpha = 0.85f))
+                        } else {
+                            BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.45f))
+                        },
+                        shadowElevation = if (isLastSlide) 8.dp else 5.dp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .graphicsLayer {
+                                scaleX = primaryScale
+                                scaleY = primaryScale
+                            }
+                            .testTag("start_now_button")
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    if (isLastSlide) {
+                                        Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF044E3B),
+                                                Color(0xFF059669),
+                                                Color(0xFF0D9488)
+                                            )
+                                        )
+                                    } else {
+                                        Brush.horizontalGradient(
+                                            colors = listOf(
+                                                Color(0xFF047857),
+                                                Color(0xFF059669)
+                                            )
+                                        )
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text(
+                                    text = if (isLastSlide) "البدء الآن" else "التالي",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = if (isLastSlide) "البدء الآن" else "التالي",
+                                    tint = if (isLastSlide) Color(0xFFFDE68A) else Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * خلفية حية بملء الشاشة بالكامل (Edge-to-Edge) متوافقة مع الوضعين الفاتح والداكن،
+ * ترسم تدرجاً زمردياً/عاجياً نقياً مع هالتين ضوئيتين زمردية وذهبية تتحركان ببطء وهدوء عبر Compose Canvas.
+ */
+@Composable
+private fun OnboardingAtmosphericBackground(
+    isDarkMode: Boolean,
+    activePage: Int,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val driftTransition = rememberInfiniteTransition(label = "onboarding_ambient_halos")
+    val emeraldDrift by driftTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 15000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "onboarding_emerald_halo_drift"
+    )
+    val goldDrift by driftTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 19000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "onboarding_gold_halo_drift"
+    )
+    val pageTintShift by animateFloatAsState(
+        targetValue = activePage * 0.06f,
+        animationSpec = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+        label = "onboarding_page_tint_shift"
+    )
+
+    val bgGradient = if (isDarkMode) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF041D16),
+                Color(0xFF06281F),
+                colorScheme.background
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFFE3F7EE),
+                Color(0xFFF4FBF7),
+                Color(0xFFFCFDFB)
+            )
+        )
+    }
+
+    Box(
+        modifier = modifier.background(bgGradient)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+
+            // هالة ضوئية زمردية تتحرك ببطء في النصف العلوي
+            val emeraldCx = w * (0.68f - pageTintShift) + (w * 0.08f * cos(emeraldDrift.toDouble()).toFloat())
+            val emeraldCy = h * 0.19f + (h * 0.035f * sin(emeraldDrift.toDouble()).toFloat())
+            val emeraldR = w * 0.68f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        if (isDarkMode) Color(0xFF10B981).copy(alpha = 0.24f) else Color(0xFF10B981).copy(alpha = 0.20f),
+                        if (isDarkMode) Color(0xFF047857).copy(alpha = 0.09f) else Color(0xFF34D399).copy(alpha = 0.07f),
+                        Color.Transparent
+                    ),
+                    center = Offset(emeraldCx, emeraldCy),
+                    radius = emeraldR
+                ),
+                radius = emeraldR,
+                center = Offset(emeraldCx, emeraldCy)
+            )
+
+            // هالة ضوئية ذهبية دافئة تتحرك ببطء في الجانب المقابل
+            val goldCx = w * (0.24f + pageTintShift) + (w * 0.07f * sin(goldDrift.toDouble()).toFloat())
+            val goldCy = h * 0.34f + (h * 0.04f * cos(goldDrift.toDouble()).toFloat())
+            val goldR = w * 0.56f
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        if (isDarkMode) Color(0xFFF59E0B).copy(alpha = 0.16f) else Color(0xFFFBBF24).copy(alpha = 0.17f),
+                        if (isDarkMode) Color(0xFFFDE68A).copy(alpha = 0.05f) else Color(0xFFFEF08A).copy(alpha = 0.07f),
+                        Color.Transparent
+                    ),
+                    center = Offset(goldCx, goldCy),
+                    radius = goldR
+                ),
+                radius = goldR,
+                center = Offset(goldCx, goldCy)
+            )
+
+            // حلقة هندسية خفيفة جداً حول المسرح العلوي لإبراز العمق الزجاجي
+            val ringCenter = Offset(w * 0.50f, h * 0.28f)
+            drawCircle(
+                color = if (isDarkMode) Color(0xFF34D399).copy(alpha = 0.06f) else Color(0xFF059669).copy(alpha = 0.05f),
+                radius = w * 0.42f,
+                center = ringCenter,
+                style = Stroke(width = 1.dp.toPx())
+            )
+            drawCircle(
+                color = if (isDarkMode) Color(0xFFFDE68A).copy(alpha = 0.05f) else Color(0xFFD97706).copy(alpha = 0.045f),
+                radius = w * 0.31f,
+                center = ringCenter,
+                style = Stroke(width = 1.dp.toPx())
+            )
+        }
+    }
+}
+
+/**
+ * إطار المسرح الزجاجي المركزي الفاخر (~176.dp - 192.dp) بحلقة ضوئية خفيفة ولمعة زجاجية متزنة.
+ */
+@Composable
+private fun OnboardingGlassStageFrame(
+    size: Dp,
+    isDarkMode: Boolean,
+    testTagName: String,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val glowTransition = rememberInfiniteTransition(label = "stage_glow_$testTagName")
+    val haloScale by glowTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "stage_halo_scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(size + 28.dp)
+            .testTag(testTagName),
+        contentAlignment = Alignment.Center
+    ) {
+        // حلقة ضوئية خلفية ناعمة محيطة بالمسرح الزجاجي
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val c = Offset(this.size.width / 2f, this.size.height / 2f)
+            val r = (this.size.minDimension / 2f) * haloScale
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        if (isDarkMode) Color(0xFF10B981).copy(alpha = 0.28f) else Color(0xFF059669).copy(alpha = 0.22f),
+                        if (isDarkMode) Color(0xFFFDE68A).copy(alpha = 0.12f) else Color(0xFFFBBF24).copy(alpha = 0.14f),
+                        Color.Transparent
+                    ),
+                    center = c,
+                    radius = r
+                ),
+                radius = r,
+                center = c
+            )
+            drawCircle(
+                color = if (isDarkMode) Color(0xFF6EE7B7).copy(alpha = 0.22f) else Color(0xFF059669).copy(alpha = 0.18f),
+                radius = this.size.minDimension * 0.455f,
+                center = c,
+                style = Stroke(width = 1.2.dp.toPx())
+            )
+        }
+
+        // الجسم الزجاجي المصقول للمسرح
+        Surface(
+            modifier = Modifier
+                .size(size)
+                .shadow(
+                    elevation = 14.dp,
+                    shape = RoundedCornerShape(34.dp),
+                    ambientColor = Color(0xFF059669).copy(alpha = 0.28f),
+                    spotColor = Color(0xFF042F24).copy(alpha = 0.30f)
+                ),
+            shape = RoundedCornerShape(34.dp),
+            color = Color.Transparent,
+            border = BorderStroke(
+                width = 1.4.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFFFDE68A).copy(alpha = 0.72f),
+                        Color.White.copy(alpha = 0.42f),
+                        Color(0xFF34D399).copy(alpha = 0.60f)
+                    )
+                )
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = if (isDarkMode) {
+                                listOf(
+                                    Color(0xFF06372A),
+                                    Color(0xFF054B39),
+                                    Color(0xFF065F46)
+                                )
+                            } else {
+                                listOf(
+                                    Color(0xFF043B2C),
+                                    Color(0xFF065F46),
+                                    Color(0xFF059669)
+                                )
+                            }
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                // لمعة زجاجية قطرية ناعمة في أعلى المسرح
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.18f),
+                                Color.Transparent
+                            ),
+                            center = Offset(this.size.width * 0.24f, this.size.height * 0.18f),
+                            radius = this.size.width * 0.62f
+                        ),
+                        radius = this.size.width * 0.62f,
+                        center = Offset(this.size.width * 0.24f, this.size.height * 0.18f)
+                    )
+                }
+                content()
+            }
+        }
+    }
+}
+
+/**
+ * الشريحة 1 — مسرح «واحة القراءة الذكية»:
+ * يستدعي مباشرةً أنيميشن فصيح الحي من شاشة واحة القراءة الذكية (ReadingMascotCanvas)
+ * داخل إطار زجاجي هادئ محاط بحلقة هندسية ناعمة وشريط هوية مصغّر.
+ */
+@Composable
+private fun OnboardingReadingOasisStage(
+    size: Dp,
+    isDarkMode: Boolean
+) {
+    val ringTransition = rememberInfiniteTransition(label = "oasis_stage_ring")
+    val ringAlpha by ringTransition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.52f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "oasis_ring_alpha"
+    )
+
+    OnboardingGlassStageFrame(
+        size = size,
+        isDarkMode = isDarkMode,
+        testTagName = "onboarding_stage_reading_oasis"
+    ) {
+        // حلقة مدارية هندسية رقيقة وهادئة خلف فصيح (بدون أي نجمات متناثرة)
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val c = Offset(this.size.width * 0.50f, this.size.height * 0.44f)
+            val r = this.size.minDimension * 0.37f
+            drawCircle(
+                color = Color(0xFF6EE7B7).copy(alpha = ringAlpha * 0.65f),
+                radius = r,
+                center = c,
+                style = Stroke(width = 1.2.dp.toPx())
+            )
+            drawCircle(
+                color = Color(0xFFFDE68A).copy(alpha = ringAlpha * 0.45f),
+                radius = r * 0.82f,
+                center = c,
+                style = Stroke(width = 1.dp.toPx())
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            ReadingMascotCanvas(
+                modifier = Modifier.size(size * 0.66f),
+                isCelebrating = true
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White.copy(alpha = 0.16f),
+                border = BorderStroke(0.9.dp, Color(0xFFFDE68A).copy(alpha = 0.55f))
+            ) {
+                Text(
+                    text = "تعلّم بصوت وصورة حيّة",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFFFEF9C3),
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * الشريحة 2 — مسرح «منصة مدرستي الذكية بهوية عصرية»:
+ * درع/مركز اتصال مدرسي هندسي تترابط حوله 4 نقاط ضوئية زمردية وذهبية بخطوط ناعمة تنبض بهدوء،
+ * وأسفله شريط دقيق يتبدل عبر Crossfade بين:
+ * ("الإدارة • الكادر • ولي الأمر • الطالب" ← "بيئة رقمية موحّدة وآمنة").
+ */
+@Composable
+private fun OnboardingUnifiedEcosystemStage(
+    size: Dp,
+    isDarkMode: Boolean
+) {
+    val phrases = remember {
+        listOf(
+            "الإدارة • الكادر • ولي الأمر • الطالب",
+            "بيئة رقمية موحّدة وآمنة"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2800L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val transition = rememberInfiniteTransition(label = "onboarding_ecosystem_hub")
+    val signalProgress by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ecosystem_signal_pulse"
+    )
+    val nodePulse by transition.animateFloat(
+        initialValue = 0.78f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ecosystem_node_pulse"
+    )
+
+    OnboardingGlassStageFrame(
+        size = size,
+        isDarkMode = isDarkMode,
+        testTagName = "onboarding_stage_unified_ecosystem"
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                val w = this.size.width
+                val h = this.size.height
+                val cx = w * 0.50f
+                val cy = h * 0.50f
+                val orbitRx = w * 0.36f
+                val orbitRy = h * 0.34f
+
+                val nodes = listOf(
+                    Offset(cx - orbitRx, cy - orbitRy * 0.85f),
+                    Offset(cx + orbitRx, cy - orbitRy * 0.85f),
+                    Offset(cx + orbitRx, cy + orbitRy * 0.85f),
+                    Offset(cx - orbitRx, cy + orbitRy * 0.85f)
+                )
+
+                // حلقة ربط ناعمة بين النقاط الأربع
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.14f),
+                    radius = minOf(orbitRx, orbitRy) * 1.12f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.1.dp.toPx())
+                )
+
+                // خطوط الترابط بين المركز والنقاط الضوئية الأربع + نبضة ضوئية تسير عليها
+                nodes.forEachIndexed { idx, node ->
+                    val isGoldNode = idx % 2 == 1
+                    val lineColor = if (isGoldNode) Color(0xFFFDE68A) else Color(0xFF6EE7B7)
+                    drawLine(
+                        color = lineColor.copy(alpha = 0.42f),
+                        start = Offset(cx, cy),
+                        end = node,
+                        strokeWidth = 1.4.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+
+                    // نبضة متحركة من المركز نحو كل نقطة
+                    val t = ((signalProgress + idx * 0.25f) % 1f)
+                    val px = cx + (node.x - cx) * t
+                    val py = cy + (node.y - cy) * t
+                    drawCircle(
+                        color = lineColor.copy(alpha = (1f - t) * 0.92f),
+                        radius = 3.dp.toPx(),
+                        center = Offset(px, py)
+                    )
+
+                    // هالة النقطة الضوئية
+                    drawCircle(
+                        color = lineColor.copy(alpha = 0.22f),
+                        radius = 10.dp.toPx() * nodePulse,
+                        center = node
+                    )
+                    drawCircle(
+                        color = lineColor,
+                        radius = 4.8.dp.toPx(),
+                        center = node
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = 2.dp.toPx(),
+                        center = node
+                    )
+                }
+
+                // الدرع المدرسي الهندسي المركزي
+                val shieldW = minOf(w, h) * 0.36f
+                val shieldH = minOf(w, h) * 0.42f
+                val shieldPath = Path().apply {
+                    moveTo(cx, cy - shieldH * 0.56f)
+                    lineTo(cx + shieldW * 0.54f, cy - shieldH * 0.32f)
+                    lineTo(cx + shieldW * 0.48f, cy + shieldH * 0.16f)
+                    quadraticTo(cx + shieldW * 0.32f, cy + shieldH * 0.46f, cx, cy + shieldH * 0.58f)
+                    quadraticTo(cx - shieldW * 0.32f, cy + shieldH * 0.46f, cx - shieldW * 0.48f, cy + shieldH * 0.16f)
+                    lineTo(cx - shieldW * 0.54f, cy - shieldH * 0.32f)
+                    close()
+                }
+                drawPath(
+                    path = shieldPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF10B981).copy(alpha = 0.62f),
+                            Color(0xFF042F24).copy(alpha = 0.85f)
+                        ),
+                        startY = cy - shieldH * 0.56f,
+                        endY = cy + shieldH * 0.58f
+                    )
+                )
+                drawPath(
+                    path = shieldPath,
+                    color = Color(0xFFFDE68A),
+                    style = Stroke(width = 1.8.dp.toPx(), join = StrokeJoin.Round)
+                )
+
+                // علامة توثيق هندسية ذهبية داخل الدرع
+                val checkPath = Path().apply {
+                    moveTo(cx - shieldW * 0.18f, cy + shieldH * 0.02f)
+                    lineTo(cx - shieldW * 0.03f, cy + shieldH * 0.17f)
+                    lineTo(cx + shieldW * 0.22f, cy - shieldH * 0.13f)
+                }
+                drawPath(
+                    path = checkPath,
+                    color = Color(0xFFFEF08A),
+                    style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+            }
+
+            // شريط دقيق يتبدل عبر Crossfade
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White.copy(alpha = 0.15f),
+                border = BorderStroke(0.9.dp, Color.White.copy(alpha = 0.28f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Crossfade(
+                    targetState = phrases[phraseIndex],
+                    animationSpec = tween(420),
+                    label = "onboarding_ecosystem_phrase"
+                ) { phrase ->
+                    Text(
+                        text = phrase,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFFEF9C3),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * الشريحة 3 — مسرح «رصد الحضور والواجبات والدرجات»:
+ * وحدة مؤشرات زجاجية مصقولة بـ Compose Canvas تجمع حلقة حضور مصغّرة ومنحنى درجات متصاعد
+ * بلمعة ذهبية هادئة، تتبدّل عباراتها بنعومة بين ("حضورٌ منتظم" ← "واجبات يومية" ← "كشف درجات دقيق").
+ */
+@Composable
+private fun OnboardingSmartTrackingStage(
+    size: Dp,
+    isDarkMode: Boolean
+) {
+    val phrases = remember {
+        listOf(
+            "حضورٌ منتظم",
+            "واجبات يومية",
+            "كشف درجات دقيق"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2500L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val transition = rememberInfiniteTransition(label = "onboarding_tracking_stage")
+    val ringSweep by transition.animateFloat(
+        initialValue = 235f,
+        targetValue = 325f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "tracking_ring_sweep"
+    )
+    val curvePulse by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "tracking_curve_gleam"
+    )
+
+    OnboardingGlassStageFrame(
+        size = size,
+        isDarkMode = isDarkMode,
+        testTagName = "onboarding_stage_smart_tracking"
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                val w = this.size.width
+                val h = this.size.height
+
+                // 1) حلقة حضور مصغّرة في الجهة اليسرى/الأولى
+                val ringCx = w * 0.27f
+                val ringCy = h * 0.48f
+                val ringR = minOf(w, h) * 0.22f
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.16f),
+                    radius = ringR,
+                    center = Offset(ringCx, ringCy),
+                    style = Stroke(width = 4.5.dp.toPx(), cap = StrokeCap.Round)
+                )
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        colors = listOf(
+                            Color(0xFF34D399),
+                            Color(0xFFFDE68A),
+                            Color(0xFFF59E0B),
+                            Color(0xFF34D399)
+                        ),
+                        center = Offset(ringCx, ringCy)
+                    ),
+                    startAngle = -90f,
+                    sweepAngle = ringSweep,
+                    useCenter = false,
+                    topLeft = Offset(ringCx - ringR, ringCy - ringR),
+                    size = Size(ringR * 2f, ringR * 2f),
+                    style = Stroke(width = 4.5.dp.toPx(), cap = StrokeCap.Round)
+                )
+                // علامة صح صغيرة داخل حلقة الحضور
+                val ringCheck = Path().apply {
+                    moveTo(ringCx - ringR * 0.32f, ringCy + ringR * 0.02f)
+                    lineTo(ringCx - ringR * 0.05f, ringCy + ringR * 0.28f)
+                    lineTo(ringCx + ringR * 0.36f, ringCy - ringR * 0.22f)
+                }
+                drawPath(
+                    path = ringCheck,
+                    color = Color(0xFFFEF08A),
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+
+                // 2) منحنى درجات متصاعد في الجهة المقابلة بلمعة ذهبية هادئة
+                val chartLeft = w * 0.50f
+                val chartRight = w * 0.93f
+                val chartTop = h * 0.22f
+                val chartBottom = h * 0.76f
+                val chartW = chartRight - chartLeft
+                val chartH = chartBottom - chartTop
+
+                // خطوط شبكة أفقية شفافة جداً
+                for (i in 0..2) {
+                    val gy = chartTop + (chartH * i / 2f)
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.14f),
+                        start = Offset(chartLeft, gy),
+                        end = Offset(chartRight, gy),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+
+                val p0 = Offset(chartLeft, chartBottom - chartH * 0.18f)
+                val p1 = Offset(chartLeft + chartW * 0.34f, chartBottom - chartH * (0.42f + 0.06f * curvePulse))
+                val p2 = Offset(chartLeft + chartW * 0.68f, chartBottom - chartH * (0.62f + 0.05f * (1f - curvePulse)))
+                val p3 = Offset(chartRight, chartTop + chartH * (0.14f - 0.06f * curvePulse))
+
+                val fillPath = Path().apply {
+                    moveTo(p0.x, chartBottom)
+                    lineTo(p0.x, p0.y)
+                    cubicTo(
+                        chartLeft + chartW * 0.18f, p0.y,
+                        chartLeft + chartW * 0.20f, p1.y,
+                        p1.x, p1.y
+                    )
+                    cubicTo(
+                        chartLeft + chartW * 0.48f, p1.y,
+                        chartLeft + chartW * 0.54f, p2.y,
+                        p2.x, p2.y
+                    )
+                    cubicTo(
+                        chartLeft + chartW * 0.82f, p2.y,
+                        chartLeft + chartW * 0.86f, p3.y,
+                        p3.x, p3.y
+                    )
+                    lineTo(p3.x, chartBottom)
+                    close()
+                }
+                drawPath(
+                    path = fillPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = 0.34f),
+                            Color.Transparent
+                        ),
+                        startY = chartTop,
+                        endY = chartBottom
+                    )
+                )
+
+                val curvePath = Path().apply {
+                    moveTo(p0.x, p0.y)
+                    cubicTo(
+                        chartLeft + chartW * 0.18f, p0.y,
+                        chartLeft + chartW * 0.20f, p1.y,
+                        p1.x, p1.y
+                    )
+                    cubicTo(
+                        chartLeft + chartW * 0.48f, p1.y,
+                        chartLeft + chartW * 0.54f, p2.y,
+                        p2.x, p2.y
+                    )
+                    cubicTo(
+                        chartLeft + chartW * 0.82f, p2.y,
+                        chartLeft + chartW * 0.86f, p3.y,
+                        p3.x, p3.y
+                    )
+                }
+                drawPath(
+                    path = curvePath,
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF6EE7B7),
+                            Color(0xFFFDE68A),
+                            Color(0xFFF59E0B)
+                        ),
+                        startX = chartLeft,
+                        endX = chartRight
+                    ),
+                    style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+
+                // نقطة الذروة الذهبية النابضة
+                drawCircle(
+                    color = Color(0xFFFDE68A).copy(alpha = 0.24f + 0.16f * curvePulse),
+                    radius = 8.dp.toPx(),
+                    center = p3
+                )
+                drawCircle(
+                    color = Color(0xFFFBBF24),
+                    radius = 3.8.dp.toPx(),
+                    center = p3
+                )
+                drawCircle(
+                    color = Color.White,
+                    radius = 1.6.dp.toPx(),
+                    center = p3
+                )
+            }
+
+            // تبديل ناعم للعبارات الثلاث
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White.copy(alpha = 0.16f),
+                border = BorderStroke(0.9.dp, Color(0xFFFDE68A).copy(alpha = 0.45f))
+            ) {
+                Crossfade(
+                    targetState = phrases[phraseIndex],
+                    animationSpec = tween(420),
+                    label = "onboarding_tracking_phrase"
+                ) { phrase ->
+                    Text(
+                        text = phrase,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private data class OnboardingCommunityScene(
+    val title: String,
+    val subtitle: String,
+    val sceneIndex: Int
+)
+
+/**
+ * الشريحة 4 — مسرح «مجتمع تفاعلي ومنصة تواصل اجتماعي تربوية»:
+ * وحدة زجاجية ديناميكية سلسة بنفس أسلوب «مجتمع ونشاطات الطلبة» عبر AnimatedContent
+ * (انزلاق عمودي ناعم + تلاشي كل 2.4 ثانية) بين 3 مشاهد بأيقونات Canvas مصقولة:
+ * ("انشر إبداعك" ← "علّق وشجّع" ← "تفاعل وتألّق") مع 3 نقاط مؤشّر صغيرة أسفلها.
+ */
+@Composable
+private fun OnboardingSocialCommunityStage(
+    size: Dp,
+    isDarkMode: Boolean
+) {
+    val scenes = remember {
+        listOf(
+            OnboardingCommunityScene(
+                title = "انشر إبداعك",
+                subtitle = "شارك موهبتك ومشروعك",
+                sceneIndex = 0
+            ),
+            OnboardingCommunityScene(
+                title = "علّق وشجّع",
+                subtitle = "تبادل الآراء البنّاءة",
+                sceneIndex = 1
+            ),
+            OnboardingCommunityScene(
+                title = "تفاعل وتألّق",
+                subtitle = "ادعم إبداعات زملائك",
+                sceneIndex = 2
+            )
+        )
+    }
+
+    var activeSceneIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2400L)
+            activeSceneIndex = (activeSceneIndex + 1) % scenes.size
+        }
+    }
+
+    OnboardingGlassStageFrame(
+        size = size,
+        isDarkMode = isDarkMode,
+        testTagName = "onboarding_stage_social_community"
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            AnimatedContent(
+                targetState = scenes[activeSceneIndex],
+                transitionSpec = {
+                    (fadeIn(tween(480, easing = FastOutSlowInEasing)) +
+                        slideInVertically(tween(480, easing = FastOutSlowInEasing)) { it / 3 }) togetherWith
+                        (fadeOut(tween(400, easing = FastOutSlowInEasing)) +
+                            slideOutVertically(tween(400, easing = FastOutSlowInEasing)) { -it / 3 })
+                },
+                label = "onboarding_community_scene_anim",
+                modifier = Modifier.weight(1f)
+            ) { scene ->
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    OnboardingCommunitySceneCanvasIcon(
+                        sceneIndex = scene.sceneIndex,
+                        modifier = Modifier.size(54.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = scene.title,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = scene.subtitle,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFD1FAE5),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            // 3 نقاط مؤشّر صغيرة متمددة أسفل المشهد
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                scenes.indices.forEach { idx ->
+                    val isSelected = idx == activeSceneIndex
+                    val dotW by animateDpAsState(
+                        targetValue = if (isSelected) 18.dp else 6.dp,
+                        animationSpec = tween(durationMillis = 340, easing = FastOutSlowInEasing),
+                        label = "onboarding_community_dot_$idx"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .height(5.dp)
+                            .width(dotW)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (isSelected) Color(0xFFFEF08A) else Color.White.copy(alpha = 0.36f)
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OnboardingCommunitySceneCanvasIcon(
+    sceneIndex: Int,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 2.2.dp.toPx()
+
+        when (sceneIndex) {
+            0 -> {
+                // المشهد 1: قلم إبداع هندسي نظيف مع قوس خطي رشيق
+                val penBody = Path().apply {
+                    moveTo(w * 0.24f, h * 0.78f)
+                    lineTo(w * 0.34f, h * 0.56f)
+                    lineTo(w * 0.68f, h * 0.22f)
+                    lineTo(w * 0.80f, h * 0.34f)
+                    lineTo(w * 0.46f, h * 0.68f)
+                    close()
+                }
+                drawPath(path = penBody, color = Color.White.copy(alpha = 0.18f))
+                drawPath(
+                    path = penBody,
+                    color = Color(0xFFFEF08A),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                )
+                drawLine(
+                    color = Color(0xFF6EE7B7),
+                    start = Offset(w * 0.20f, h * 0.85f),
+                    end = Offset(w * 0.78f, h * 0.85f),
+                    strokeWidth = strokeW * 0.85f,
+                    cap = StrokeCap.Round
+                )
+                drawArc(
+                    color = Color(0xFF6EE7B7).copy(alpha = 0.72f),
+                    startAngle = 195f,
+                    sweepAngle = 70f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.14f, h * 0.14f),
+                    size = Size(w * 0.44f, h * 0.44f),
+                    style = Stroke(width = strokeW * 0.75f, cap = StrokeCap.Round)
+                )
+            }
+
+            1 -> {
+                // المشهد 2: بطاقتا حوار زجاجيتان متداخلتان بإطارات زمردية وذهبية مصقولة
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.14f),
+                    topLeft = Offset(w * 0.10f, h * 0.16f),
+                    size = Size(w * 0.54f, h * 0.40f),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFF6EE7B7),
+                    topLeft = Offset(w * 0.10f, h * 0.16f),
+                    size = Size(w * 0.54f, h * 0.40f),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx()),
+                    style = Stroke(width = strokeW * 0.9f)
+                )
+                drawRoundRect(
+                    color = Color(0xFF064E3B).copy(alpha = 0.72f),
+                    topLeft = Offset(w * 0.36f, h * 0.42f),
+                    size = Size(w * 0.54f, h * 0.40f),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx())
+                )
+                drawRoundRect(
+                    color = Color(0xFFFEF08A),
+                    topLeft = Offset(w * 0.36f, h * 0.42f),
+                    size = Size(w * 0.54f, h * 0.40f),
+                    cornerRadius = CornerRadius(8.dp.toPx(), 8.dp.toPx()),
+                    style = Stroke(width = strokeW * 0.95f)
+                )
+                drawLine(
+                    color = Color.White.copy(alpha = 0.90f),
+                    start = Offset(w * 0.48f, h * 0.58f),
+                    end = Offset(w * 0.78f, h * 0.58f),
+                    strokeWidth = 1.8.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFFFEF08A).copy(alpha = 0.85f),
+                    start = Offset(w * 0.54f, h * 0.69f),
+                    end = Offset(w * 0.78f, h * 0.69f),
+                    strokeWidth = 1.8.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
+
+            else -> {
+                // المشهد 3: نجمة التميّز الذهبية مع موجتي تفاعل زمرديتين متناسقتين
+                val cx = w * 0.50f
+                val cy = h * 0.50f
+                drawCircle(
+                    color = Color(0xFF6EE7B7).copy(alpha = 0.48f),
+                    radius = w * 0.43f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+                drawCircle(
+                    color = Color(0xFFFEF08A).copy(alpha = 0.34f),
+                    radius = w * 0.33f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.2.dp.toPx())
+                )
+                val starOuterR = w * 0.26f
+                val starInnerR = starOuterR * 0.44f
+                val starPath = Path().apply {
+                    for (i in 0 until 10) {
+                        val rad = (-90.0 + i * 36.0) * PI / 180.0
+                        val r = if (i % 2 == 0) starOuterR else starInnerR
+                        val px = cx + (r * cos(rad)).toFloat()
+                        val py = cy + (r * sin(rad)).toFloat()
+                        if (i == 0) moveTo(px, py) else lineTo(px, py)
+                    }
+                    close()
+                }
+                drawPath(
+                    path = starPath,
+                    brush = Brush.verticalGradient(listOf(Color(0xFFFFFBEB), Color(0xFFFBBF24)))
+                )
             }
         }
     }
@@ -819,7 +2149,7 @@ fun SchoolSetupScreen(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = Icons.Filled.AutoFixHigh,
+                                    imageVector = Icons.Filled.AccountTree,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(18.dp)

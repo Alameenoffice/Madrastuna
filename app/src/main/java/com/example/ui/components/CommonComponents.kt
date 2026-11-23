@@ -18,11 +18,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
@@ -7143,8 +7146,11 @@ fun SectionDividerHeaderWithLines(
 }
 
 /**
- * بطاقة "موجز الدوام وحركة البوابة اليومية" الزمردية ثلاثية الأبعاد (مع الكرة المضيئة و 5 كبسولات زجاجية)
- * تطابق الصورة المرجعية مع الحفاظ الصارم على المصطلحات التربوية المعتمدة (موجز الدوام وحركة البوابة اليومية / عرض التفاصيل).
+ * بطاقة "موجز الدوام وحركة البوابة اليومية" بتصميم زجاجي عصري منظّم:
+ * - تدرج زمردي عميق متناغم مع الرئيسية بحدّ ذهبي/أبيض شفاف رفيع وزوايا 22.dp
+ * - صف علوي يجمع العنوان والوصف الموجز بجانب وحدة زجاجية مصقولة بـ Compose Canvas (حلقة دوام دائرية بنقطة نبض هادئة)
+ * - صفّان متوازنان للمؤشرات: صف الحضور (الحاضرون | الغائبون) وصف حركة البوابة (دخلوا | غادروا | متواجدون)
+ * - زر أبيض ناصع بعرض البطاقة «عرض التفاصيل» مع سهم جانبي نظيف وارتداد Spring مرن
  */
 @Composable
 fun ThreeDDailyAttendanceGateSummaryCard(
@@ -7160,21 +7166,64 @@ fun ThreeDDailyAttendanceGateSummaryCard(
     modifier: Modifier = Modifier,
     testTag: String = "dashboard_live_radar_card"
 ) {
+    val totalAttendance = (presentCount + absentCount).coerceAtLeast(1)
+    val attendanceRatio = (presentCount.toFloat() / totalAttendance.toFloat()).coerceIn(0f, 1f)
+
+    val ringTransition = rememberInfiniteTransition(label = "daily_attendance_ring_pulse")
+    val liveDotPulse by ringTransition.animateFloat(
+        initialValue = 0.65f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "daily_ring_dot_pulse"
+    )
+    val ringOrbitAngle by ringTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 9000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "daily_ring_orbit_angle"
+    )
+
+    val buttonInteraction = remember { MutableInteractionSource() }
+    val isButtonPressed by buttonInteraction.collectIsPressedAsState()
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isButtonPressed) 0.965f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "daily_summary_btn_spring"
+    )
+
     Card(
         modifier = modifier
             .fillMaxWidth()
             .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(26.dp),
-                ambientColor = Color(0xFF059669).copy(alpha = 0.32f),
-                spotColor = Color(0xFF047857).copy(alpha = 0.36f)
+                elevation = 10.dp,
+                shape = RoundedCornerShape(22.dp),
+                ambientColor = Color(0xFF043B2C).copy(alpha = 0.30f),
+                spotColor = Color(0xFF059669).copy(alpha = 0.28f)
             )
-            .clip(RoundedCornerShape(26.dp))
+            .clip(RoundedCornerShape(22.dp))
             .clickable { onClick() }
             .testTag(testTag),
-        shape = RoundedCornerShape(26.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.42f))
+        border = BorderStroke(
+            width = 1.15.dp,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFFFDE68A).copy(alpha = 0.56f),
+                    Color.White.copy(alpha = 0.28f),
+                    Color(0xFF34D399).copy(alpha = 0.45f)
+                )
+            )
+        )
     ) {
         Box(
             modifier = Modifier
@@ -7182,33 +7231,50 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                 .background(
                     Brush.linearGradient(
                         colors = listOf(
-                            Color(0xFF059669),
-                            Color(0xFF047857),
-                            Color(0xFF065F46)
+                            Color(0xFF04382A),
+                            Color(0xFF065F46),
+                            Color(0xFF059669)
                         )
                     )
                 )
-                .padding(horizontal = 14.dp, vertical = 14.dp)
         ) {
+            // لمسة إضاءة زجاجية علوية ناعمة
+            Canvas(modifier = Modifier.matchParentSize()) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF34D399).copy(alpha = 0.16f),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.16f, size.height * 0.14f),
+                        radius = size.width * 0.46f
+                    ),
+                    radius = size.width * 0.46f,
+                    center = Offset(size.width * 0.16f, size.height * 0.14f)
+                )
+            }
+
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Top Row: Wide Comfortable Title & Unclipped Description on Right + 3D Smart Gate & ID Card on Left
+                // الصف العلوي: العنوان والوصف الموجز (سطر واحد) في اليمين + حلقة دوام زجاجية بـ Canvas في اليسار
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Column(
                         modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.Start,
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
                             text = title,
                             style = MaterialTheme.typography.titleMedium,
-                            fontSize = 16.5.sp,
+                            fontSize = 16.sp,
+                            lineHeight = 21.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             maxLines = 2
@@ -7216,61 +7282,159 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                         Text(
                             text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White.copy(alpha = 0.94f),
-                            lineHeight = 17.sp,
-                            maxLines = 3
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFFD1FAE5).copy(alpha = 0.92f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(10.dp))
+                    // وحدة زجاجية مصغّرة مصقولة بـ Compose Canvas: حلقة دوام دائرية بنقطة نبض زمردية/ذهبية هادئة
+                    Surface(
+                        modifier = Modifier.size(62.dp),
+                        shape = RoundedCornerShape(17.dp),
+                        color = Color.White.copy(alpha = 0.13f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp)
+                            ) {
+                                val cx = size.width / 2f
+                                val cy = size.height / 2f
+                                val r = size.minDimension * 0.42f
+                                val strokePx = 3.6.dp.toPx()
 
-                    // Vertical translucent white divider
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(58.dp)
-                            .background(Color.White.copy(alpha = 0.30f))
-                    )
+                                // المسار الدائري الشفاف
+                                drawCircle(
+                                    color = Color.White.copy(alpha = 0.18f),
+                                    radius = r,
+                                    center = Offset(cx, cy),
+                                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                                )
 
-                    Spacer(modifier = Modifier.width(10.dp))
+                                // قوس التقدّم الزمردي/الذهبي
+                                val sweep = if (presentCount + absentCount > 0) {
+                                    (attendanceRatio * 360f).coerceIn(48f, 360f)
+                                } else {
+                                    255f
+                                }
+                                drawArc(
+                                    brush = Brush.sweepGradient(
+                                        colors = listOf(
+                                            Color(0xFF6EE7B7),
+                                            Color(0xFFFDE68A),
+                                            Color(0xFF34D399),
+                                            Color(0xFF6EE7B7)
+                                        ),
+                                        center = Offset(cx, cy)
+                                    ),
+                                    startAngle = -90f,
+                                    sweepAngle = sweep,
+                                    useCenter = false,
+                                    topLeft = Offset(cx - r, cy - r),
+                                    size = Size(r * 2f, r * 2f),
+                                    style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                                )
 
-                    // Left side (in RTL): 3D Smart Gate & Digital ID Card (76.dp)
-                    ThreeDIllustrationBox(
-                        type = ThreeDIllustrationType.ATTENDANCE_GATE_CLOCK,
-                        modifier = Modifier.size(76.dp)
-                    )
+                                // نقطة نبض زمردية/ذهبية تدور بهدوء على محيط الحلقة
+                                val rad = (ringOrbitAngle - 90f) * kotlin.math.PI / 180.0
+                                val dotX = cx + (r * cos(rad)).toFloat()
+                                val dotY = cy + (r * sin(rad)).toFloat()
+                                drawCircle(
+                                    color = Color(0xFFFDE68A).copy(alpha = 0.30f),
+                                    radius = 5.2.dp.toPx() * liveDotPulse,
+                                    center = Offset(dotX, dotY)
+                                )
+                                drawCircle(
+                                    color = Color(0xFFFBBF24),
+                                    radius = 2.6.dp.toPx(),
+                                    center = Offset(dotX, dotY)
+                                )
+
+                                // علامة توثيق دوام دقيقة في قلب الحلقة
+                                val checkPath = Path().apply {
+                                    moveTo(cx - r * 0.30f, cy + r * 0.02f)
+                                    lineTo(cx - r * 0.05f, cy + r * 0.25f)
+                                    lineTo(cx + r * 0.33f, cy - r * 0.20f)
+                                }
+                                drawPath(
+                                    path = checkPath,
+                                    color = Color(0xFFFEF08A),
+                                    style = Stroke(
+                                        width = 2.dp.toPx(),
+                                        cap = StrokeCap.Round,
+                                        join = StrokeJoin.Round
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
 
-                // Middle Row: 5 Frosted Glass Emerald Capsules in a single balanced row (Zero truncation on "متواجدون: 1")
-                Row(
+                // قسم المؤشرات في صفّين متوازنين بمسافات مريحة:
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val capsules = listOf(
-                        "حاضرون: $presentCount" to 0.96f,
-                        "غائبون: $absentCount" to 0.94f,
-                        "دخلوا: $checkedInCount" to 0.92f,
-                        "غادروا: $checkedOutCount" to 0.94f,
-                        "متواجدون: $insideNowCount" to 1.24f
-                    )
-                    capsules.forEach { (pillLabel, pillWeight) ->
+                    // الصف الأول — صف الحضور: بطاقتان زجاجيتان متساويتا العرض (الحاضرون | الغائبون)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Surface(
-                            modifier = Modifier.weight(pillWeight),
-                            shape = RoundedCornerShape(50),
-                            color = Color.White.copy(alpha = 0.16f),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.36f))
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(60.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White.copy(alpha = 0.14f),
+                            border = BorderStroke(1.dp, Color(0xFF6EE7B7).copy(alpha = 0.36f))
                         ) {
-                            Box(
-                                modifier = Modifier.padding(horizontal = 2.dp, vertical = 6.dp),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF10B981).copy(alpha = 0.26f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.CheckCircle,
+                                            contentDescription = "الحاضرون",
+                                            tint = Color(0xFF6EE7B7),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "الحاضرون",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFECFDF5),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                                 Text(
-                                    text = pillLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 9.5.sp,
+                                    text = "$presentCount",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color.White,
                                     maxLines = 1,
@@ -7278,41 +7442,169 @@ fun ThreeDDailyAttendanceGateSummaryCard(
                                 )
                             }
                         }
+
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(60.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color.White.copy(alpha = 0.12f),
+                            border = BorderStroke(
+                                1.dp,
+                                if (absentCount > 0) Color(0xFFFCA5A5).copy(alpha = 0.45f)
+                                else Color.White.copy(alpha = 0.26f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (absentCount > 0) Color(0xFFEF4444).copy(alpha = 0.24f)
+                                                else Color.White.copy(alpha = 0.14f)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EventBusy,
+                                            contentDescription = "الغائبون",
+                                            tint = if (absentCount > 0) Color(0xFFFCA5A5) else Color(0xFFFDE68A),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "الغائبون",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFECFDF5),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                                Text(
+                                    text = "$absentCount",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (absentCount > 0) Color(0xFFFEE2E2) else Color.White,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+
+                    // الصف الثاني — صف حركة البوابة: 3 بطاقات زجاجية مصغّرة متساوية العرض والارتفاع (دخلوا | غادروا | متواجدون)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val gateMetrics = listOf(
+                            Triple("دخلوا", checkedInCount, false),
+                            Triple("غادروا", checkedOutCount, false),
+                            Triple("متواجدون", insideNowCount, true)
+                        )
+                        gateMetrics.forEach { (metricLabel, metricValue, isHighlighted) ->
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(62.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (isHighlighted) {
+                                    Color.White.copy(alpha = 0.17f)
+                                } else {
+                                    Color.White.copy(alpha = 0.11f)
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isHighlighted) {
+                                        Color(0xFFFDE68A).copy(alpha = 0.52f)
+                                    } else {
+                                        Color.White.copy(alpha = 0.24f)
+                                    }
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = metricLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isHighlighted) Color(0xFFFEF9C3) else Color(0xFFD1FAE5),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = "$metricValue",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isHighlighted) Color(0xFFFDE68A) else Color.White,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                // Bottom Row: Wide Sleek Pure White & Emerald Action Button ("عرض التفاصيل <") below the 5 capsules
+                // الزر السفلي الأبيض الناصع بعرض البطاقة مع سهم جانبي نظيف وارتداد مرن (Spring)
                 Surface(
-                    shape = RoundedCornerShape(50),
+                    onClick = onClick,
+                    interactionSource = buttonInteraction,
+                    shape = RoundedCornerShape(14.dp),
                     color = Color.White,
                     shadowElevation = 4.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(50))
-                        .clickable { onClick() }
+                        .height(46.dp)
+                        .graphicsLayer {
+                            scaleX = buttonScale
+                            scaleY = buttonScale
+                        }
                 ) {
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Text(
                             text = buttonText,
                             style = MaterialTheme.typography.labelLarge,
-                            fontSize = 12.5.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF047857),
+                            color = Color(0xFF065F46),
                             maxLines = 1,
                             softWrap = false
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                            contentDescription = null,
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = buttonText,
                             tint = Color(0xFF047857),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }

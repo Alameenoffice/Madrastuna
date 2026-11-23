@@ -637,7 +637,7 @@ fun StudentActivitiesScreen(viewModel: SchoolViewModel) {
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Filled.AutoAwesome,
+                                    imageVector = Icons.Filled.Palette,
                                     contentDescription = null,
                                     tint = Color(0xFFFEF08A),
                                     modifier = Modifier.size(15.dp)
@@ -1374,7 +1374,7 @@ fun StudentActivityPostCard(
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.AutoAwesomeMotion,
+                            imageVector = Icons.Filled.Category,
                             contentDescription = null,
                             tint = DeepEmerald,
                             modifier = Modifier.size(13.dp)
