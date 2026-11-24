@@ -445,4 +445,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          if git diff --staged --qu
+                    if git diff --staged --quiet; then
+            echo "No audio changes to commit."
+          else
+            git commit -m "Generate natural Arabic teacher voices via Google Gemini TTS (multi-key)"
+            git push
+          fi
+          
