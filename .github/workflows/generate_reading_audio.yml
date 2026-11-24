@@ -1,6 +1,8 @@
 name: Generate Reading Audio (Google Gemini AI Teacher Voice)
 
 on:
+  schedule:
+    - cron: '15 0 * * *' # تشغيل تلقائي يومي لتجديد الحصة وإكمال المتبقي
   workflow_dispatch:
     inputs:
       voice:
@@ -25,9 +27,9 @@ on:
         required: true
         default: '4.5'
       max_files_per_run:
-        description: 'أقصى عدد ملفات في كل تشغيل (0 = الكل، جرّب 10 أولاً للاختبار)'
+        description: 'أقصى عدد ملفات في كل تشغيل (0 = الكل)'
         required: true
-        default: '10'
+        default: '0'
       force_regenerate:
         description: 'إعادة توليد كل الأصوات من الصفر حتى المولدة سابقاً بجيميني'
         type: boolean
@@ -55,11 +57,12 @@ jobs:
 
       - name: Extract Arabic texts and generate Gemini AI Teacher MP3 pack
         env:
+          GEMINI_API_KEYS: ${{ secrets.GEMINI_API_KEYS }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TTS_VOICE: ${{ github.event.inputs.voice || 'Kore' }}
           TTS_MODEL: ${{ github.event.inputs.model || 'gemini-2.5-flash-preview-tts' }}
           DELAY_SECONDS: ${{ github.event.inputs.delay_seconds || '4.5' }}
-          MAX_FILES: ${{ github.event.inputs.max_files_per_run || '10' }}
+          MAX_FILES: ${{ github.event.inputs.max_files_per_run || '0' }}
           FORCE_REGEN: ${{ github.event.inputs.force_regenerate || 'false' }}
         run: |
           python3 -u - << 'EOF'
@@ -76,10 +79,19 @@ jobs:
           import urllib.request
           from pathlib import Path
 
-          API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-          if not API_KEY:
-              print("ERROR: GEMINI_API_KEY secret is missing! Add it in GitHub Repo -> Settings -> Secrets -> Actions.")
+          raw_keys = os.environ.get("GEMINI_API_KEYS", "") + "\n" + os.environ.get("GEMINI_API_KEY", "")
+          API_KEYS = []
+          for k in re.split(r"[\s,;]+", raw_keys):
+              k = k.strip()
+              if k and k not in API_KEYS:
+                  API_KEYS.append(k)
+
+          if not API_KEYS:
+              print("ERROR: No keys found in GEMINI_API_KEYS or GEMINI_API_KEY!")
               sys.exit(1)
+
+          print(f"Loaded {len(API_KEYS)} Gemini API key(s) for rotation.")
+          key_index = 0
 
           VOICE = os.environ["TTS_VOICE"]
           MODEL = os.environ["TTS_MODEL"]
@@ -287,7 +299,7 @@ jobs:
                   if tmp_raw.exists():
                       tmp_raw.unlink()
 
-          def call_gemini_tts(prompt: str, use_speech_config: bool) -> tuple[bytes, str]:
+          def call_gemini_tts(prompt: str, api_key: str, use_speech_config: bool) -> tuple[bytes, str]:
               gen_cfg = {"responseModalities": ["AUDIO"]}
               if use_speech_config:
                   gen_cfg["speechConfig"] = {
@@ -306,7 +318,7 @@ jobs:
                   data=json.dumps(payload).encode("utf-8"),
                   headers={
                       "Content-Type": "application/json",
-                      "x-goog-api-key": API_KEY,
+                      "x-goog-api-key": api_key,
                   },
                   method="POST",
               )
@@ -323,7 +335,7 @@ jobs:
               raise RuntimeError(f"No audio returned. Response snippet: {str(data)[:220]}")
 
           stats = {"created": 0, "custom": 0, "skipped": 0, "failed": 0}
-          quota_exhausted = False
+          all_keys_exhausted = False
           generated_this_run = 0
           use_speech_config = True
 
@@ -353,13 +365,16 @@ jobs:
 
               prompt = build_teacher_prompt(spoken, kind)
               success = False
+              attempts_on_current_key = 0
 
-              for attempt in range(1, 4):
+              while key_index < len(API_KEYS):
+                  current_key = API_KEYS[key_index]
                   try:
-                      audio_bytes, mime = call_gemini_tts(prompt, use_speech_config)
+                      audio_bytes, mime = call_gemini_tts(prompt, current_key, use_speech_config)
                       if save_audio_to_mp3(audio_bytes, mime, target):
                           dur = get_audio_duration(target)
-                          if kind in ("letter", "syllable") and dur > 4.5 and attempt < 3:
+                          if kind in ("letter", "syllable") and dur > 4.5 and attempts_on_current_key < 1:
+                              attempts_on_current_key += 1
                               print(f"Retry [{fname}] ({spoken}): too long ({dur:.1f}s)")
                               time.sleep(DELAY)
                               continue
@@ -367,37 +382,49 @@ jobs:
                           stats["created"] += 1
                           generated_this_run += 1
                           success = True
-                          print(f"OK [{stats['created']}] {fname} ({dur:.1f}s) <- {spoken[:35]}")
+                          print(f"OK [{stats['created']}] (Key #{key_index+1}) {fname} ({dur:.1f}s) <- {spoken[:35]}")
                           break
 
                   except urllib.error.HTTPError as e:
                       err_body = e.read().decode("utf-8", errors="ignore")
                       if e.code == 429:
-                          wait_s = 25 * attempt
-                          print(f"Rate limit (429) on [{fname}], waiting {wait_s}s (attempt {attempt}/3)...")
-                          time.sleep(wait_s)
-                          if attempt == 3:
-                              print("Quota exhausted for now. Saving generated files safely.")
-                              quota_exhausted = True
+                          attempts_on_current_key += 1
+                          if attempts_on_current_key < 2:
+                              print(f"Rate limit (429) on Key #{key_index+1}, waiting 20s...")
+                              time.sleep(20)
+                              continue
+                          print(f"Key #{key_index+1} quota exhausted. Rotating to next key...")
+                          key_index += 1
+                          attempts_on_current_key = 0
+                          if key_index >= len(API_KEYS):
+                              all_keys_exhausted = True
+                              break
                       elif e.code == 400 and "speechConfig" in err_body and use_speech_config:
-                          print("API rejected speechConfig, switching to default voice mode automatically...")
                           use_speech_config = False
                           continue
-                      elif e.code in (400, 401, 403, 404):
-                          print(f"FATAL HTTP {e.code} on [{fname}]: {err_body[:350]}")
-                          if stats["created"] == 0:
-                              sys.exit(1)
-                          quota_exhausted = True
-                          break
+                      elif e.code in (400, 401, 403):
+                          print(f"Key #{key_index+1} rejected (HTTP {e.code}): {err_body[:180]}. Rotating to next key...")
+                          key_index += 1
+                          attempts_on_current_key = 0
+                          if key_index >= len(API_KEYS):
+                              all_keys_exhausted = True
+                              break
                       else:
-                          print(f"HTTP {e.code} [{fname}] attempt {attempt}/3: {err_body[:200]}")
-                          time.sleep(3 * attempt)
+                          attempts_on_current_key += 1
+                          print(f"HTTP {e.code} [{fname}] attempt {attempts_on_current_key}: {err_body[:180]}")
+                          if attempts_on_current_key >= 3:
+                              break
+                          time.sleep(3)
 
                   except Exception as exc:
-                      print(f"Error [{fname}] attempt {attempt}/3: {str(exc)[:200]}")
-                      time.sleep(3 * attempt)
+                      attempts_on_current_key += 1
+                      print(f"Error [{fname}] attempt {attempts_on_current_key}: {str(exc)[:180]}")
+                      if attempts_on_current_key >= 3:
+                          break
+                      time.sleep(3)
 
-              if quota_exhausted:
+              if all_keys_exhausted:
+                  print("All API keys exhausted for today. Saving generated files safely.")
                   break
 
               if not success:
@@ -418,10 +445,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          if git diff --staged --quiet; then
-            echo "No audio changes to commit."
-          else
-            git commit -m "Generate natural Arabic teacher voices via Google Gemini TTS (v1beta)"
-            git push
-          fi
-          
+          if git diff --staged --qu
