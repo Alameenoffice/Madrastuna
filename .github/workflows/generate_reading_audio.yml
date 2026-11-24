@@ -25,9 +25,9 @@ on:
         required: true
         default: '4.5'
       max_files_per_run:
-        description: 'أقصى عدد ملفات في كل تشغيل (0 = الكل، مفيد للإكمال التدريجي)'
+        description: 'أقصى عدد ملفات في كل تشغيل (0 = الكل، جرّب 10 أولاً للاختبار)'
         required: true
-        default: '0'
+        default: '10'
       force_regenerate:
         description: 'إعادة توليد كل الأصوات من الصفر حتى المولدة سابقاً بجيميني'
         type: boolean
@@ -39,6 +39,7 @@ permissions:
 jobs:
   build-audio-pack:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -49,10 +50,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Google GenAI SDK and FFmpeg
-        run: |
-          pip install --upgrade google-genai
-          which ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+      - name: Ensure FFmpeg is installed
+        run: which ffmpeg || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       - name: Extract Arabic texts and generate Gemini AI Teacher MP3 pack
         env:
@@ -60,10 +59,10 @@ jobs:
           TTS_VOICE: ${{ github.event.inputs.voice || 'Kore' }}
           TTS_MODEL: ${{ github.event.inputs.model || 'gemini-2.5-flash-preview-tts' }}
           DELAY_SECONDS: ${{ github.event.inputs.delay_seconds || '4.5' }}
-          MAX_FILES: ${{ github.event.inputs.max_files_per_run || '0' }}
+          MAX_FILES: ${{ github.event.inputs.max_files_per_run || '10' }}
           FORCE_REGEN: ${{ github.event.inputs.force_regenerate || 'false' }}
         run: |
-          python3 - << 'EOF'
+          python3 -u - << 'EOF'
           import base64
           import hashlib
           import json
@@ -73,9 +72,9 @@ jobs:
           import subprocess
           import sys
           import time
+          import urllib.error
+          import urllib.request
           from pathlib import Path
-          from google import genai
-          from google.genai import types
 
           API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
           if not API_KEY:
@@ -89,8 +88,7 @@ jobs:
           FORCE = os.environ["FORCE_REGEN"].lower() == "true"
           ENGINE_VER = "v4-gemini-ai-teacher"
           CURRENT_SIG = f"{ENGINE_VER}|{MODEL}|{VOICE}"
-
-          client = genai.Client(api_key=API_KEY)
+          API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
           main_dir = Path("app/src/main")
           if not main_dir.exists():
@@ -109,7 +107,6 @@ jobs:
               except Exception:
                   done_map = {}
 
-          # أسماء الحروف المنفردة العارية لضمان نطقها الصحيح والواضح
           LETTER_NAMES = {
               "ا": "أَلِف", "أ": "أَلِف", "إ": "أَلِف", "آ": "أَلِف مَدّ", "ى": "أَلِف مَقْصُورَة",
               "ب": "بَاء", "ت": "تَاء", "ة": "تَاءٌ مَرْبُوطَة", "ث": "ثَاء",
@@ -122,40 +119,16 @@ jobs:
               "لا": "لَام أَلِف",
           }
 
-          # تصحيحات وتشكيل دقيق لأشهر كلمات ومقاطع منهج قراءتي العراقية للصف الأول
           PHONETIC_OVERRIDES = {
-              "دادا": "دَادَا",
-              "بابا": "بَابَا",
-              "ماما": "مَامَا",
-              "دار": "دَار",
-              "دَارُ": "دَار",
-              "دور": "دُور",
-              "دُوْرُ": "دُور",
-              "نور": "نُور",
-              "نُوْرُ": "نُور",
-              "بوق": "بُوق",
-              "بُوْقُ": "بُوق",
-              "بُوقُ": "بُوق",
-              "وز": "وَزّ",
-              "بان": "بَان",
-              "ريم": "رِيم",
-              "نديم": "نَدِيم",
-              "بدران": "بَدْرَان",
-              "زورق": "زَوْرَق",
-              "زيدون": "زَيْدُون",
-              "قدوري": "قَدُّورِي",
-              "وزان": "وَزَّان",
-              "مازن": "مَازِن",
-              "وداد": "وِدَاد",
-              "نبيل": "نَبِيل",
-              "بقال": "بَقَّال",
-              "رمان": "رُمَّان",
-              "لبن": "لَبَن",
-              "مطر": "مَطَر",
-              "ورد": "وَرْد",
-              "لطيف": "لَطِيف",
-              "بط": "بَطّ",
-              "طيور": "طُيُور",
+              "دادا": "دَادَا", "بابا": "بَابَا", "ماما": "مَامَا",
+              "دار": "دَار", "دَارُ": "دَار", "دور": "دُور", "دُوْرُ": "دُور",
+              "نور": "نُور", "نُوْرُ": "نُور", "بوق": "بُوق", "بُوْقُ": "بُوق", "بُوقُ": "بُوق",
+              "وز": "وَزّ", "بان": "بَان", "ريم": "رِيم", "نديم": "نَدِيم",
+              "بدران": "بَدْرَان", "زورق": "زَوْرَق", "زيدون": "زَيْدُون",
+              "قدوري": "قَدُّورِي", "وزان": "وَزَّان", "مازن": "مَازِن",
+              "وداد": "وِدَاد", "نبيل": "نَبِيل", "بقال": "بَقَّال",
+              "رمان": "رُمَّان", "لبن": "لَبَن", "مطر": "مَطَر",
+              "ورد": "وَرْد", "لطيف": "لَطِيف", "بط": "بَطّ", "طيور": "طُيُور",
           }
 
           kt_files = [
@@ -189,7 +162,6 @@ jobs:
               return f"{digest}.mp3"
 
           def clean_for_speech(text: str) -> tuple[str, str]:
-              """يعيد (النص المنطوق، نوع النص: letter | syllable | text)"""
               spoken = text.replace("\u0640", "")
               spoken = re.sub(r"\.{2,}", " ", spoken)
               spoken = spoken.replace("•", "، ").replace("|", "، ")
@@ -199,24 +171,19 @@ jobs:
                   return PHONETIC_OVERRIDES[text], "text"
               if spoken in PHONETIC_OVERRIDES:
                   return PHONETIC_OVERRIDES[spoken], "text"
-
-              # حرف منفرد بدون تشكيل
               if spoken in LETTER_NAMES:
                   return LETTER_NAMES[spoken], "letter"
 
-              # إزالة السكون من حروف المد العراقي (ُوْ -> ُو ، ِيْ -> ِي ، اْ -> ا)
               spoken = re.sub(r"\u064F\u0648\u0652", "\u064F\u0648", spoken)
               spoken = re.sub(r"\u0650\u064A\u0652", "\u0650\u064A", spoken)
               spoken = re.sub(r"\u0627\u0652", "\u0627", spoken)
 
-              # أشكال الحرف المفصولة بفواصل مثل (س ، سـ ، ـسـ)
               if "،" in spoken:
                   parts = [p.strip() for p in spoken.split("،") if p.strip()]
                   if parts and all(p in LETTER_NAMES for p in parts):
                       unique_names = list(dict.fromkeys(LETTER_NAMES[p] for p in parts))
                       return "، ".join(unique_names), "letter"
 
-              # تمييز المقاطع الصوتية القصيرة (حرف بحركة أو حرف + مد مثل بَ، دَا، دُو، دِي)
               base_chars = diacritics_re.sub("", spoken).replace(" ", "")
               if " " not in spoken and 1 <= len(base_chars) <= 2:
                   return spoken, "syllable"
@@ -293,28 +260,72 @@ jobs:
               except Exception:
                   return 0.0
 
-          def save_pcm_to_mp3(pcm_bytes: bytes, sample_rate: int, mp3_target: Path) -> bool:
-              tmp_pcm = mp3_target.with_suffix(".pcm")
-              tmp_pcm.write_bytes(pcm_bytes)
+          def save_audio_to_mp3(audio_bytes: bytes, mime_type: str, mp3_target: Path) -> bool:
+              mime_l = (mime_type or "").lower()
+              if "mpeg" in mime_l or "mp3" in mime_l:
+                  mp3_target.write_bytes(audio_bytes)
+                  return mp3_target.exists() and mp3_target.stat().st_size > 400
+
+              m_rate = re.search(r"rate=(\d+)", mime_l)
+              sample_rate = int(m_rate.group(1)) if m_rate else 24000
+              tmp_raw = mp3_target.with_suffix(".raw")
+              tmp_raw.write_bytes(audio_bytes)
               try:
-                  subprocess.run(
-                      [
+                  if "wav" in mime_l:
+                      cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(tmp_raw), "-c:a", "libmp3lame", "-b:a", "96k", str(mp3_target)]
+                  else:
+                      cmd = [
                           "ffmpeg", "-y", "-loglevel", "error",
                           "-f", "s16le", "-ar", str(sample_rate), "-ac", "1",
-                          "-i", str(tmp_pcm),
+                          "-i", str(tmp_raw),
                           "-c:a", "libmp3lame", "-b:a", "96k",
                           str(mp3_target),
-                      ],
-                      check=True,
-                  )
+                      ]
+                  subprocess.run(cmd, check=True)
                   return mp3_target.exists() and mp3_target.stat().st_size > 400
               finally:
-                  if tmp_pcm.exists():
-                      tmp_pcm.unlink()
+                  if tmp_raw.exists():
+                      tmp_raw.unlink()
+
+          def call_gemini_tts(prompt: str, use_speech_config: bool) -> tuple[bytes, str]:
+              gen_cfg = {"responseModalities": ["AUDIO"]}
+              if use_speech_config:
+                  gen_cfg["speechConfig"] = {
+                      "voiceConfig": {
+                          "prebuiltVoiceConfig": {
+                              "voiceName": VOICE
+                          }
+                      }
+                  }
+              payload = {
+                  "contents": [{"parts": [{"text": prompt}]}],
+                  "generationConfig": gen_cfg,
+              }
+              req = urllib.request.Request(
+                  API_URL,
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={
+                      "Content-Type": "application/json",
+                      "x-goog-api-key": API_KEY,
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(req, timeout=60) as resp:
+                  data = json.loads(resp.read().decode("utf-8"))
+
+              for cand in data.get("candidates", []):
+                  for part in cand.get("content", {}).get("parts", []):
+                      inline = part.get("inlineData") or part.get("inline_data")
+                      if inline and inline.get("data"):
+                          raw_b64 = inline["data"]
+                          mime = inline.get("mimeType") or inline.get("mime_type") or "audio/L16;rate=24000"
+                          return base64.b64decode(raw_b64), mime
+              raise RuntimeError(f"No audio returned. Response snippet: {str(data)[:220]}")
 
           stats = {"created": 0, "custom": 0, "skipped": 0, "failed": 0}
           quota_exhausted = False
           generated_this_run = 0
+          use_speech_config = True
 
           for norm_text in sorted_texts:
               if MAX_FILES > 0 and generated_this_run >= MAX_FILES:
@@ -324,7 +335,6 @@ jobs:
               fname = md5_filename(norm_text)
               target = out_dir / fname
 
-              # الأولوية المطلقة للتسجيلات البشرية إن وُجدت في custom_reading_audio/
               custom_file = custom_dir / fname
               if custom_file.exists() and custom_file.stat().st_size > 100:
                   shutil.copy2(custom_file, target)
@@ -332,7 +342,6 @@ jobs:
                   stats["custom"] += 1
                   continue
 
-              # تخطّي الملفات التي سبق توليدها بنفس صوت جيميني (يدعم الإكمال التلقائي)
               if not FORCE and target.exists() and target.stat().st_size > 400 and done_map.get(fname) == CURRENT_SIG:
                   stats["skipped"] += 1
                   continue
@@ -347,45 +356,13 @@ jobs:
 
               for attempt in range(1, 4):
                   try:
-                      response = client.models.generate_content(
-                          model=MODEL,
-                          contents=prompt,
-                          config=types.GenerateContentConfig(
-                              response_modalities=["AUDIO"],
-                              speech_config=types.SpeechConfig(
-                                  voice_config=types.VoiceConfig(
-                                      prebuilt_voice_config=types.PrebuiltVoiceConfig(
-                                          voice_name=VOICE,
-                                      )
-                                  )
-                              ),
-                          ),
-                      )
-
-                      audio_data = None
-                      sample_rate = 24000
-                      if response.candidates:
-                          for part in response.candidates[0].content.parts:
-                              if getattr(part, "inline_data", None) and part.inline_data.data:
-                                  raw_data = part.inline_data.data
-                                  audio_data = base64.b64decode(raw_data) if isinstance(raw_data, str) else raw_data
-                                  mime = getattr(part.inline_data, "mime_type", "") or ""
-                                  m_rate = re.search(r"rate=(\d+)", mime)
-                                  if m_rate:
-                                      sample_rate = int(m_rate.group(1))
-                                  break
-
-                      if not audio_data:
-                          raise RuntimeError("No audio bytes returned by Gemini TTS")
-
-                      if save_pcm_to_mp3(audio_data, sample_rate, target):
-                          # فحص أمان لمنع أي هلوسة إضافية في الحروف والمقاطع القصيرة
+                      audio_bytes, mime = call_gemini_tts(prompt, use_speech_config)
+                      if save_audio_to_mp3(audio_bytes, mime, target):
                           dur = get_audio_duration(target)
                           if kind in ("letter", "syllable") and dur > 4.5 and attempt < 3:
-                              print(f"Retry [{fname}] ({spoken}): audio too long ({dur:.1f}s)")
+                              print(f"Retry [{fname}] ({spoken}): too long ({dur:.1f}s)")
                               time.sleep(DELAY)
                               continue
-
                           done_map[fname] = CURRENT_SIG
                           stats["created"] += 1
                           generated_this_run += 1
@@ -393,18 +370,32 @@ jobs:
                           print(f"OK [{stats['created']}] {fname} ({dur:.1f}s) <- {spoken[:35]}")
                           break
 
-                  except Exception as exc:
-                      err_str = str(exc)
-                      if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                  except urllib.error.HTTPError as e:
+                      err_body = e.read().decode("utf-8", errors="ignore")
+                      if e.code == 429:
                           wait_s = 25 * attempt
-                          print(f"Rate limit hit on [{fname}], waiting {wait_s}s (attempt {attempt}/3)...")
+                          print(f"Rate limit (429) on [{fname}], waiting {wait_s}s (attempt {attempt}/3)...")
                           time.sleep(wait_s)
                           if attempt == 3:
-                              print("Quota exhausted for now. Saving all generated files safely so next run resumes!")
+                              print("Quota exhausted for now. Saving generated files safely.")
                               quota_exhausted = True
+                      elif e.code == 400 and "speechConfig" in err_body and use_speech_config:
+                          print("API rejected speechConfig, switching to default voice mode automatically...")
+                          use_speech_config = False
+                          continue
+                      elif e.code in (400, 401, 403, 404):
+                          print(f"FATAL HTTP {e.code} on [{fname}]: {err_body[:350]}")
+                          if stats["created"] == 0:
+                              sys.exit(1)
+                          quota_exhausted = True
+                          break
                       else:
-                          print(f"Error [{fname}] attempt {attempt}/3: {err_str[:180]}")
+                          print(f"HTTP {e.code} [{fname}] attempt {attempt}/3: {err_body[:200]}")
                           time.sleep(3 * attempt)
+
+                  except Exception as exc:
+                      print(f"Error [{fname}] attempt {attempt}/3: {str(exc)[:200]}")
+                      time.sleep(3 * attempt)
 
               if quota_exhausted:
                   break
@@ -412,7 +403,6 @@ jobs:
               if not success:
                   stats["failed"] += 1
 
-              # حفظ التقدم كل 10 ملفات
               if generated_this_run > 0 and generated_this_run % 10 == 0:
                   manifest_file.write_text(json.dumps(done_map, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -431,6 +421,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No audio changes to commit."
           else
-            git commit -m "Generate natural Arabic teacher voices via Google Gemini TTS"
+            git commit -m "Generate natural Arabic teacher voices via Google Gemini TTS (v1beta)"
             git push
           fi
+          
