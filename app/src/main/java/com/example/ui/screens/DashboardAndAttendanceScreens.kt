@@ -378,8 +378,7 @@ fun DashboardScreen(
                     modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 2) SECOND (Directly below the Emerald Welcome Hero Banner at full width with 0.dp gap):
-                //    إشعار النظام العام / تعميم المطور + Principal Announcement
+                // 2) SECOND: بطاقتا «تعميم إدارة المنصة» و«تبليغ إدارة المدرسة» بتصميم زجاجي مصقول
                 val visibleAdminBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds) {
                     developerBroadcasts.filterNot { bc ->
                         val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
@@ -390,90 +389,91 @@ fun DashboardScreen(
                 val showOccasionBroadcast = occasionThemeConfig.isActive
                 val showAdminDirectBroadcast = latestAdminBroadcast != null &&
                     (!showOccasionBroadcast || latestAdminBroadcast.title != occasionThemeConfig.effectiveTitle)
-
-                if (showOccasionBroadcast) {
-                    val devIconKey = occasionThemeConfig.resolvedIconKey
-                    DeveloperSystemBroadcastBanner(
-                        title = occasionThemeConfig.effectiveTitle,
-                        subtitle = occasionThemeConfig.effectiveBannerText,
-                        badgeText = "إشعار النظام العام / تعميم المطور • ${devIconKey.arabicLabel}",
-                        iconKey = devIconKey,
-                        illustrationType = devIconKey.toThreeDIllustrationType(),
-                        topOverlapPadding = 22.dp,
-                        modifier = Modifier
-                            .seamlessWaveOverlap(26.dp)
-                            .zIndex(3.2f)
-                    )
-                }
-
-                if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
-                    val bcIconKey = OccasionIconKey.fromKey(latestAdminBroadcast.iconKey)
-                    val adminBcOverlap = if (showOccasionBroadcast) 18.dp else 26.dp
-                    DeveloperSystemBroadcastBanner(
-                        title = latestAdminBroadcast.title,
-                        subtitle = "${latestAdminBroadcast.message}  •  (${latestAdminBroadcast.createdAt})",
-                        badgeText = "إشعار النظام العام / تعميم المطور",
-                        iconKey = bcIconKey,
-                        illustrationType = bcIconKey.toThreeDIllustrationType(),
-                        topOverlapPadding = adminBcOverlap - 4.dp,
-                        onDismiss = {
-                            developerBroadcasts.forEach { bc ->
-                                val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                                viewModel.dismissDeveloperBroadcastForAdmin(key)
-                                if (bc.id.isNotBlank()) {
-                                    viewModel.dismissDeveloperBroadcastForAdmin(bc.id)
-                                }
-                            }
-                        },
-                        modifier = Modifier
-                            .seamlessWaveOverlap(adminBcOverlap)
-                            .zIndex(3f)
-                    )
-                }
-
                 val hasDeveloperBannerAbove = showOccasionBroadcast || showAdminDirectBroadcast
+                val hasAnyAnnouncementCard = hasDeveloperBannerAbove || shouldShowUrgentAlertBanner || todayHolidayLabel != null
 
-                if (shouldShowUrgentAlertBanner || todayHolidayLabel != null) {
-                    val schoolBannerTitle = if (shouldShowUrgentAlertBanner) {
-                        activeUrgentAlert.authorName.ifBlank { "تبليغ إداري هام" }
-                    } else {
-                        "عطلة رسمية: $todayHolidayLabel"
-                    }
-                    val schoolBannerSubtitle = if (shouldShowUrgentAlertBanner) {
-                        activeUrgentAlert.message
-                    } else {
-                        "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
-                    }
-                    val overlapWithAbove = if (hasDeveloperBannerAbove) 18.dp else 26.dp
-
-                    ThreeDMegaphoneAnnouncementBanner(
-                        title = schoolBannerTitle,
-                        subtitle = schoolBannerSubtitle,
-                        topOverlapPadding = overlapWithAbove - 4.dp,
+                if (hasAnyAnnouncementCard) {
+                    Column(
                         modifier = Modifier
-                            .seamlessWaveOverlap(overlapWithAbove)
-                            .zIndex(2f),
-                        onClick = when {
-                            isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
-                                { viewModel.openHolidaysManagementModal() }
+                            .fillMaxWidth()
+                            .padding(top = 10.dp, bottom = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (showOccasionBroadcast) {
+                            val devIconKey = occasionThemeConfig.resolvedIconKey
+                            DeveloperSystemBroadcastBanner(
+                                title = occasionThemeConfig.effectiveTitle,
+                                subtitle = occasionThemeConfig.effectiveBannerText,
+                                badgeText = "تعميم إدارة المنصة • ${devIconKey.arabicLabel}",
+                                iconKey = devIconKey,
+                                illustrationType = devIconKey.toThreeDIllustrationType()
+                            )
+                        }
+
+                        if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
+                            val bcIconKey = OccasionIconKey.fromKey(latestAdminBroadcast.iconKey)
+                            DeveloperSystemBroadcastBanner(
+                                title = latestAdminBroadcast.title,
+                                subtitle = latestAdminBroadcast.message,
+                                badgeText = "تعميم إدارة المنصة",
+                                dateText = formatCleanDate(latestAdminBroadcast.createdAt),
+                                iconKey = bcIconKey,
+                                illustrationType = bcIconKey.toThreeDIllustrationType(),
+                                onDismiss = {
+                                    developerBroadcasts.forEach { bc ->
+                                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                                        viewModel.dismissDeveloperBroadcastForAdmin(key)
+                                        if (bc.id.isNotBlank()) {
+                                            viewModel.dismissDeveloperBroadcastForAdmin(bc.id)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
+                        if (shouldShowUrgentAlertBanner || todayHolidayLabel != null) {
+                            val schoolBannerBadge = if (shouldShowUrgentAlertBanner) {
+                                "تبليغ إدارة المدرسة • مدير المدرسة"
+                            } else {
+                                "تبليغ إدارة المدرسة • عطلة رسمية"
                             }
-                            isAdmin -> {
-                                { viewModel.openUrgentSchoolAlertModal() }
+                            val schoolBannerTitle = if (shouldShowUrgentAlertBanner) {
+                                "تبليغ إدارة المدرسة"
+                            } else {
+                                "عطلة رسمية: $todayHolidayLabel"
                             }
-                            else -> null
-                        },
-                        isUrgentActive = shouldShowUrgentAlertBanner,
-                        isAdmin = isAdmin,
-                        onEditUrgent = { viewModel.openUrgentSchoolAlertModal() },
-                        onStopUrgent = { viewModel.deleteOrStopUrgentSchoolAlert() },
-                        onDismissUrgent = { viewModel.dismissUrgentSchoolAlertLocally() }
-                    )
+                            val schoolBannerSubtitle = if (shouldShowUrgentAlertBanner) {
+                                activeUrgentAlert.message
+                            } else {
+                                "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})"
+                            }
+
+                            ThreeDMegaphoneAnnouncementBanner(
+                                title = schoolBannerTitle,
+                                subtitle = schoolBannerSubtitle,
+                                badgeText = schoolBannerBadge,
+                                onClick = when {
+                                    isAdmin && todayHolidayLabel != null && !shouldShowUrgentAlertBanner -> {
+                                        { viewModel.openHolidaysManagementModal() }
+                                    }
+                                    isAdmin -> {
+                                        { viewModel.openUrgentSchoolAlertModal() }
+                                    }
+                                    else -> null
+                                },
+                                isUrgentActive = shouldShowUrgentAlertBanner,
+                                isAdmin = isAdmin,
+                                onEditUrgent = { viewModel.openUrgentSchoolAlertModal() },
+                                onStopUrgent = { viewModel.deleteOrStopUrgentSchoolAlert() },
+                                onDismissUrgent = { viewModel.dismissUrgentSchoolAlertLocally() }
+                            )
+                        }
+                    }
                 }
 
-                // 3) THIRD (Tucked seamlessly under Announcements/Welcome with 0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
+                // 3) THIRD: Top 3 Auto-Rotating Rated Teachers Wave Spotlight
                 if (featureSettings.showTopTeacherOnHome && topRatedTeachers.isNotEmpty() && topTeacherSummary != null) {
-                    val hasBannerAbove = hasDeveloperBannerAbove || shouldShowUrgentAlertBanner || todayHolidayLabel != null
-                    val spotlightOverlap = if (hasBannerAbove) 18.dp else 26.dp
+                    val spotlightOverlap = if (hasAnyAnnouncementCard) 0.dp else 26.dp
                     SeamlessWaveTeacherSpotlightSection(
                         teacherName = topTeacherSummary.teacher.fullName,
                         teacherSubjects = topTeacherSummary.teacher.specialty,
@@ -481,7 +481,7 @@ fun DashboardScreen(
                         totalRatingsCount = topTeacherSummary.totalRatingsCount,
                         topTeachers = topRatedTeachers,
                         isAdmin = isAdmin,
-                        topOverlapPadding = spotlightOverlap - 4.dp,
+                        topOverlapPadding = if (hasAnyAnnouncementCard) 0.dp else (spotlightOverlap - 4.dp),
                         onOpenEvaluationSection = {
                             viewModel.navigateToSection(AppSection.TEACHER_EVALUATION)
                         },

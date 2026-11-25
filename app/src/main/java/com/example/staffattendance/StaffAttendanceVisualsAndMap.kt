@@ -102,6 +102,144 @@ object StaffAttendancePalette {
     val LateOrange = Color(0xFFEA580C)
     val SoftGold = Color(0xFFD97706)
     val SoftGoldLight = Color(0xFFFDE68A)
+    val NeutralSlate = Color(0xFF475569)
+    val NeutralMintBg = Color(0xFFF1F5F9)
+    val NeutralMintBorder = Color(0xFFCBD5E1)
+    val HolidayTeal = Color(0xFF0E7490)
+}
+
+fun resolvedStaffStatusColor(status: ResolvedStaffDayStatus): Color = when (status) {
+    ResolvedStaffDayStatus.PRESENT -> StaffAttendancePalette.PresentEmerald
+    ResolvedStaffDayStatus.LATE -> StaffAttendancePalette.LateOrange
+    ResolvedStaffDayStatus.LEAVE -> StaffAttendancePalette.LeaveAmber
+    ResolvedStaffDayStatus.ABSENT -> StaffAttendancePalette.AbsentCoral
+    ResolvedStaffDayStatus.HOLIDAY -> StaffAttendancePalette.HolidayTeal
+    ResolvedStaffDayStatus.AWAITING_SHIFT_SETUP,
+    ResolvedStaffDayStatus.SHIFT_NOT_STARTED,
+    ResolvedStaffDayStatus.AWAITING_FINGERPRINT,
+    ResolvedStaffDayStatus.UPCOMING -> StaffAttendancePalette.NeutralSlate
+}
+
+fun resolvedStaffStatusBgColor(status: ResolvedStaffDayStatus): Color = when (status) {
+    ResolvedStaffDayStatus.PRESENT -> Color(0xFFECFDF5)
+    ResolvedStaffDayStatus.LATE -> Color(0xFFFFF7ED)
+    ResolvedStaffDayStatus.LEAVE -> Color(0xFFFFFBEB)
+    ResolvedStaffDayStatus.ABSENT -> Color(0xFFFEF2F2)
+    ResolvedStaffDayStatus.HOLIDAY -> Color(0xFFECFEFF)
+    ResolvedStaffDayStatus.AWAITING_SHIFT_SETUP,
+    ResolvedStaffDayStatus.SHIFT_NOT_STARTED,
+    ResolvedStaffDayStatus.AWAITING_FINGERPRINT,
+    ResolvedStaffDayStatus.UPCOMING -> Color(0xFFF1F5F9)
+}
+
+fun resolvedStaffStatusBorderColor(status: ResolvedStaffDayStatus): Color = when (status) {
+    ResolvedStaffDayStatus.PRESENT -> Color(0xFFA7F3D0)
+    ResolvedStaffDayStatus.LATE -> Color(0xFFFED7AA)
+    ResolvedStaffDayStatus.LEAVE -> Color(0xFFFDE68A)
+    ResolvedStaffDayStatus.ABSENT -> Color(0xFFFECACA)
+    ResolvedStaffDayStatus.HOLIDAY -> Color(0xFFA5F3FC)
+    ResolvedStaffDayStatus.AWAITING_SHIFT_SETUP,
+    ResolvedStaffDayStatus.SHIFT_NOT_STARTED,
+    ResolvedStaffDayStatus.AWAITING_FINGERPRINT,
+    ResolvedStaffDayStatus.UPCOMING -> Color(0xFFCBD5E1)
+}
+
+/**
+ * أيقونة ساعة/دوام هندسية متجهة مرسومة بـ Compose Canvas لبطاقة «إعدادات الدوام واحتساب الغياب».
+ */
+@Composable
+fun SchoolShiftClockCanvas(
+    isEvening: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val r = size.minDimension * 0.44f
+
+        // قوس دلالي ذهبي/زمردي خفيف حول قرص الساعة
+        drawArc(
+            brush = Brush.sweepGradient(
+                colors = if (isEvening) {
+                    listOf(Color(0xFF047857), Color(0xFFD97706), Color(0xFF065F46))
+                } else {
+                    listOf(Color(0xFF059669), Color(0xFFF59E0B), Color(0xFF059669))
+                }
+            ),
+            startAngle = -110f,
+            sweepAngle = 220f,
+            useCenter = false,
+            topLeft = Offset(cx - r * 1.08f, cy - r * 1.08f),
+            size = Size(r * 2.16f, r * 2.16f),
+            style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        // قرص الساعة الزمردي الزجاجي
+        drawCircle(
+            color = Color(0xFF065F46).copy(alpha = 0.08f),
+            radius = r,
+            center = Offset(cx, cy)
+        )
+        drawCircle(
+            color = DeepEmerald,
+            radius = r,
+            center = Offset(cx, cy),
+            style = Stroke(width = 1.6.dp.toPx())
+        )
+
+        // 4 علامات هندسية رئيسية (12، 3، 6، 9)
+        for (i in 0 until 4) {
+            val angleRad = (i * 90.0 - 90.0) * kotlin.math.PI / 180.0
+            val startR = r * 0.72f
+            val endR = r * 0.88f
+            drawLine(
+                color = if (i == 0) Color(0xFFD97706) else DeepEmerald.copy(alpha = 0.72f),
+                start = Offset(
+                    cx + (startR * kotlin.math.cos(angleRad)).toFloat(),
+                    cy + (startR * kotlin.math.sin(angleRad)).toFloat()
+                ),
+                end = Offset(
+                    cx + (endR * kotlin.math.cos(angleRad)).toFloat(),
+                    cy + (endR * kotlin.math.sin(angleRad)).toFloat()
+                ),
+                strokeWidth = 1.5.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
+
+        // عقرب الساعات
+        val hourAngle = (if (isEvening) 30.0 else -150.0) * kotlin.math.PI / 180.0
+        drawLine(
+            color = Color(0xFF064E3B),
+            start = Offset(cx, cy),
+            end = Offset(
+                cx + (r * 0.48f * kotlin.math.cos(hourAngle)).toFloat(),
+                cy + (r * 0.48f * kotlin.math.sin(hourAngle)).toFloat()
+            ),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // عقرب الدقائق الذهبي
+        val minAngle = (-35.0) * kotlin.math.PI / 180.0
+        drawLine(
+            color = Color(0xFFD97706),
+            start = Offset(cx, cy),
+            end = Offset(
+                cx + (r * 0.65f * kotlin.math.cos(minAngle)).toFloat(),
+                cy + (r * 0.65f * kotlin.math.sin(minAngle)).toFloat()
+            ),
+            strokeWidth = 1.6.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // محور مركزي ذهبي
+        drawCircle(
+            color = Color(0xFFD97706),
+            radius = 2.2.dp.toPx(),
+            center = Offset(cx, cy)
+        )
+    }
 }
 
 fun staffStatusArabicLabel(status: String): String = when (status.lowercase(Locale.US)) {
@@ -109,7 +247,12 @@ fun staffStatusArabicLabel(status: String): String = when (status.lowercase(Loca
     "late" -> "متأخر"
     "leave" -> "مجاز"
     "absent" -> "غائب"
-    else -> "غير مسجّل"
+    "awaiting_shift_setup" -> "بانتظار ضبط الدوام"
+    "shift_not_started" -> "لم يبدأ الدوام"
+    "awaiting_fingerprint" -> "بانتظار البصمة"
+    "holiday" -> "عطلة رسمية"
+    "upcoming" -> "لم يحن الموعد"
+    else -> "بانتظار البصمة"
 }
 
 fun staffStatusColor(status: String): Color = when (status.lowercase(Locale.US)) {
@@ -117,7 +260,8 @@ fun staffStatusColor(status: String): Color = when (status.lowercase(Locale.US))
     "late" -> StaffAttendancePalette.LateOrange
     "leave" -> StaffAttendancePalette.LeaveAmber
     "absent" -> StaffAttendancePalette.AbsentCoral
-    else -> Color(0xFF64748B)
+    "holiday" -> StaffAttendancePalette.HolidayTeal
+    else -> StaffAttendancePalette.NeutralSlate
 }
 
 fun leaveStatusArabicLabel(status: String): String = when (status.lowercase(Locale.US)) {

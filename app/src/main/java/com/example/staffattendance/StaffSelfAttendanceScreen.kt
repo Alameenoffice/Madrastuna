@@ -97,6 +97,7 @@ fun StaffSelfAttendanceScreen(
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val schoolConfig by viewModel.schoolConfig.collectAsStateWithLifecycle()
     val todayRecordsMap by StaffAttendanceCloudStore.todayRecordsByStaffId.collectAsStateWithLifecycle()
+    val shiftSchedule by StaffAttendanceCloudStore.shiftScheduleState.collectAsStateWithLifecycle()
 
     val schoolCode = remember(schoolConfig.schoolId) {
         schoolConfig.schoolId.ifBlank { "default_school" }
@@ -107,8 +108,8 @@ fun StaffSelfAttendanceScreen(
     val todayIso = remember { StaffAttendanceDateUtils.todayIso() }
     val currentMonthIso = remember { StaffAttendanceDateUtils.currentMonthIso() }
     val todayHolidayLabel = remember(todayIso) { viewModel.getHolidayLabelForDate(todayIso) }
-    val holidayNotice = remember(todayIso, todayHolidayLabel) {
-        StaffAttendanceDateUtils.getHolidayNoticeIfAny(todayIso, todayHolidayLabel)
+    val holidayNotice = remember(todayIso, todayHolidayLabel, shiftSchedule.weekendDays) {
+        StaffAttendanceDateUtils.getHolidayNoticeIfAny(todayIso, todayHolidayLabel, shiftSchedule.weekendDays)
     }
 
     var geofenceConfig by remember { mutableStateOf(SchoolGeofenceConfig()) }
@@ -124,6 +125,16 @@ fun StaffSelfAttendanceScreen(
 
     // مزامنة فورية إذا حدّث المدير سجل اليوم
     val liveTodayRecord = todayRecordsMap[staffId] ?: todayRecord
+    val todayResolvedStatus = remember(liveTodayRecord, myLeaveRequests, shiftSchedule, todayHolidayLabel, todayIso) {
+        StaffAttendanceStatusEngine.resolveStatus(
+            dateIso = todayIso,
+            record = liveTodayRecord,
+            hasApprovedLeaveForDate = StaffAttendanceStatusEngine.isLeaveApprovedForDate(staffId, todayIso, myLeaveRequests),
+            shiftSchedule = shiftSchedule,
+            schoolHolidayLabel = todayHolidayLabel,
+            todayIso = todayIso
+        )
+    }
 
     fun refreshAllData(probeGps: Boolean = true) {
         scope.launch {
@@ -132,10 +143,16 @@ fun StaffSelfAttendanceScreen(
             }
             val cfg = StaffAttendanceCloudStore.fetchGeofenceConfig(context, schoolCode)
             geofenceConfig = cfg
+            val shiftCfg = StaffAttendanceCloudStore.fetchShiftScheduleConfig(context, schoolCode)
             val rec = StaffAttendanceCloudStore.fetchStaffRecordForDate(context, schoolCode, todayIso, staffId)
             todayRecord = rec
             if (probeGps) {
-                zoneProbe = ElectronicFingerprintZoneEngine.probeCurrentZone(context, cfg, todayHolidayLabel)
+                zoneProbe = ElectronicFingerprintZoneEngine.probeCurrentZone(
+                    context = context,
+                    config = cfg,
+                    holidayLabel = todayHolidayLabel,
+                    shiftSchedule = shiftCfg
+                )
             }
             val allMonth = StaffAttendanceCloudStore.fetchMonthlyAttendance(context, schoolCode, currentMonthIso)
             monthlyHistory = allMonth.filter { it.staffId == staffId }
@@ -200,10 +217,15 @@ fun StaffSelfAttendanceScreen(
     ) {
         // 1. الترويسة الزمردية مع مؤشر النطاق الجغرافي الحي
         item {
+            val shiftPillLabel = if (shiftSchedule.isConfigured) {
+                "دوام ${shiftSchedule.resolvedShiftType.arabicLabel} • \u2066${shiftSchedule.shiftStart} - ${shiftSchedule.shiftEnd}\u2069"
+            } else {
+                "بانتظار ضبط الدوام"
+            }
             ThreeDHeroHeaderCard(
                 title = "البصمة الإلكترونية والحضور",
                 subtitle = "$staffName • ${geofenceConfig.locationLabel}",
-                rightPillText = "الدوام ${geofenceConfig.workStartTime} - ${geofenceConfig.workEndTime}",
+                rightPillText = shiftPillLabel,
                 rightPillIcon = Icons.Filled.Schedule,
                 leftPillText = formatCleanDate(todayIso),
                 leftPillIcon = Icons.Filled.VerifiedUser,
@@ -408,7 +430,8 @@ fun StaffSelfAttendanceScreen(
                                     staffRoleLabel = staffRoleLabel,
                                     config = geofenceConfig,
                                     existingTodayRecord = liveTodayRecord,
-                                    holidayLabel = todayHolidayLabel
+                                    holidayLabel = todayHolidayLabel,
+                                    shiftSchedule = shiftSchedule
                                 )
                                 isScanningFingerprint = false
                                 feedbackBanner = outcome
@@ -425,9 +448,10 @@ fun StaffSelfAttendanceScreen(
                                     )
                                 } else {
                                     zoneProbe = ElectronicFingerprintZoneEngine.probeCurrentZone(
-                                        context,
-                                        geofenceConfig,
-                                        todayHolidayLabel
+                                        context = context,
+                                        config = geofenceConfig,
+                                        holidayLabel = todayHolidayLabel,
+                                        shiftSchedule = shiftSchedule
                                     )
                                 }
                             }
@@ -480,10 +504,8 @@ fun StaffSelfAttendanceScreen(
                         )
                         TodayTimeStatChip(
                             label = "حالة اليوم",
-                            value = if (holidayNotice != null) "عطلة"
-                            else if (liveTodayRecord != null) staffStatusArabicLabel(liveTodayRecord.status)
-                            else "لم تُسجَّل",
-                            accent = if (liveTodayRecord != null) staffStatusColor(liveTodayRecord.status) else Color(0xFF64748B),
+                            value = todayResolvedStatus.arabicLabel,
+                            accent = resolvedStaffStatusColor(todayResolvedStatus),
                             modifier = Modifier.weight(1f)
                         )
                     }

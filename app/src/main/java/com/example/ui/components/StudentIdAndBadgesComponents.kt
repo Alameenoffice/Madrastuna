@@ -1964,8 +1964,9 @@ fun AdminSubscriptionAndBroadcastBanner(
                 val broadcastIconKey = OccasionIconKey.fromKey(latestBroadcast.iconKey)
                 DeveloperSystemBroadcastBanner(
                     title = latestBroadcast.title,
-                    subtitle = "${latestBroadcast.message}  •  (${latestBroadcast.createdAt})",
-                    badgeText = "إشعار النظام العام / تعميم المطور",
+                    subtitle = latestBroadcast.message,
+                    badgeText = "تعميم إدارة المنصة",
+                    dateText = formatCleanDate(latestBroadcast.createdAt),
                     iconKey = broadcastIconKey,
                     illustrationType = broadcastIconKey.toThreeDIllustrationType(),
                     onDismiss = {

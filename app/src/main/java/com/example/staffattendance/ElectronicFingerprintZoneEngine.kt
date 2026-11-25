@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -86,6 +87,238 @@ data class SchoolGeofenceConfig(
                 updatedAt = obj.optLong("updatedAt", 0L)
             )
         }
+    }
+}
+
+/**
+ * نوع الدوام الأسبوعي الموحّد للمدرسة (صباحي / مسائي) مع أوقات افتراضية قابلة للتعديل اليدوي.
+ */
+enum class SchoolShiftType(
+    val key: String,
+    val arabicLabel: String,
+    val defaultStart: String,
+    val defaultEnd: String
+) {
+    MORNING("morning", "صباحي", "08:00", "12:30"),
+    EVENING("evening", "مسائي", "13:00", "17:30");
+
+    companion object {
+        fun fromKey(raw: String?): SchoolShiftType =
+            entries.firstOrNull { it.key.equals(raw?.trim(), ignoreCase = true) } ?: MORNING
+    }
+}
+
+/**
+ * نموذج «إعدادات الدوام المدرسي الموحّد» على مستوى المدرسة بالكامل (Real-time لجميع الأدوار).
+ * المسار السحابي: schools/{schoolCode}/school_shift_schedule.json
+ */
+data class SchoolShiftScheduleConfig(
+    val isConfigured: Boolean = false,
+    val shiftType: String = SchoolShiftType.MORNING.key,
+    val shiftStart: String = "08:00",
+    val shiftEnd: String = "12:30",
+    val weekendDays: List<Int> = listOf(Calendar.FRIDAY, Calendar.SATURDAY),
+    val lateGraceMinutes: Int = 15,
+    val absenceAfterHours: Int = 2,
+    val updatedBy: String = "",
+    val updatedAt: Long = 0L
+) {
+    val resolvedShiftType: SchoolShiftType
+        get() = SchoolShiftType.fromKey(shiftType)
+
+    val shiftStartMinutes: Int
+        get() = StaffAttendanceDateUtils.timeToMinutes(shiftStart, 8 * 60)
+
+    val shiftEndMinutes: Int
+        get() = StaffAttendanceDateUtils.timeToMinutes(shiftEnd, 12 * 60 + 30)
+
+    val lateDeadlineMinutes: Int
+        get() = shiftStartMinutes + lateGraceMinutes.coerceIn(0, 180)
+
+    val absenceDeadlineMinutes: Int
+        get() = minOf(
+            shiftStartMinutes + (absenceAfterHours.coerceIn(1, 8) * 60),
+            shiftEndMinutes
+        )
+
+    fun collapsedSummaryArabic(): String {
+        if (!isConfigured) return "بانتظار تثبيت أوقات الدوام"
+        val ltrRange = "\u2066${shiftStart.ifBlank { resolvedShiftType.defaultStart }} - ${shiftEnd.ifBlank { resolvedShiftType.defaultEnd }}\u2069"
+        val hoursLabel = StaffAttendanceDateUtils.formatArabicAbsenceHours(absenceAfterHours)
+        return "دوام ${resolvedShiftType.arabicLabel} • $ltrRange • الغياب بعد $hoursLabel"
+    }
+
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("isConfigured", isConfigured)
+        put("shiftType", resolvedShiftType.key)
+        put("shiftStart", shiftStart.ifBlank { resolvedShiftType.defaultStart })
+        put("shiftEnd", shiftEnd.ifBlank { resolvedShiftType.defaultEnd })
+        put("weekendDays", JSONArray().apply {
+            weekendDays.distinct().sorted().forEach { put(it) }
+        })
+        put("lateGraceMinutes", lateGraceMinutes.coerceIn(0, 180))
+        put("absenceAfterHours", absenceAfterHours.coerceIn(1, 8))
+        put("updatedBy", updatedBy)
+        put("updatedAt", updatedAt)
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject?): SchoolShiftScheduleConfig {
+            if (obj == null) return SchoolShiftScheduleConfig()
+            val resolvedType = SchoolShiftType.fromKey(obj.optString("shiftType", SchoolShiftType.MORNING.key))
+            val parsedWeekends = buildList {
+                val arr = obj.optJSONArray("weekendDays")
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        val day = arr.optInt(i, -1)
+                        if (day in Calendar.SUNDAY..Calendar.SATURDAY) add(day)
+                    }
+                }
+            }.ifEmpty {
+                if (obj.has("weekendDays")) emptyList() else listOf(Calendar.FRIDAY, Calendar.SATURDAY)
+            }
+            val updatedAt = obj.optLong("updatedAt", 0L)
+            val configured = if (obj.has("isConfigured")) {
+                obj.optBoolean("isConfigured", false)
+            } else {
+                updatedAt > 0L
+            }
+            return SchoolShiftScheduleConfig(
+                isConfigured = configured,
+                shiftType = resolvedType.key,
+                shiftStart = obj.optString("shiftStart", resolvedType.defaultStart)
+                    .ifBlank { resolvedType.defaultStart },
+                shiftEnd = obj.optString("shiftEnd", resolvedType.defaultEnd)
+                    .ifBlank { resolvedType.defaultEnd },
+                weekendDays = parsedWeekends,
+                lateGraceMinutes = obj.optInt("lateGraceMinutes", 15).coerceIn(0, 180),
+                absenceAfterHours = obj.optInt("absenceAfterHours", 2).coerceIn(1, 8),
+                updatedBy = obj.optString("updatedBy", ""),
+                updatedAt = updatedAt
+            )
+        }
+    }
+}
+
+/**
+ * الحالات المحسوبة بدقة ليوم الكادر (مع فصل واضح بين الغياب الفعلي والشارات المحايدة الهادئة).
+ */
+enum class ResolvedStaffDayStatus(
+    val code: String,
+    val arabicLabel: String,
+    val countsAsPresent: Boolean = false,
+    val countsAsLate: Boolean = false,
+    val countsAsLeave: Boolean = false,
+    val countsAsAbsent: Boolean = false,
+    val isNeutral: Boolean = false
+) {
+    PRESENT("present", "حاضر", countsAsPresent = true),
+    LATE("late", "متأخر", countsAsLate = true),
+    LEAVE("leave", "مجاز", countsAsLeave = true),
+    ABSENT("absent", "غائب", countsAsAbsent = true),
+    AWAITING_SHIFT_SETUP("awaiting_shift_setup", "بانتظار ضبط الدوام", isNeutral = true),
+    SHIFT_NOT_STARTED("shift_not_started", "لم يبدأ الدوام", isNeutral = true),
+    AWAITING_FINGERPRINT("awaiting_fingerprint", "بانتظار البصمة", isNeutral = true),
+    HOLIDAY("holiday", "عطلة رسمية", isNeutral = true),
+    UPCOMING("upcoming", "لم يحن الموعد", isNeutral = true)
+}
+
+/**
+ * محرك حساب حالة الكادر الموحّد (للحضور اليومي + العدّادات الأربعة + السجل الشهري + شاشة المعلم).
+ */
+object StaffAttendanceStatusEngine {
+
+    fun isLeaveApprovedForDate(
+        staffId: String,
+        dateIso: String,
+        leaves: List<StaffLeaveRequest>
+    ): Boolean {
+        if (leaves.isEmpty()) return false
+        return leaves.any { req ->
+            req.staffId == staffId &&
+                req.status.equals("approved", ignoreCase = true) &&
+                dateIso in StaffAttendanceDateUtils.expandDateRange(req.startDate, req.daysCount)
+        }
+    }
+
+    fun resolveStatus(
+        dateIso: String,
+        record: StaffAttendanceRecord?,
+        hasApprovedLeaveForDate: Boolean,
+        shiftSchedule: SchoolShiftScheduleConfig,
+        schoolHolidayLabel: String? = null,
+        todayIso: String = StaffAttendanceDateUtils.todayIso(),
+        nowMinutes: Int = StaffAttendanceDateUtils.nowMinutes()
+    ): ResolvedStaffDayStatus {
+        // 1. الأولوية القصوى دائماً: التعديل اليدوي عبر "تعديل إداري"
+        if (record?.isManualOverride == true) {
+            return when (record.status.lowercase(Locale.US)) {
+                "present" -> ResolvedStaffDayStatus.PRESENT
+                "late" -> ResolvedStaffDayStatus.LATE
+                "leave" -> ResolvedStaffDayStatus.LEAVE
+                "absent" -> ResolvedStaffDayStatus.ABSENT
+                else -> ResolvedStaffDayStatus.PRESENT
+            }
+        }
+
+        // 2. الإجازة المعتمدة ("مجاز")
+        if (record?.status.equals("leave", ignoreCase = true) || hasApprovedLeaveForDate) {
+            return ResolvedStaffDayStatus.LEAVE
+        }
+
+        // 3. عند وجود بصمة حضور: ضمن (shiftStart + lateGraceMinutes) => حاضر، وبعدها => متأخر
+        if (record != null && record.hasCheckedIn) {
+            if (shiftSchedule.isConfigured && record.checkInTime.isNotBlank()) {
+                val checkInMin = StaffAttendanceDateUtils.timeToMinutes(record.checkInTime, -1)
+                if (checkInMin >= 0) {
+                    return if (checkInMin <= shiftSchedule.lateDeadlineMinutes) {
+                        ResolvedStaffDayStatus.PRESENT
+                    } else {
+                        ResolvedStaffDayStatus.LATE
+                    }
+                }
+            }
+            return if (record.status.equals("late", ignoreCase = true)) {
+                ResolvedStaffDayStatus.LATE
+            } else {
+                ResolvedStaffDayStatus.PRESENT
+            }
+        }
+
+        // 4. سجل غياب صريح محفوظ مسبقاً
+        if (record != null && record.status.equals("absent", ignoreCase = true)) {
+            return ResolvedStaffDayStatus.ABSENT
+        }
+
+        // 5. أيام العطل الأسبوعية أو العطل الرسمية المعتمدة => محايدة دائماً ولا يُحتسب غائباً
+        if (!schoolHolidayLabel.isNullOrBlank() ||
+            StaffAttendanceDateUtils.isWeekend(dateIso, shiftSchedule.weekendDays)
+        ) {
+            return ResolvedStaffDayStatus.HOLIDAY
+        }
+
+        // 6. التواريخ المستقبلية => حالة محايدة ولا يُحتسب غائباً مطلقاً
+        if (dateIso > todayIso) {
+            return ResolvedStaffDayStatus.UPCOMING
+        }
+
+        // 7. أيام الدوام السابقة المنتهية بلا بصمة وبلا إجازة => غائب
+        if (dateIso < todayIso) {
+            return ResolvedStaffDayStatus.ABSENT
+        }
+
+        // 8. اليوم الحالي بدون بصمة: التسلسل الذكي المحايد قبل احتساب الغياب
+        if (!shiftSchedule.isConfigured) {
+            return ResolvedStaffDayStatus.AWAITING_SHIFT_SETUP
+        }
+        if (nowMinutes < shiftSchedule.shiftStartMinutes) {
+            return ResolvedStaffDayStatus.SHIFT_NOT_STARTED
+        }
+        val absenceByHoursMin = shiftSchedule.shiftStartMinutes + (shiftSchedule.absenceAfterHours.coerceIn(1, 8) * 60)
+        if (nowMinutes < absenceByHoursMin && nowMinutes < shiftSchedule.shiftEndMinutes) {
+            return ResolvedStaffDayStatus.AWAITING_FINGERPRINT
+        }
+        return ResolvedStaffDayStatus.ABSENT
     }
 }
 
@@ -248,19 +481,56 @@ object StaffAttendanceDateUtils {
 
     fun nowTimeHHmm(): String = SimpleDateFormat("HH:mm", Locale.US).format(Date())
 
-    fun isWeekend(dateIso: String): Boolean {
+    fun nowMinutes(): Int {
+        val cal = Calendar.getInstance()
+        return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+    }
+
+    fun formatMinutesHHmm(totalMinutes: Int): String {
+        val clamped = totalMinutes.coerceIn(0, 23 * 60 + 59)
+        val h = clamped / 60
+        val m = clamped % 60
+        return String.format(Locale.US, "%02d:%02d", h, m)
+    }
+
+    fun formatArabicAbsenceHours(hours: Int): String = when (hours.coerceIn(1, 12)) {
+        1 -> "ساعة واحدة"
+        2 -> "ساعتين"
+        in 3..10 -> "$hours ساعات"
+        else -> "$hours ساعة"
+    }
+
+    fun arabicDayOfWeekName(calendarDay: Int): String = when (calendarDay) {
+        Calendar.SUNDAY -> "الأحد"
+        Calendar.MONDAY -> "الإثنين"
+        Calendar.TUESDAY -> "الثلاثاء"
+        Calendar.WEDNESDAY -> "الأربعاء"
+        Calendar.THURSDAY -> "الخميس"
+        Calendar.FRIDAY -> "الجمعة"
+        Calendar.SATURDAY -> "السبت"
+        else -> ""
+    }
+
+    fun isWeekend(
+        dateIso: String,
+        weekendDays: List<Int> = listOf(Calendar.FRIDAY, Calendar.SATURDAY)
+    ): Boolean {
+        if (weekendDays.isEmpty()) return false
         return try {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val parsed = sdf.parse(dateIso) ?: return false
             val cal = Calendar.getInstance().apply { time = parsed }
-            val dow = cal.get(Calendar.DAY_OF_WEEK)
-            dow == Calendar.FRIDAY || dow == Calendar.SATURDAY
+            cal.get(Calendar.DAY_OF_WEEK) in weekendDays
         } catch (_: Exception) {
             false
         }
     }
 
-    fun getHolidayNoticeIfAny(dateIso: String, schoolHolidayLabel: String?): String? {
+    fun getHolidayNoticeIfAny(
+        dateIso: String,
+        schoolHolidayLabel: String?,
+        weekendDays: List<Int> = listOf(Calendar.FRIDAY, Calendar.SATURDAY)
+    ): String? {
         if (!schoolHolidayLabel.isNullOrBlank()) {
             return "اليوم عطلة رسمية ($schoolHolidayLabel) • لا يتطلب تسجيل بصمة"
         }
@@ -268,13 +538,38 @@ object StaffAttendanceDateUtils {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val parsed = sdf.parse(dateIso) ?: return null
             val cal = Calendar.getInstance().apply { time = parsed }
-            when (cal.get(Calendar.DAY_OF_WEEK)) {
-                Calendar.FRIDAY -> "اليوم عطلة رسمية (الجمعة) • لا يتطلب تسجيل بصمة"
-                Calendar.SATURDAY -> "اليوم عطلة رسمية (السبت) • لا يتطلب تسجيل بصمة"
-                else -> null
+            val dow = cal.get(Calendar.DAY_OF_WEEK)
+            if (dow in weekendDays) {
+                "اليوم عطلة رسمية (${arabicDayOfWeekName(dow)}) • لا يتطلب تسجيل بصمة"
+            } else {
+                null
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    /**
+     * يولّد جميع تواريخ الشهر المحدد (yyyy-MM-dd) من اليوم الأول حتى آخر يوم في الشهر.
+     */
+    fun datesInMonth(yearMonth: String): List<String> {
+        val parts = yearMonth.split("-")
+        if (parts.size < 2) return emptyList()
+        val year = parts[0].toIntOrNull() ?: return emptyList()
+        val month = parts[1].toIntOrNull() ?: return emptyList()
+        if (month !in 1..12) return emptyList()
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month - 1)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        return buildList {
+            for (d in 1..maxDay) {
+                cal.set(Calendar.DAY_OF_MONTH, d)
+                add(sdf.format(cal.time))
+            }
         }
     }
 
@@ -359,6 +654,9 @@ object StaffAttendanceCloudStore {
 
     private val _geofenceConfigState = MutableStateFlow(SchoolGeofenceConfig())
     val geofenceConfigState: StateFlow<SchoolGeofenceConfig> = _geofenceConfigState.asStateFlow()
+
+    private val _shiftScheduleState = MutableStateFlow(SchoolShiftScheduleConfig())
+    val shiftScheduleState: StateFlow<SchoolShiftScheduleConfig> = _shiftScheduleState.asStateFlow()
 
     private fun sanitizeSegment(raw: String, fallback: String): String {
         val cleaned = raw.trim().replace(Regex("[^A-Za-z0-9_\\-]"), "_")
@@ -458,6 +756,55 @@ object StaffAttendanceCloudStore {
         prefs.edit().putString(cacheKey(schoolCode, "geofence_config"), stamped.toJson().toString()).apply()
         _geofenceConfigState.value = stamped
         httpPutJson(buildUrl(schoolCode, "school_geofence_config.json"), stamped.toJson().toString())
+    }
+
+    // -------------------------------------------------------------------------
+    // 1.5 Unified School Shift Schedule Config (Real-time across all roles)
+    // -------------------------------------------------------------------------
+    suspend fun fetchShiftScheduleConfig(
+        context: Context,
+        schoolCode: String
+    ): SchoolShiftScheduleConfig = withContext(Dispatchers.IO) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val key = cacheKey(schoolCode, "shift_schedule_config")
+        val cached = prefs.getString(key, null)?.let {
+            try {
+                SchoolShiftScheduleConfig.fromJson(JSONObject(it))
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        val raw = httpGetJson(buildUrl(schoolCode, "school_shift_schedule.json"))
+        val resolved = if (!raw.isNullOrBlank() && raw != "null") {
+            try {
+                val parsed = SchoolShiftScheduleConfig.fromJson(JSONObject(raw))
+                prefs.edit().putString(key, parsed.toJson().toString()).apply()
+                parsed
+            } catch (_: Exception) {
+                cached ?: SchoolShiftScheduleConfig()
+            }
+        } else {
+            cached ?: SchoolShiftScheduleConfig()
+        }
+        _shiftScheduleState.value = resolved
+        resolved
+    }
+
+    suspend fun saveShiftScheduleConfig(
+        context: Context,
+        schoolCode: String,
+        config: SchoolShiftScheduleConfig
+    ): Boolean = withContext(Dispatchers.IO) {
+        val stamped = config.copy(
+            isConfigured = true,
+            updatedAt = System.currentTimeMillis()
+        )
+        val jsonStr = stamped.toJson().toString()
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(cacheKey(schoolCode, "shift_schedule_config"), jsonStr).apply()
+        _shiftScheduleState.value = stamped
+        httpPutJson(buildUrl(schoolCode, "school_shift_schedule.json"), jsonStr)
     }
 
     // -------------------------------------------------------------------------
@@ -899,10 +1246,12 @@ object ElectronicFingerprintZoneEngine {
     suspend fun probeCurrentZone(
         context: Context,
         config: SchoolGeofenceConfig,
-        holidayLabel: String?
+        holidayLabel: String?,
+        shiftSchedule: SchoolShiftScheduleConfig? = null
     ): ZoneProbeResult {
         val todayIso = StaffAttendanceDateUtils.todayIso()
-        val holidayMsg = StaffAttendanceDateUtils.getHolidayNoticeIfAny(todayIso, holidayLabel)
+        val weekendDays = shiftSchedule?.weekendDays ?: listOf(Calendar.FRIDAY, Calendar.SATURDAY)
+        val holidayMsg = StaffAttendanceDateUtils.getHolidayNoticeIfAny(todayIso, holidayLabel, weekendDays)
         if (holidayMsg != null) {
             return ZoneProbeResult(
                 isHoliday = true,
@@ -1018,10 +1367,12 @@ object ElectronicFingerprintZoneEngine {
         staffRoleLabel: String,
         config: SchoolGeofenceConfig,
         existingTodayRecord: StaffAttendanceRecord?,
-        holidayLabel: String?
+        holidayLabel: String?,
+        shiftSchedule: SchoolShiftScheduleConfig? = null
     ): FingerprintActionOutcome {
         val todayIso = StaffAttendanceDateUtils.todayIso()
-        val holidayMsg = StaffAttendanceDateUtils.getHolidayNoticeIfAny(todayIso, holidayLabel)
+        val weekendDays = shiftSchedule?.weekendDays ?: listOf(Calendar.FRIDAY, Calendar.SATURDAY)
+        val holidayMsg = StaffAttendanceDateUtils.getHolidayNoticeIfAny(todayIso, holidayLabel, weekendDays)
         if (holidayMsg != null) {
             return FingerprintActionOutcome(
                 success = false,
@@ -1063,7 +1414,7 @@ object ElectronicFingerprintZoneEngine {
             )
         }
 
-        val probe = probeCurrentZone(context, config, holidayLabel)
+        val probe = probeCurrentZone(context, config, holidayLabel, shiftSchedule)
         if (probe.isMockLocationDetected) {
             return FingerprintActionOutcome(
                 success = false,
@@ -1097,7 +1448,11 @@ object ElectronicFingerprintZoneEngine {
         val isCheckOut = existingTodayRecord != null && existingTodayRecord.hasCheckedIn && !existingTodayRecord.hasCheckedOut
         val newRecord = if (!isCheckOut) {
             val nowMin = StaffAttendanceDateUtils.timeToMinutes(nowTime, 8 * 60)
-            val lateThresholdMin = StaffAttendanceDateUtils.timeToMinutes(config.lateAfterTime, 8 * 60)
+            val lateThresholdMin = if (shiftSchedule != null && shiftSchedule.isConfigured) {
+                shiftSchedule.lateDeadlineMinutes
+            } else {
+                StaffAttendanceDateUtils.timeToMinutes(config.lateAfterTime, 8 * 60)
+            }
             val computedStatus = if (nowMin > lateThresholdMin) "late" else "present"
             StaffAttendanceRecord(
                 staffId = staffId,

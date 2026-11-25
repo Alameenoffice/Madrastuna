@@ -1,6 +1,7 @@
 package com.example.staffattendance
 
 import android.Manifest
+import android.app.TimePickerDialog
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,11 +25,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -37,10 +42,13 @@ import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -76,6 +84,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -98,11 +107,13 @@ import com.example.ui.components.formatCleanDate
 import com.example.ui.components.resolveSmartAvatarPersona
 import com.example.ui.theme.DeepEmerald
 import com.example.viewmodel.SchoolViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import java.util.Locale
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun StaffAttendanceAdminScreen(
     viewModel: SchoolViewModel
@@ -117,6 +128,7 @@ fun StaffAttendanceAdminScreen(
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val schoolConfig by viewModel.schoolConfig.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val liveShiftSchedule by StaffAttendanceCloudStore.shiftScheduleState.collectAsStateWithLifecycle()
 
     val schoolCode = remember(schoolConfig.schoolId) {
         schoolConfig.schoolId.ifBlank { "default_school" }
@@ -138,17 +150,32 @@ fun StaffAttendanceAdminScreen(
     var zoneLon by remember { mutableDoubleStateOf(43.1577) }
     var zoneRadiusMeters by remember { mutableIntStateOf(120) }
     var wifiSsid by remember { mutableStateOf("") }
-    var workStartTime by remember { mutableStateOf("07:30") }
-    var lateAfterTime by remember { mutableStateOf("08:00") }
-    var workEndTime by remember { mutableStateOf("14:30") }
+    var workStartTime by remember { mutableStateOf("08:00") }
+    var lateAfterTime by remember { mutableStateOf("08:15") }
+    var workEndTime by remember { mutableStateOf("12:30") }
     var pasteCoordsInput by remember { mutableStateOf("") }
     var isSavingZone by remember { mutableStateOf(false) }
     var isCapturingLocation by remember { mutableStateOf(false) }
     var zoneFeedbackMessage by remember { mutableStateOf<String?>(null) }
 
+    // حالة بطاقة «إعدادات الدوام واحتساب الغياب» الموحّدة
+    var isShiftSettingsExpanded by remember { mutableStateOf(false) }
+    var shiftTypeInput by remember { mutableStateOf(SchoolShiftType.MORNING) }
+    var shiftStartInput by remember { mutableStateOf("08:00") }
+    var shiftEndInput by remember { mutableStateOf("12:30") }
+    var lateGraceMinutesInput by remember { mutableIntStateOf(15) }
+    var absenceAfterHoursInput by remember { mutableIntStateOf(2) }
+    var weekendDaysInput by remember { mutableStateOf(setOf(Calendar.FRIDAY, Calendar.SATURDAY)) }
+    var isSavingShift by remember { mutableStateOf(false) }
+    var shiftFeedbackMessage by remember { mutableStateOf<String?>(null) }
+
+    // ساعة حيّة لتحديث الحالات والعدّادات تلقائياً عند تجاوز وقت البدء أو مهلة الغياب
+    var currentNowMinutes by remember { mutableIntStateOf(StaffAttendanceDateUtils.nowMinutes()) }
+    val todayIso = remember { StaffAttendanceDateUtils.todayIso() }
+
     // حالة التبويبات الثلاثة (0: الحضور اليومي، 1: طلبات الإجازات، 2: السجل الشهري)
     var activeTab by remember { mutableIntStateOf(0) }
-    var selectedDateIso by remember { mutableStateOf(StaffAttendanceDateUtils.todayIso()) }
+    var selectedDateIso by remember { mutableStateOf(todayIso) }
     var selectedMonthIso by remember { mutableStateOf(StaffAttendanceDateUtils.currentMonthIso()) }
 
     var dailyRecordsMap by remember { mutableStateOf<Map<String, StaffAttendanceRecord>>(emptyMap()) }
@@ -160,6 +187,30 @@ fun StaffAttendanceAdminScreen(
     var editingStaffTarget by remember { mutableStateOf<Pair<UserAccount, StaffAttendanceRecord?>?>(null) }
     var reviewingLeaveTarget by remember { mutableStateOf<Pair<StaffLeaveRequest, Boolean>?>(null) }
     var expandedMonthlyStaffId by remember { mutableStateOf<String?>(null) }
+
+    fun openTimePicker(currentHHmm: String, onPicked: (String) -> Unit) {
+        val totalMin = StaffAttendanceDateUtils.timeToMinutes(currentHHmm, 8 * 60)
+        val initH = totalMin / 60
+        val initM = totalMin % 60
+        TimePickerDialog(
+            context,
+            { _, h, m ->
+                onPicked(String.format(Locale.US, "%02d:%02d", h, m))
+            },
+            initH,
+            initM,
+            true
+        ).show()
+    }
+
+    fun applyShiftScheduleToInputs(schedule: SchoolShiftScheduleConfig) {
+        shiftTypeInput = schedule.resolvedShiftType
+        shiftStartInput = schedule.shiftStart
+        shiftEndInput = schedule.shiftEnd
+        lateGraceMinutesInput = schedule.lateGraceMinutes
+        absenceAfterHoursInput = schedule.absenceAfterHours
+        weekendDaysInput = schedule.weekendDays.toSet()
+    }
 
     fun loadAdminData(loadConfig: Boolean = false) {
         scope.launch {
@@ -175,10 +226,14 @@ fun StaffAttendanceAdminScreen(
                 workStartTime = cfg.workStartTime
                 lateAfterTime = cfg.lateAfterTime
                 workEndTime = cfg.workEndTime
+
+                val shiftCfg = StaffAttendanceCloudStore.fetchShiftScheduleConfig(context, schoolCode)
+                applyShiftScheduleToInputs(shiftCfg)
             }
             dailyRecordsMap = StaffAttendanceCloudStore.fetchDailyAttendance(context, schoolCode, selectedDateIso)
             allLeaveRequests = StaffAttendanceCloudStore.fetchLeaveRequests(context, schoolCode)
             monthlyRecords = StaffAttendanceCloudStore.fetchMonthlyAttendance(context, schoolCode, selectedMonthIso)
+            currentNowMinutes = StaffAttendanceDateUtils.nowMinutes()
             isLoadingData = false
         }
     }
@@ -215,6 +270,15 @@ fun StaffAttendanceAdminScreen(
         loadAdminData(loadConfig = true)
     }
 
+    // تحديث تلقائي للساعة الحية ومزامنة إعدادات الدوام الموحّدة لحظياً
+    LaunchedEffect(schoolCode) {
+        while (true) {
+            delay(30_000L)
+            currentNowMinutes = StaffAttendanceDateUtils.nowMinutes()
+            StaffAttendanceCloudStore.fetchShiftScheduleConfig(context, schoolCode)
+        }
+    }
+
     LaunchedEffect(selectedDateIso) {
         dailyRecordsMap = StaffAttendanceCloudStore.fetchDailyAttendance(context, schoolCode, selectedDateIso)
     }
@@ -223,19 +287,53 @@ fun StaffAttendanceAdminScreen(
         monthlyRecords = StaffAttendanceCloudStore.fetchMonthlyAttendance(context, schoolCode, selectedMonthIso)
     }
 
-    // إحصائيات اليوم للأقسام الأربعة
-    val dailyStats = remember(teachingStaff, dailyRecordsMap) {
+    val selectedDateHolidayLabel = remember(selectedDateIso) {
+        viewModel.getHolidayLabelForDate(selectedDateIso)
+    }
+
+    // حساب الحالة الذكية الموحّدة لكل عضو كادر في التاريخ المختار
+    val dailyResolvedStatusByStaffId = remember(
+        teachingStaff,
+        dailyRecordsMap,
+        allLeaveRequests,
+        liveShiftSchedule,
+        selectedDateIso,
+        selectedDateHolidayLabel,
+        todayIso,
+        currentNowMinutes
+    ) {
+        teachingStaff.associate { staff ->
+            val rec = dailyRecordsMap[staff.id]
+            val hasApprovedLeave = StaffAttendanceStatusEngine.isLeaveApprovedForDate(
+                staffId = staff.id,
+                dateIso = selectedDateIso,
+                leaves = allLeaveRequests
+            )
+            staff.id to StaffAttendanceStatusEngine.resolveStatus(
+                dateIso = selectedDateIso,
+                record = rec,
+                hasApprovedLeaveForDate = hasApprovedLeave,
+                shiftSchedule = liveShiftSchedule,
+                schoolHolidayLabel = selectedDateHolidayLabel,
+                todayIso = todayIso,
+                nowMinutes = currentNowMinutes
+            )
+        }
+    }
+
+    // العدّادات الأربعة (الشارات المحايدة لا تُحسب غياباً أبداً)
+    val dailyStats = remember(teachingStaff, dailyResolvedStatusByStaffId) {
         var present = 0
         var late = 0
         var leave = 0
         var absent = 0
         teachingStaff.forEach { staff ->
-            val rec = dailyRecordsMap[staff.id]
-            when (rec?.status?.lowercase(Locale.US)) {
-                "present" -> present++
-                "late" -> late++
-                "leave" -> leave++
-                else -> absent++
+            val st = dailyResolvedStatusByStaffId[staff.id]
+            when {
+                st?.countsAsPresent == true -> present++
+                st?.countsAsLate == true -> late++
+                st?.countsAsLeave == true -> leave++
+                st?.countsAsAbsent == true -> absent++
             }
         }
         listOf(present, late, leave, absent)
@@ -671,6 +769,570 @@ fun StaffAttendanceAdminScreen(
             }
         }
 
+        // 2.5 بطاقة «إعدادات الدوام واحتساب الغياب» القابلة للطي مباشرة أسفل بطاقة النطاق الجغرافي
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .shadow(
+                        elevation = 5.dp,
+                        shape = RoundedCornerShape(18.dp),
+                        ambientColor = DeepEmerald.copy(alpha = 0.12f),
+                        spotColor = DeepEmerald.copy(alpha = 0.12f)
+                    ),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f))
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isShiftSettingsExpanded = !isShiftSettingsExpanded }
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                            .testTag("admin_shift_schedule_expand_toggle"),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                modifier = Modifier.size(44.dp),
+                                shape = RoundedCornerShape(13.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                            ) {
+                                SchoolShiftClockCanvas(
+                                    isEvening = liveShiftSchedule.resolvedShiftType == SchoolShiftType.EVENING,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(6.dp)
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "إعدادات الدوام واحتساب الغياب",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = liveShiftSchedule.collapsedSummaryArabic(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (liveShiftSchedule.isConfigured) DeepEmerald else StaffAttendancePalette.LeaveAmber,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = if (isShiftSettingsExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = "طي أو فتح إعدادات الدوام",
+                            tint = DeepEmerald
+                        )
+                    }
+
+                    AnimatedVisibility(visible = isShiftSettingsExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp)
+                                .padding(bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(13.dp)
+                        ) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                            // 1) اختيار نوع الدوام لهذا الأسبوع (صباحي | مسائي)
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "نوع الدوام لهذا الأسبوع",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF065F46)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    SchoolShiftType.entries.forEach { st ->
+                                        val isSelected = shiftTypeInput == st
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = if (isSelected) DeepEmerald else Color(0xFFF8FAFC),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isSelected) DeepEmerald else DeepEmerald.copy(alpha = 0.24f)
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(44.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    shiftTypeInput = st
+                                                    shiftStartInput = st.defaultStart
+                                                    shiftEndInput = st.defaultEnd
+                                                    shiftFeedbackMessage = null
+                                                }
+                                                .testTag("admin_shift_type_${st.key}")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (st == SchoolShiftType.MORNING) Icons.Filled.WbSunny else Icons.Filled.NightsStay,
+                                                    contentDescription = st.arabicLabel,
+                                                    tint = if (isSelected) Color(0xFFFDE68A) else DeepEmerald,
+                                                    modifier = Modifier.size(17.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "دوام ${st.arabicLabel}",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2) حقول اختيار وقت البدء والانتهاء (قابلة للتعديل اليدوي أو من ساعة الاختيار)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = shiftStartInput,
+                                    onValueChange = { shiftStartInput = it },
+                                    label = { Text("وقت بدء الدوام") },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        textDirection = TextDirection.Ltr
+                                    ),
+                                    trailingIcon = {
+                                        IconButton(
+                                            onClick = {
+                                                openTimePicker(shiftStartInput) { picked ->
+                                                    shiftStartInput = picked
+                                                    shiftFeedbackMessage = null
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("admin_pick_shift_start_time")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.AccessTime,
+                                                contentDescription = "اختيار وقت بدء الدوام",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("admin_shift_start_input"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DeepEmerald)
+                                )
+
+                                OutlinedTextField(
+                                    value = shiftEndInput,
+                                    onValueChange = { shiftEndInput = it },
+                                    label = { Text("وقت انتهاء الدوام") },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        textDirection = TextDirection.Ltr
+                                    ),
+                                    trailingIcon = {
+                                        IconButton(
+                                            onClick = {
+                                                openTimePicker(shiftEndInput) { picked ->
+                                                    shiftEndInput = picked
+                                                    shiftFeedbackMessage = null
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("admin_pick_shift_end_time")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Schedule,
+                                                contentDescription = "اختيار وقت انتهاء الدوام",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("admin_shift_end_input"),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DeepEmerald)
+                                )
+                            }
+
+                            // 3) عدّاد مهلة التأخير المسموحة للكوادر بالدقائق
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "مهلة التأخير المسموحة",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF064E3B)
+                                        )
+                                        Text(
+                                            text = "يُحتسب الكادر متأخراً بعد تجاوز وقت البدء بهذه المدة",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    lateGraceMinutesInput = (lateGraceMinutesInput - 5).coerceAtLeast(0)
+                                                }
+                                                .testTag("admin_late_grace_minus_btn")
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Remove,
+                                                    contentDescription = "تقليل مهلة التأخير",
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                        Text(
+                                            text = if (lateGraceMinutesInput == 0) "بدون مهلة" else "$lateGraceMinutesInput دقيقة",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepEmerald,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.width(66.dp)
+                                        )
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = DeepEmerald,
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    lateGraceMinutesInput = (lateGraceMinutesInput + 5).coerceAtMost(90)
+                                                }
+                                                .testTag("admin_late_grace_plus_btn")
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Add,
+                                                    contentDescription = "زيادة مهلة التأخير",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 4) عدّاد احتساب الغياب للكوادر بالساعات بعد بدء الدوام (مطابق لمنطق الطلبة)
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "احتساب الغياب تلقائياً بعد",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF064E3B)
+                                            )
+                                            Text(
+                                                text = "يُمنح الكادر حالة (بانتظار البصمة) حتى انتهاء هذه المهلة من بدء الدوام",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color(0xFF64748B)
+                                            )
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color(0xFFECFDF5),
+                                                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                                modifier = Modifier
+                                                    .size(34.dp)
+                                                    .clip(CircleShape)
+                                                    .clickable {
+                                                        absenceAfterHoursInput = (absenceAfterHoursInput - 1).coerceAtLeast(1)
+                                                    }
+                                                    .testTag("admin_absence_hours_minus_btn")
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Remove,
+                                                        contentDescription = "تقليل ساعات الغياب",
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                            Text(
+                                                text = StaffAttendanceDateUtils.formatArabicAbsenceHours(absenceAfterHoursInput),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepEmerald,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.width(66.dp)
+                                            )
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = DeepEmerald,
+                                                modifier = Modifier
+                                                    .size(34.dp)
+                                                    .clip(CircleShape)
+                                                    .clickable {
+                                                        absenceAfterHoursInput = (absenceAfterHoursInput + 1).coerceAtMost(6)
+                                                    }
+                                                    .testTag("admin_absence_hours_plus_btn")
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Add,
+                                                        contentDescription = "زيادة ساعات الغياب",
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // اختيارات سريعة مطابقة لقسم الحضور والغياب للطلبة (1، 2، 3، 4 ساعات)
+                                    val quickHours = listOf(
+                                        1 to "ساعة واحدة",
+                                        2 to "ساعتان",
+                                        3 to "3 ساعات",
+                                        4 to "4 ساعات"
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        quickHours.forEach { (h, label) ->
+                                            val isSel = absenceAfterHoursInput == h
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isSel) DeepEmerald else Color.White,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (isSel) DeepEmerald else Color(0xFFCBD5E1)
+                                                ),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(34.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .clickable { absenceAfterHoursInput = h }
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = label,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (isSel) Color.White else Color(0xFF334155),
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 5) شرائح أيام العطلة الأسبوعية
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(
+                                    text = "أيام العطلة الأسبوعية (لا يُحتسب فيها غياب)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF065F46)
+                                )
+                                val allWeekDays = remember {
+                                    listOf(
+                                        Calendar.SUNDAY,
+                                        Calendar.MONDAY,
+                                        Calendar.TUESDAY,
+                                        Calendar.WEDNESDAY,
+                                        Calendar.THURSDAY,
+                                        Calendar.FRIDAY,
+                                        Calendar.SATURDAY
+                                    )
+                                }
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    allWeekDays.forEach { day ->
+                                        val isWeekend = day in weekendDaysInput
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isWeekend) DeepEmerald else Color(0xFFF8FAFC),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isWeekend) DeepEmerald else DeepEmerald.copy(alpha = 0.22f)
+                                            ),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    weekendDaysInput = if (isWeekend) {
+                                                        weekendDaysInput - day
+                                                    } else {
+                                                        weekendDaysInput + day
+                                                    }
+                                                }
+                                                .testTag("admin_weekend_day_$day")
+                                        ) {
+                                            Text(
+                                                text = StaffAttendanceDateUtils.arabicDayOfWeekName(day),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isWeekend) Color.White else Color(0xFF334155),
+                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (shiftFeedbackMessage != null) {
+                                StatusNoticeBanner(
+                                    icon = Icons.Filled.CheckCircle,
+                                    accent = DeepEmerald,
+                                    title = "إعدادات الدوام الموحّدة",
+                                    message = shiftFeedbackMessage.orEmpty()
+                                )
+                            }
+
+                            // 6) زر حفظ وتثبيت إعدادات الدوام بارتفاع موحّد وتناسق زمردي
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        isSavingShift = true
+                                        val cleanStart = shiftStartInput.trim().ifBlank { shiftTypeInput.defaultStart }
+                                        val cleanEnd = shiftEndInput.trim().ifBlank { shiftTypeInput.defaultEnd }
+                                        val newSchedule = SchoolShiftScheduleConfig(
+                                            isConfigured = true,
+                                            shiftType = shiftTypeInput.key,
+                                            shiftStart = cleanStart,
+                                            shiftEnd = cleanEnd,
+                                            weekendDays = weekendDaysInput.toList().sorted(),
+                                            lateGraceMinutes = lateGraceMinutesInput.coerceIn(0, 180),
+                                            absenceAfterHours = absenceAfterHoursInput.coerceIn(1, 8),
+                                            updatedBy = adminName,
+                                            updatedAt = System.currentTimeMillis()
+                                        )
+                                        val ok = StaffAttendanceCloudStore.saveShiftScheduleConfig(
+                                            context = context,
+                                            schoolCode = schoolCode,
+                                            config = newSchedule
+                                        )
+                                        // مزامنة أوقات النطاق الجغرافي أيضاً لتوحيد المرجع الزمني
+                                        workStartTime = cleanStart
+                                        workEndTime = cleanEnd
+                                        lateAfterTime = StaffAttendanceDateUtils.formatMinutesHHmm(newSchedule.lateDeadlineMinutes)
+                                        currentNowMinutes = StaffAttendanceDateUtils.nowMinutes()
+                                        isSavingShift = false
+                                        shiftFeedbackMessage = if (ok) {
+                                            "تم حفظ وتثبيت إعدادات الدوام الموحّدة سحابياً بنجاح."
+                                        } else {
+                                            "تم تثبيت إعدادات الدوام محلياً وستُزامن فور توفر الاتصال."
+                                        }
+                                    }
+                                },
+                                enabled = !isSavingShift,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("admin_save_shift_schedule_btn"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald)
+                            ) {
+                                if (isSavingShift) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color.White
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Filled.Save,
+                                        contentDescription = "حفظ وتثبيت إعدادات الدوام",
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "حفظ وتثبيت إعدادات الدوام",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 3. شريط التبويبات الثلاثة المتوازن (Modifier.weight(1f))
         item {
             Row(
@@ -800,9 +1462,12 @@ fun StaffAttendanceAdminScreen(
             } else {
                 items(teachingStaff, key = { it.id }) { staff ->
                     val rec = dailyRecordsMap[staff.id]
+                    val resolvedSt = dailyResolvedStatusByStaffId[staff.id]
+                        ?: ResolvedStaffDayStatus.AWAITING_FINGERPRINT
                     AdminDailyStaffRowCard(
                         staff = staff,
                         record = rec,
+                        resolvedStatus = resolvedSt,
                         schoolGenderType = schoolConfig.schoolGenderType,
                         onManualEditClick = { editingStaffTarget = staff to rec },
                         modifier = Modifier.padding(horizontal = 16.dp)
@@ -895,13 +1560,54 @@ fun StaffAttendanceAdminScreen(
                     )
                 }
             } else {
+                val monthDates = StaffAttendanceDateUtils.datesInMonth(selectedMonthIso)
                 items(teachingStaff, key = { "monthly_${it.id}" }) { staff ->
-                    val staffMonthRecs = remember(monthlyRecords, staff.id) {
-                        monthlyRecords.filter { it.staffId == staff.id }
+                    val staffMonthEntries = remember(
+                        monthlyRecords,
+                        allLeaveRequests,
+                        staff.id,
+                        selectedMonthIso,
+                        liveShiftSchedule,
+                        todayIso,
+                        currentNowMinutes
+                    ) {
+                        val recByDate = monthlyRecords
+                            .filter { it.staffId == staff.id }
+                            .associateBy { it.dateIso }
+                        monthDates.mapNotNull { dayIso ->
+                            val rec = recByDate[dayIso]
+                            val hasApprovedLeave = StaffAttendanceStatusEngine.isLeaveApprovedForDate(
+                                staffId = staff.id,
+                                dateIso = dayIso,
+                                leaves = allLeaveRequests
+                            )
+                            // لا نكدّس الأيام المستقبلية الفارغة غير المسجلة في القائمة التفصيلية
+                            if (dayIso > todayIso && rec == null && !hasApprovedLeave) {
+                                return@mapNotNull null
+                            }
+                            val resolved = StaffAttendanceStatusEngine.resolveStatus(
+                                dateIso = dayIso,
+                                record = rec,
+                                hasApprovedLeaveForDate = hasApprovedLeave,
+                                shiftSchedule = liveShiftSchedule,
+                                schoolHolidayLabel = viewModel.getHolidayLabelForDate(dayIso),
+                                todayIso = todayIso,
+                                nowMinutes = currentNowMinutes
+                            )
+                            // إخفاء أيام العطل غير الموثقة بسجل خاص للحفاظ على وضوح السجل الشهري
+                            if (resolved == ResolvedStaffDayStatus.HOLIDAY && rec == null) {
+                                return@mapNotNull null
+                            }
+                            MonthlyStaffDayEntry(
+                                dateIso = dayIso,
+                                record = rec,
+                                resolvedStatus = resolved
+                            )
+                        }.sortedByDescending { it.dateIso }
                     }
                     AdminStaffMonthlySummaryCard(
                         staff = staff,
-                        records = staffMonthRecs,
+                        dayEntries = staffMonthEntries,
                         schoolGenderType = schoolConfig.schoolGenderType,
                         isExpanded = expandedMonthlyStaffId == staff.id,
                         onToggleExpand = {
@@ -998,12 +1704,14 @@ private fun AdminStatCard(
 private fun AdminDailyStaffRowCard(
     staff: UserAccount,
     record: StaffAttendanceRecord?,
+    resolvedStatus: ResolvedStaffDayStatus,
     schoolGenderType: String,
     onManualEditClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val effectiveStatus = record?.status ?: "absent"
-    val statusColor = staffStatusColor(effectiveStatus)
+    val statusColor = resolvedStaffStatusColor(resolvedStatus)
+    val statusBgColor = resolvedStaffStatusBgColor(resolvedStatus)
+    val statusBorderColor = resolvedStaffStatusBorderColor(resolvedStatus)
     val persona = remember(staff.id, staff.gender, staff.fullName, schoolGenderType) {
         resolveSmartAvatarPersona(
             role = staff.role,
@@ -1013,15 +1721,15 @@ private fun AdminDailyStaffRowCard(
             isBusDriver = false
         )
     }
-    val miniBadge = remember(effectiveStatus, statusColor) {
+    val miniBadge = remember(resolvedStatus, statusColor) {
         DailyStatusBadgeSpec(
-            label = staffStatusArabicLabel(effectiveStatus),
+            label = resolvedStatus.arabicLabel,
             ringColors = listOf(statusColor.copy(alpha = 0.7f), statusColor),
             pillBackground = statusColor,
             pillBorder = Color.White,
             pillTextColor = Color.White,
             dotColor = Color.White,
-            pulseDot = effectiveStatus == "present"
+            pulseDot = resolvedStatus == ResolvedStaffDayStatus.PRESENT
         )
     }
 
@@ -1030,7 +1738,10 @@ private fun AdminDailyStaffRowCard(
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-        border = BorderStroke(1.dp, statusColor.copy(alpha = 0.22f))
+        border = BorderStroke(
+            1.dp,
+            if (resolvedStatus.isNeutral) statusBorderColor else statusColor.copy(alpha = 0.24f)
+        )
     ) {
         Column(
             modifier = Modifier
@@ -1076,14 +1787,16 @@ private fun AdminDailyStaffRowCard(
 
                 Surface(
                     shape = RoundedCornerShape(10.dp),
-                    color = statusColor.copy(alpha = 0.13f),
-                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.28f))
+                    color = statusBgColor,
+                    border = BorderStroke(1.dp, statusBorderColor)
                 ) {
                     Text(
-                        text = staffStatusArabicLabel(effectiveStatus),
+                        text = resolvedStatus.arabicLabel,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = statusColor,
+                        maxLines = 1,
+                        softWrap = false,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }
@@ -1352,19 +2065,25 @@ private fun AdminLeaveRequestCard(
     }
 }
 
+private data class MonthlyStaffDayEntry(
+    val dateIso: String,
+    val record: StaffAttendanceRecord?,
+    val resolvedStatus: ResolvedStaffDayStatus
+)
+
 @Composable
 private fun AdminStaffMonthlySummaryCard(
     staff: UserAccount,
-    records: List<StaffAttendanceRecord>,
+    dayEntries: List<MonthlyStaffDayEntry>,
     schoolGenderType: String,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val presentCount = remember(records) { records.count { it.status == "present" } }
-    val lateCount = remember(records) { records.count { it.status == "late" } }
-    val leaveCount = remember(records) { records.count { it.status == "leave" } }
-    val absentCount = remember(records) { records.count { it.status == "absent" } }
+    val presentCount = remember(dayEntries) { dayEntries.count { it.resolvedStatus.countsAsPresent } }
+    val lateCount = remember(dayEntries) { dayEntries.count { it.resolvedStatus.countsAsLate } }
+    val leaveCount = remember(dayEntries) { dayEntries.count { it.resolvedStatus.countsAsLeave } }
+    val absentCount = remember(dayEntries) { dayEntries.count { it.resolvedStatus.countsAsAbsent } }
 
     val persona = remember(staff.id, staff.gender, staff.fullName, schoolGenderType) {
         resolveSmartAvatarPersona(
@@ -1418,7 +2137,7 @@ private fun AdminStaffMonthlySummaryCard(
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         MiniCountPill("حضور $presentCount", StaffAttendancePalette.PresentEmerald)
                         MiniCountPill("تأخير $lateCount", StaffAttendancePalette.LateOrange)
                         MiniCountPill("إجازة $leaveCount", StaffAttendancePalette.LeaveAmber)
@@ -1443,9 +2162,9 @@ private fun AdminStaffMonthlySummaryCard(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
-                    if (records.isEmpty()) {
+                    if (dayEntries.isEmpty()) {
                         Text(
-                            text = "لا توجد سجلات موثّقة لهذا الشهر.",
+                            text = "لا توجد أيام دوام مسجلة أو منتهية لهذا الشهر بعد.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -1454,12 +2173,15 @@ private fun AdminStaffMonthlySummaryCard(
                                 .padding(vertical = 8.dp)
                         )
                     } else {
-                        records.forEach { rec ->
-                            val c = staffStatusColor(rec.status)
+                        dayEntries.forEach { entry ->
+                            val rec = entry.record
+                            val c = resolvedStaffStatusColor(entry.resolvedStatus)
+                            val bg = resolvedStaffStatusBgColor(entry.resolvedStatus)
+                            val border = resolvedStaffStatusBorderColor(entry.resolvedStatus)
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = c.copy(alpha = 0.06f),
-                                border = BorderStroke(0.8.dp, c.copy(alpha = 0.2f))
+                                color = bg,
+                                border = BorderStroke(0.8.dp, border)
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -1469,31 +2191,37 @@ private fun AdminStaffMonthlySummaryCard(
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = formatCleanDate(rec.dateIso),
+                                            text = formatCleanDate(entry.dateIso),
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
+                                        val suffix = if (rec != null) {
+                                            " • ${recordMethodArabicLabel(rec.recordMethod, rec.isManualOverride)}"
+                                        } else {
+                                            ""
+                                        }
                                         Text(
-                                            text = "${staffStatusArabicLabel(rec.status)} • ${
-                                                recordMethodArabicLabel(rec.recordMethod, rec.isManualOverride)
-                                            }",
+                                            text = "${entry.resolvedStatus.arabicLabel}$suffix",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = c
                                         )
                                     }
-                                    Text(
-                                        text = "الحضور: ${rec.checkInTime.ifBlank { "--:--" }}  |  الانصراف: ${rec.checkOutTime.ifBlank { "--:--" }}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    if (rec.adminNotes.isNotBlank()) {
+                                    if (rec != null && (rec.hasCheckedIn || rec.hasCheckedOut)) {
                                         Text(
-                                            text = "ملاحظة: ${rec.adminNotes}",
+                                            text = "الحضور: ${rec.checkInTime.ifBlank { "--:--" }}  |  الانصراف: ${rec.checkOutTime.ifBlank { "--:--" }}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    if (!rec?.adminNotes.isNullOrBlank()) {
+                                        Text(
+                                            text = "ملاحظة: ${rec?.adminNotes}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )

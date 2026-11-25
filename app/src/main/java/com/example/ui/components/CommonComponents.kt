@@ -6011,157 +6011,314 @@ private val SeamlessFullWidthWaveShape = GenericShape { size, _ ->
 }
 
 /**
- * 1) مقطع تنبيه المطور العام المدمج بأمواج انسيابية بعرض الشاشة (Seamless Wave Developer Broadcast Section):
- * - بدون أي صندوق مستطيل أو RoundedCornerShape أو BorderStroke نهائياً.
- * - ممتد من الحافة للحافة (Edge-to-Edge) بتموجات مائية ناعمة ومجسم أنيميشن 3D ديناميكي حسب اختيار المطور.
+ * 1) بطاقة تعميم إدارة المنصة (Platform Administration Announcement Card):
+ * - بطاقة بيضاء/زجاجية مصقولة بزوايا 18.dp وظل ناعم وحدّ جانبي ذهبي-زمردي رفيع على اليمين (RTL).
+ * - أيقونة متجهة هندسية مرسومة بـ Compose Canvas مع نبض هالة ذهبية خفيفة جداً.
+ * - هرمية نصية واضحة: شارة "تعميم إدارة المنصة" + التاريخ المنسق عبر formatCleanDate + زر إغلاق دائري رشيق.
  */
 @Composable
 fun DeveloperSystemBroadcastBanner(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
-    badgeText: String = "إشعار النظام العام",
+    badgeText: String = "تعميم إدارة المنصة",
+    dateText: String = "",
     iconKey: OccasionIconKey = OccasionIconKey.BELL,
     illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
     topOverlapPadding: Dp = 0.dp,
     onDismiss: (() -> Unit)? = null
 ) {
-    Box(
+    val cleanDate = remember(dateText) { formatCleanDate(dateText) }
+    val resolvedBadge = remember(badgeText) {
+        badgeText
+            .replace("إشعار النظام العام / تعميم المطور", "تعميم إدارة المنصة")
+            .replace("تعميم المطور", "تعميم إدارة المنصة")
+            .replace("إشعار النظام العام", "تعميم إدارة المنصة")
+            .ifBlank { "تعميم إدارة المنصة" }
+    }
+
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(SeamlessFullWidthWaveShape)
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFFD1FAE5),
-                        Color(0xFFE0F7EE),
-                        Color(0xFFA7F3D0)
-                    )
-                )
-            )
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = Color(0xFF065F46).copy(alpha = 0.14f),
+                spotColor = Color(0xFF065F46).copy(alpha = 0.14f)
+            ),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.18f))
     ) {
-        // Subtle inner wave ribbon drawn on Canvas (zero box border)
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val w = size.width
-            val h = size.height
-            val ribbonPath = Path().apply {
-                moveTo(0f, h * 0.65f)
-                cubicTo(
-                    w * 0.35f, h * 0.42f,
-                    w * 0.65f, h * 0.88f,
-                    w, h * 0.58f
-                )
-                lineTo(w, h)
-                lineTo(0f, h)
-                close()
-            }
-            drawPath(
-                path = ribbonPath,
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFF10B981).copy(alpha = 0.14f),
-                        Color(0xFF059669).copy(alpha = 0.08f),
-                        Color(0xFF34D399).copy(alpha = 0.16f)
-                    )
-                )
-            )
-        }
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = 18.dp,
-                    end = 18.dp,
-                    top = 18.dp + topOverlapPadding,
-                    bottom = 18.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.White,
+                            Color(0xFFF7FCFA),
+                            Color(0xFFFFFCF5)
+                        )
+                    )
+                )
+                .height(IntrinsicSize.Min)
         ) {
-            // Right side in RTL: Circular dark-emerald action/dismiss icon + vertical emerald bar + text
+            // حدّ جانبي ذهبي-زمردي رفيع على اليمين (RTL start) يميّز التعميم الرسمي العام
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFFD97706),
+                                Color(0xFFF59E0B),
+                                Color(0xFF059669)
+                            )
+                        )
+                    )
+            )
+
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 13.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(11.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF047857))
-                        .then(if (onDismiss != null) Modifier.clickable { onDismiss() } else Modifier),
-                    contentAlignment = Alignment.Center
+                // حاوية زجاجية هادئة تحتوي أيقونة المنصة الهندسية بـ Compose Canvas مع نبض هالة ذهبية خفيفة
+                Surface(
+                    modifier = Modifier.size(46.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFECFDF5).copy(alpha = 0.85f),
+                    border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.30f))
                 ) {
-                    Icon(
-                        imageVector = if (onDismiss != null) Icons.Filled.Close else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "إشعار النظام العام",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                    PlatformAnnouncementEmblemCanvas(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(5.dp)
                     )
                 }
-
-                Box(
-                    modifier = Modifier
-                        .width(2.5.dp)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF059669).copy(alpha = 0.75f))
-                )
 
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = badgeText,
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF047857),
-                        maxLines = 1
-                    )
+                    // الصف العلوي: شارة "تعميم إدارة المنصة" + التاريخ المنسّق + زر إغلاق دائري رشيق (X)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFFFFBEB),
+                                border = BorderStroke(0.8.dp, Color(0xFFFDE68A))
+                            ) {
+                                Text(
+                                    text = resolvedBadge,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF92400E),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
+                                )
+                            }
+
+                            if (cleanDate.isNotBlank()) {
+                                Text(
+                                    text = cleanDate,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF64748B),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        if (onDismiss != null) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFFF1F5F9),
+                                border = BorderStroke(0.75.dp, Color(0xFFE2E8F0)),
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .clickable { onDismiss() }
+                                    .testTag("platform_announcement_dismiss_btn")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "إغلاق تعميم إدارة المنصة",
+                                        tint = Color(0xFF475569),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // عنوان التعميم بخط عريض واضح
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontSize = 14.5.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF065F46),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 12.8.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF0F172A),
+                        color = Color(0xFF064E3B),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+
+                    // نص التعميم بوضوح
+                    if (subtitle.isNotBlank()) {
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF334155),
+                            lineHeight = 18.sp,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Left side in RTL: Dynamic Animated Occasion Bezier Vector (No Trophy)
-            AnimatedOccasionVectorCanvas(
-                iconKey = iconKey,
-                titleHint = "$badgeText $title $subtitle",
-                modifier = Modifier.size(72.dp)
-            )
         }
     }
 }
 
 /**
- * 2) مقطع إعلان إدارة المدرسة المدمج بأمواج انسيابية بعرض الشاشة بدون أي صندوق أو إطار
- * (Seamless Full-Width Wave Principal Announcement Section - Matches Reference Image Strictly)
+ * أيقونة متجهة هندسية لبطاقة «تعميم إدارة المنصة» مرسومة بـ Compose Canvas
+ * تعرض شارة منصة زمردية-ذهبية مصقولة مع نبض هالة ذهبية هادئة جداً عبر rememberInfiniteTransition.
+ */
+@Composable
+private fun PlatformAnnouncementEmblemCanvas(
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "platform_emblem_halo")
+    val haloScale by infiniteTransition.animateFloat(
+        initialValue = 0.86f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "halo_scale"
+    )
+    val haloAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.14f,
+        targetValue = 0.34f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "halo_alpha"
+    )
+
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val baseR = size.minDimension * 0.42f
+
+        // نبض هالة ذهبية خفيفة جداً في الخلفية
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    Color(0xFFF59E0B).copy(alpha = haloAlpha),
+                    Color(0xFFFDE68A).copy(alpha = haloAlpha * 0.45f),
+                    Color.Transparent
+                ),
+                center = Offset(cx, cy),
+                radius = baseR * 1.45f * haloScale
+            ),
+            radius = baseR * 1.45f * haloScale,
+            center = Offset(cx, cy)
+        )
+
+        // إطار ثماني هندسي رسمي (منصة معتمدة)
+        val octPath = Path()
+        for (i in 0 until 8) {
+            val angle = (22.5 + i * 45.0) * kotlin.math.PI / 180.0
+            val px = cx + (baseR * cos(angle)).toFloat()
+            val py = cy + (baseR * sin(angle)).toFloat()
+            if (i == 0) octPath.moveTo(px, py) else octPath.lineTo(px, py)
+        }
+        octPath.close()
+
+        drawPath(
+            path = octPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF065F46), Color(0xFF047857)),
+                start = Offset(cx - baseR, cy - baseR),
+                end = Offset(cx + baseR, cy + baseR)
+            )
+        )
+        drawPath(
+            path = octPath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFDE68A), Color(0xFFD97706)),
+                start = Offset(cx - baseR, cy - baseR),
+                end = Offset(cx + baseR, cy + baseR)
+            ),
+            style = Stroke(width = 1.5.dp.toPx(), join = StrokeJoin.Round)
+        )
+
+        // رمز جرس/إشعار هندسي نقي داخل الشارة باللون الذهبي
+        val bellTopY = cy - baseR * 0.40f
+        val bellBotY = cy + baseR * 0.24f
+        val bellHalfW = baseR * 0.40f
+        val bellPath = Path().apply {
+            moveTo(cx, bellTopY)
+            cubicTo(
+                cx + bellHalfW * 0.78f, bellTopY,
+                cx + bellHalfW * 0.84f, cy + baseR * 0.06f,
+                cx + bellHalfW, bellBotY
+            )
+            lineTo(cx - bellHalfW, bellBotY)
+            cubicTo(
+                cx - bellHalfW * 0.84f, cy + baseR * 0.06f,
+                cx - bellHalfW * 0.78f, bellTopY,
+                cx, bellTopY
+            )
+            close()
+        }
+        drawPath(
+            path = bellPath,
+            color = Color(0xFFFDE68A),
+            style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+        // نقطة الجرس السفلية الذهبية
+        drawCircle(
+            color = Color(0xFFFBBF24),
+            radius = 1.9.dp.toPx(),
+            center = Offset(cx, cy + baseR * 0.42f)
+        )
+    }
+}
+
+/**
+ * 2) بطاقة تبليغ إدارة المدرسة (Principal / School Administration Announcement Card):
+ * - بطاقة بيضاء/نعناعية زجاجية نظيفة بزوايا 18.dp وحدّ جانبي زمردي رفيع على اليمين (RTL).
+ * - أيقونة متجهة مصقولة بـ Compose Canvas ترسم موجات بث/تبليغ رسمي هندسية تتحرك بانسيابية هادئة.
+ * - أزرار التحكم السفلية للمدير في صف أفقي واحد متناسق الارتفاع (36.dp) وزوايا 12.dp.
  */
 @Composable
 fun ThreeDMegaphoneAnnouncementBanner(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
+    badgeText: String = "تبليغ إدارة المدرسة • مدير المدرسة",
     topOverlapPadding: Dp = 0.dp,
     onClick: (() -> Unit)? = null,
     isUrgentActive: Boolean = false,
@@ -6170,194 +6327,348 @@ fun ThreeDMegaphoneAnnouncementBanner(
     onStopUrgent: (() -> Unit)? = null,
     onDismissUrgent: (() -> Unit)? = null
 ) {
-    Box(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clip(SeamlessFullWidthWaveShape)
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        Color(0xFFD1FAE5),
-                        Color(0xFFE0F7EE),
-                        Color(0xFFA7F3D0)
-                    )
-                )
+            .shadow(
+                elevation = 7.dp,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = Color(0xFF047857).copy(alpha = 0.13f),
+                spotColor = Color(0xFF047857).copy(alpha = 0.13f)
             )
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
+            .clip(RoundedCornerShape(18.dp))
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.20f))
     ) {
-        Canvas(modifier = Modifier.matchParentSize()) {
-            val w = size.width
-            val h = size.height
-            val waveOverlay = Path().apply {
-                moveTo(0f, h * 0.62f)
-                cubicTo(
-                    w * 0.30f, h * 0.38f,
-                    w * 0.70f, h * 0.85f,
-                    w, h * 0.55f
-                )
-                lineTo(w, h)
-                lineTo(0f, h)
-                close()
-            }
-            drawPath(
-                path = waveOverlay,
-                brush = Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFF10B981).copy(alpha = 0.14f),
-                        Color(0xFF34D399).copy(alpha = 0.08f),
-                        Color(0xFF059669).copy(alpha = 0.14f)
-                    )
-                )
-            )
-        }
-
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    start = 18.dp,
-                    end = 18.dp,
-                    top = 16.dp + topOverlapPadding,
-                    bottom = 16.dp
-                ),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.White,
+                            Color(0xFFF3FBF7),
+                            Color(0xFFECFDF5).copy(alpha = 0.72f)
+                        )
+                    )
+                )
+                .height(IntrinsicSize.Min)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            // حدّ جانبي زمردي رفيع على اليمين (RTL start)
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF065F46),
+                                Color(0xFF059669),
+                                Color(0xFF10B981)
+                            )
+                        )
+                    )
+            )
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 13.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
+                    horizontalArrangement = Arrangement.spacedBy(11.dp)
                 ) {
-                    // Right circular dark-emerald button with white arrow (matching reference image)
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF047857)),
-                        contentAlignment = Alignment.Center
+                    // حاوية زجاجية نظيفة مع أيقونة موجات بث هندسية مرسومة بـ Compose Canvas
+                    Surface(
+                        modifier = Modifier.size(46.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFECFDF5),
+                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
+                        SchoolBroadcastWavesCanvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(6.dp)
                         )
                     }
-
-                    // Emerald vertical divider line
-                    Box(
-                        modifier = Modifier
-                            .width(2.5.dp)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0xFF059669).copy(alpha = 0.78f))
-                    )
 
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(0.8.dp, Color(0xFFA7F3D0))
+                        ) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF065F46),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
+                            )
+                        }
+
                         Text(
                             text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontSize = 16.5.sp,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontSize = 14.5.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF047857),
+                            color = Color(0xFF064E3B),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0F172A),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+
+                        if (subtitle.isNotBlank()) {
+                            Text(
+                                text = subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF334155),
+                                lineHeight = 18.sp,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // زر عرض التفاصيل الجانبي (<) بشكل متزن في RTL
+                    if (onClick != null) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFECFDF5),
+                            border = BorderStroke(0.8.dp, Color(0xFFA7F3D0)),
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = "عرض تفاصيل التبليغ",
+                                    tint = Color(0xFF047857),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                // أزرار التحكم السفلية للمدير في صف أفقي واحد متناسق الارتفاع (36.dp) وزوايا 12.dp
+                if (isUrgentActive) {
+                    val hasEdit = isAdmin && onEditUrgent != null
+                    val hasStop = isAdmin && onStopUrgent != null
+                    val hasDismiss = onDismissUrgent != null
 
-                // Left side (in RTL): 3D Animated Megaphone Illustration
-                ThreeDIllustrationBox(
-                    type = ThreeDIllustrationType.MEGAPHONE,
-                    modifier = Modifier.size(72.dp)
-                )
-            }
+                    if (hasEdit || hasStop || hasDismiss) {
+                        HorizontalDivider(
+                            thickness = 0.75.dp,
+                            color = Color(0xFFE2E8F0)
+                        )
 
-            // Compact inline control chips when an urgent school alert is active
-            if (isUrgentActive) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (isAdmin && onEditUrgent != null) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFF047857).copy(alpha = 0.14f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable { onEditUrgent() }
-                                .testTag("urgent_alert_banner_edit_btn")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Filled.Edit, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(13.dp))
-                                Text("تعديل التبليغ", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF065F46))
+                            if (hasEdit) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(0.9.dp, Color(0xFFA7F3D0)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onEditUrgent?.invoke() }
+                                        .testTag("urgent_alert_banner_edit_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Edit,
+                                            contentDescription = "تعديل التبليغ",
+                                            tint = Color(0xFF047857),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "تعديل التبليغ",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF065F46),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
-                    if (isAdmin && onStopUrgent != null) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFFEF4444).copy(alpha = 0.16f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable { onStopUrgent() }
-                                .testTag("urgent_alert_banner_delete_btn")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Filled.StopCircle, contentDescription = null, tint = Color(0xFFB91C1C), modifier = Modifier.size(13.dp))
-                                Text("إيقاف البث", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF991B1B))
+
+                            if (hasStop) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFFEF2F2),
+                                    border = BorderStroke(0.9.dp, Color(0xFFFECACA)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onStopUrgent?.invoke() }
+                                        .testTag("urgent_alert_banner_delete_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.StopCircle,
+                                            contentDescription = "إيقاف البث",
+                                            tint = Color(0xFFDC2626),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "إيقاف البث",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFFB91C1C),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
-                    if (onDismissUrgent != null) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = Color(0xFF0F172A).copy(alpha = 0.08f),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable { onDismissUrgent() }
-                                .testTag("urgent_alert_banner_dismiss_btn")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(Icons.Filled.DoneAll, contentDescription = null, tint = Color(0xFF0F172A), modifier = Modifier.size(13.dp))
-                                Text("تم الاطلاع", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
+
+                            if (hasDismiss) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF0FDF4),
+                                    border = BorderStroke(0.9.dp, Color(0xFFBBF7D0)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable { onDismissUrgent?.invoke() }
+                                        .testTag("urgent_alert_banner_dismiss_btn")
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.DoneAll,
+                                            contentDescription = "تم الاطلاع",
+                                            tint = Color(0xFF047857),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "تم الاطلاع",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF065F46),
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * أيقونة متجهة مصقولة لبطاقة «تبليغ إدارة المدرسة» مرسومة بـ Compose Canvas
+ * ترسم موجات بث/تبليغ رسمي هندسية ناعمة تتحرك بانسيابية هادئة بألوان المنصة الزمردية والذهبية.
+ */
+@Composable
+private fun SchoolBroadcastWavesCanvas(
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "school_broadcast_waves")
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "broadcast_wave_phase"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val emitterCenter = Offset(w * 0.72f, h * 0.50f)
+
+        // 3 أقواس موجات بث هندسية تتمدد بنعومة نحو اليسار (متناغمة مع القراءة العربية RTL)
+        for (idx in 0 until 3) {
+            val localPhase = (wavePhase + idx * 0.33f) % 1f
+            val arcRadius = w * (0.18f + localPhase * 0.52f)
+            val arcAlpha = (1f - localPhase).coerceIn(0f, 1f) * 0.85f
+            val arcColor = if (idx == 1) Color(0xFFD97706) else Color(0xFF059669)
+
+            drawArc(
+                color = arcColor.copy(alpha = arcAlpha),
+                startAngle = 135f,
+                sweepAngle = 90f,
+                useCenter = false,
+                topLeft = Offset(emitterCenter.x - arcRadius, emitterCenter.y - arcRadius),
+                size = Size(arcRadius * 2f, arcRadius * 2f),
+                style = Stroke(
+                    width = (2.0f - localPhase * 0.7f).dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            )
+        }
+
+        // هالة ناعمة خلف نقطة البث الرئيسية
+        drawCircle(
+            color = Color(0xFF10B981).copy(alpha = 0.22f),
+            radius = w * 0.19f,
+            center = emitterCenter
+        )
+
+        // نواة البث الهندسية الزمردية مع نقطة ذهبية مركزية
+        drawCircle(
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF065F46), Color(0xFF059669)),
+                start = Offset(emitterCenter.x - w * 0.14f, emitterCenter.y - w * 0.14f),
+                end = Offset(emitterCenter.x + w * 0.14f, emitterCenter.y + w * 0.14f)
+            ),
+            radius = w * 0.135f,
+            center = emitterCenter
+        )
+        drawCircle(
+            color = Color(0xFFFDE68A),
+            radius = w * 0.048f,
+            center = emitterCenter
+        )
     }
 }
 

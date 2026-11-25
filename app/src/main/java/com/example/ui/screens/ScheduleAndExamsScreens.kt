@@ -5811,7 +5811,7 @@ fun ExamsAndGradesScreen(
                             leftPillText = "${myStu?.gradeClass.orEmpty()} (${myStu?.sectionName.orEmpty()})",
                             leftPillIcon = Icons.Filled.WorkspacePremium,
                             customTrailingContent = {
-                                ExamsAccuracyLiveBoardHeaderWidget()
+                                ReportCardCertificateHeaderWidget()
                             }
                         )
                     }
@@ -5858,7 +5858,7 @@ fun ExamsAndGradesScreen(
                                                 color = Color(0xFF064E3B)
                                             )
                                             Text(
-                                                text = "تاريخ الإصدار: ${card.issuedAt} • مصادقة: ${card.principalName}",
+                                                text = "تاريخ الإصدار: ${formatCleanDate(card.issuedAt).ifBlank { "—" }} • مصادقة: ${card.principalName}",
                                                 fontSize = 11.5.sp,
                                                 color = Color(0xFF475569)
                                             )
@@ -5918,12 +5918,32 @@ fun ExamsAndGradesScreen(
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color(0xFF065F46)
                                     )
+                                    val parentReportChipColors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF059669),
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color(0xFFF8FAFC),
+                                        labelColor = Color(0xFF0F172A)
+                                    )
                                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         items(ReportCardPeriodType.entries) { pType ->
                                             FilterChip(
                                                 selected = selectedReportCardPeriod == pType,
                                                 onClick = { selectedReportCardPeriod = pType },
-                                                label = { Text(pType.arabicTitle, maxLines = 1, softWrap = false) }
+                                                colors = parentReportChipColors,
+                                                border = FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selectedReportCardPeriod == pType,
+                                                    borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                    selectedBorderColor = Color(0xFF047857)
+                                                ),
+                                                label = {
+                                                    Text(
+                                                        text = pType.arabicTitle,
+                                                        fontWeight = if (selectedReportCardPeriod == pType) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
                                             )
                                         }
                                     }
@@ -5990,20 +6010,26 @@ fun ExamsAndGradesScreen(
                             leftPillText = selectedReportCardPeriod.shortLabel,
                             leftPillIcon = Icons.Filled.Verified,
                             customTrailingContent = {
-                                ExamsAccuracyLiveBoardHeaderWidget()
+                                ReportCardCertificateHeaderWidget()
                             }
                         )
                     }
 
-                    // Selectors: Class, Section, Report Card Type
+                    // Selectors: Class, Section, Report Card Type — Unified Royal Emerald Styling
                     item {
+                        val reportHubEmeraldChipColors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF059669),
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFFF8FAFC),
+                            labelColor = Color(0xFF0F172A)
+                        )
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .shadow(6.dp, RoundedCornerShape(22.dp)),
                             shape = RoundedCornerShape(22.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.22f))
                         ) {
                             Column(
                                 modifier = Modifier
@@ -6011,12 +6037,33 @@ fun ExamsAndGradesScreen(
                                     .padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text(
-                                    text = "1. اختر الصف والشعبة ونوع الكارت المراد إصداره:",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF047857)
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Tune,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier
+                                                .padding(7.dp)
+                                                .size(18.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "1. اختر الصف والشعبة ونوع الكارت المراد إصداره:",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
 
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(allowedClasses) { cls ->
@@ -6029,7 +6076,21 @@ fun ExamsAndGradesScreen(
                                                     selectedSection = nextSecs.firstOrNull() ?: "أ"
                                                 }
                                             },
-                                            label = { Text(cls, maxLines = 1, softWrap = false) }
+                                            colors = reportHubEmeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedClass == cls,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
+                                            label = {
+                                                Text(
+                                                    text = cls,
+                                                    fontWeight = if (selectedClass == cls) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
                                         )
                                     }
                                 }
@@ -6039,7 +6100,14 @@ fun ExamsAndGradesScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text("الشعبة:", style = MaterialTheme.typography.labelLarge, maxLines = 1, softWrap = false)
+                                    Text(
+                                        text = "الشعبة:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF065F46),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                     LazyRow(
                                         modifier = Modifier.weight(1f),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -6048,7 +6116,21 @@ fun ExamsAndGradesScreen(
                                             FilterChip(
                                                 selected = selectedSection == sec,
                                                 onClick = { selectedSection = sec },
-                                                label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                                                colors = reportHubEmeraldChipColors,
+                                                border = FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selectedSection == sec,
+                                                    borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                    selectedBorderColor = Color(0xFF047857)
+                                                ),
+                                                label = {
+                                                    Text(
+                                                        text = "شعبة $sec",
+                                                        fontWeight = if (selectedSection == sec) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
                                             )
                                         }
                                     }
@@ -6057,6 +6139,7 @@ fun ExamsAndGradesScreen(
                                 Text(
                                     text = "نوع الكارت المدرسي الرسمي:",
                                     style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
                                     color = Color(0xFF065F46)
                                 )
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -6064,7 +6147,21 @@ fun ExamsAndGradesScreen(
                                         FilterChip(
                                             selected = selectedReportCardPeriod == pType,
                                             onClick = { selectedReportCardPeriod = pType },
-                                            label = { Text(pType.arabicTitle, maxLines = 1, softWrap = false) }
+                                            colors = reportHubEmeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedReportCardPeriod == pType,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
+                                            label = {
+                                                Text(
+                                                    text = pType.arabicTitle,
+                                                    fontWeight = if (selectedReportCardPeriod == pType) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
                                         )
                                     }
                                 }
@@ -6077,8 +6174,8 @@ fun ExamsAndGradesScreen(
                                     Surface(
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(14.dp),
-                                        color = Color(0xFFEFF6FF),
-                                        border = BorderStroke(1.dp, Color(0xFF93C5FD))
+                                        color = Color(0xFFF8FAFC),
+                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
                                     ) {
                                         Column(
                                             modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
@@ -6088,13 +6185,13 @@ fun ExamsAndGradesScreen(
                                                 text = "$totalClassStudentsCount",
                                                 fontSize = 18.sp,
                                                 fontWeight = FontWeight.ExtraBold,
-                                                color = Color(0xFF1D4ED8)
+                                                color = Color(0xFF065F46)
                                             )
                                             Text(
                                                 text = "إجمالي طلاب الصف",
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF1E3A8A),
+                                                color = Color(0xFF334155),
                                                 textAlign = TextAlign.Center
                                             )
                                         }
@@ -6611,6 +6708,18 @@ fun LuxuryInteractiveReportCardModal(
     onDismiss: () -> Unit,
     onPrintPdf: () -> Unit
 ) {
+    val resolvedSchoolName = reportCard.schoolName.ifBlank { schoolConfig.schoolName }.ifBlank { "المدرسة الذكية" }
+    val cleanIssueDate = remember(reportCard.issuedAt) {
+        formatCleanDate(reportCard.issuedAt).ifBlank { "—" }
+    }
+    val hasAnyRecordedGrade = remember(reportCard.subjects) {
+        reportCard.subjects.any { it.score > 0 }
+    }
+    val recordedFailedCount = remember(reportCard.subjects) {
+        reportCard.subjects.count { it.score > 0 && !it.isPassed }
+    }
+    val effectiveOverallPassed = hasAnyRecordedGrade && reportCard.isOverallPassed
+
     val infiniteTransition = rememberInfiniteTransition(label = "celebration_confetti_anim")
     val confettiProgress by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -6642,8 +6751,8 @@ fun LuxuryInteractiveReportCardModal(
                 .padding(horizontal = 14.dp, vertical = 18.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Full-Screen Canvas Confetti, Golden Stars & Fireworks Animation when student passed all subjects!
-            if (reportCard.isOverallPassed) {
+            // Subtle celebration canvas only when recorded grades exist and student passed all subjects
+            if (effectiveOverallPassed) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
@@ -6651,378 +6760,707 @@ fun LuxuryInteractiveReportCardModal(
                         Color(0xFFF59E0B),
                         Color(0xFFFDE68A),
                         Color(0xFF10B981),
-                        Color(0xFF38BDF8),
-                        Color(0xFFF43F5E),
-                        Color(0xFFA855F7)
+                        Color(0xFF34D399),
+                        Color(0xFFD97706)
                     )
-                    // 42 falling confetti ribbons & golden stars
-                    for (i in 0 until 42) {
+                    for (i in 0 until 32) {
                         val seedX = ((i * 97 + 19) % 100) / 100f
-                        val speedFactor = 0.6f + (i % 5) * 0.18f
+                        val speedFactor = 0.6f + (i % 5) * 0.16f
                         val yNorm = ((confettiProgress * speedFactor + (i * 0.07f)) % 1f)
-                        val x = seedX * w + kotlin.math.sin((yNorm * 6.28f) + i) * 24f
+                        val x = seedX * w + kotlin.math.sin((yNorm * 6.28f) + i) * 20f
                         val y = yNorm * h
                         val color = palette[i % palette.size]
                         if (i % 3 == 0) {
                             drawCircle(
-                                color = Color(0xFFFDE68A),
-                                radius = 5.5f + (i % 4),
+                                color = Color(0xFFFDE68A).copy(alpha = 0.85f),
+                                radius = 4.5f + (i % 3),
                                 center = Offset(x, y)
                             )
                         } else {
                             drawRoundRect(
-                                color = color,
+                                color = color.copy(alpha = 0.85f),
                                 topLeft = Offset(x, y),
-                                size = Size(12f, 6.5f),
+                                size = Size(10f, 5.5f),
                                 cornerRadius = CornerRadius(3f, 3f)
                             )
                         }
                     }
 
-                    // 3 Firework bursts in the upper sky
                     val fireworkCenters = listOf(
-                        Offset(w * 0.2f, h * 0.14f),
-                        Offset(w * 0.5f, h * 0.09f),
-                        Offset(w * 0.8f, h * 0.15f)
+                        Offset(w * 0.22f, h * 0.13f),
+                        Offset(w * 0.78f, h * 0.14f)
                     )
                     fireworkCenters.forEachIndexed { fIdx, center ->
-                        val maxRadius = 56f * fireworkPulse
-                        for (ray in 0 until 12) {
-                            val angle = (ray * 30.0) * (Math.PI / 180.0)
+                        val maxRadius = 48f * fireworkPulse
+                        for (ray in 0 until 10) {
+                            val angle = (ray * 36.0) * (Math.PI / 180.0)
                             val endX = center.x + (kotlin.math.cos(angle) * maxRadius).toFloat()
                             val endY = center.y + (kotlin.math.sin(angle) * maxRadius).toFloat()
                             val rayColor = palette[(fIdx + ray) % palette.size]
                             drawLine(
-                                color = rayColor.copy(alpha = 1f - (fireworkPulse * 0.35f)),
+                                color = rayColor.copy(alpha = 0.85f - (fireworkPulse * 0.35f)),
                                 start = center,
                                 end = Offset(endX, endY),
-                                strokeWidth = 2.6f,
+                                strokeWidth = 2.2f,
                                 cap = StrokeCap.Round
-                            )
-                            drawCircle(
-                                color = Color(0xFFFDE68A),
-                                radius = 3.5f,
-                                center = Offset(endX, endY)
                             )
                         }
                     }
                 }
             }
 
-            // Luxury 3D Glass Report Card Container
+            // Official School Report Card Modal Container
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 540.dp)
-                    .heightIn(max = 760.dp)
-                    .shadow(24.dp, RoundedCornerShape(28.dp)),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                    .heightIn(max = 780.dp)
+                    .shadow(24.dp, RoundedCornerShape(26.dp)),
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFAFDFB)),
                 border = BorderStroke(
-                    2.2.dp,
-                    if (reportCard.isOverallPassed) Color(0xFFF59E0B) else Color(0xFF94A3B8)
+                    1.6.dp,
+                    if (effectiveOverallPassed) Color(0xFFD97706).copy(alpha = 0.75f)
+                    else Color(0xFF065F46).copy(alpha = 0.32f)
                 )
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Top Celebration or Supportive Educational Banner
-                    if (reportCard.isOverallPassed) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            color = Color(0xFF064E3B),
-                            border = BorderStroke(1.6.dp, Color(0xFFF59E0B))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "ألف مبارك النجاح والتفوق للطالب البطل (${reportCard.studentName})",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFDE68A),
-                                    textAlign = TextAlign.Center
+                    // =========================================================================
+                    // 1. Official Certificate Top Header — Deep Royal Emerald + Gold Accent Rule
+                    // =========================================================================
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color(0xFF064E3B),
+                                        Color(0xFF047857),
+                                        Color(0xFF065F46)
+                                    )
                                 )
-                                Text(
-                                    text = "تهنئ إدارة (${reportCard.schoolName.ifBlank { schoolConfig.schoolName }}) الطالب وأسرته الكريمة بهذا التفوق الباهر",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    } else {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(18.dp),
-                            color = Color(0xFFFFFBEB),
-                            border = BorderStroke(1.5.dp, Color(0xFFF59E0B))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "رسالة تربوية تشجيعية لولي أمر الطالب (${reportCard.studentName})",
-                                    fontSize = 13.5.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF92400E),
-                                    textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = "نثق بقدرات الطالب وهمته العالية، ونأمل متابعة المواد المؤشرة باللون الكهرماني/الأحمر (${reportCard.failedSubjectsCount} مواد) لتحقيق التفوق في الامتحانات القادمة بإذن الله.",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF78350F),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-
-                    // Official School Header inside Report Card
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(18.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.2.dp, Color(0xFFD97706).copy(alpha = 0.55f))
+                            )
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            // Clean Geometric School Seal (Compose Canvas)
+                            CertificateGeometricSealCanvas(
+                                modifier = Modifier.size(52.dp)
+                            )
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = reportCard.schoolName.ifBlank { schoolConfig.schoolName },
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF064E3B)
-                                    )
-                                    Text(
-                                        text = "نوع الشهادة: ${reportCard.periodType.arabicTitle}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFB45309)
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = Color(0xFFECFDF5),
-                                    border = BorderStroke(1.dp, Color(0xFF10B981))
+                                Text(
+                                    text = resolvedSchoolName,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = reportCard.periodType.arabicTitle,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFDE68A),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "العام ${schoolConfig.academicYear}",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF065F46),
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White.copy(alpha = 0.14f),
+                                        border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.45f))
+                                    ) {
+                                        Text(
+                                            text = "العام الدراسي ${schoolConfig.academicYear}",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
                                 }
                             }
-                            HorizontalDivider(color = Color(0xFFE2E8F0))
-                            Text(
-                                text = "اسم الطالب الرباعي: ${reportCard.studentName}",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF0F172A)
-                            )
-                            Text(
-                                text = "الصف والشعبة: ${reportCard.gradeClass} — شعبة (${reportCard.sectionName})   •   تاريخ الإصدار: ${reportCard.issuedAt}",
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF475569)
-                            )
                         }
+
+                        // Thin Gold Accent Rule Directly Beneath the Official Header
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color(0xFFB45309),
+                                            Color(0xFFFDE68A),
+                                            Color(0xFFD97706)
+                                        )
+                                    )
+                                )
+                        )
                     }
 
-                    // Glassmorphic Subjects Table
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.White,
-                        border = BorderStroke(1.2.dp, Color(0xFF065F46).copy(alpha = 0.35f))
+                    // Body Content Padding
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            // Table Header
-                            Row(
+                        // =========================================================================
+                        // 2. Organized Student Info Card (White / Soft-Mint Surface)
+                        // =========================================================================
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFD1FAE5))
+                        ) {
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(Color(0xFF065F46))
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(
-                                    text = "المادة الدراسية",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    modifier = Modifier.weight(1.4f)
-                                )
-                                Text(
-                                    text = "الدرجة",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFDE68A),
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.weight(0.8f)
-                                )
-                                Text(
-                                    text = "الحالة",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    textAlign = TextAlign.End,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-
-                            reportCard.subjects.forEachIndexed { idx, sub ->
-                                val rowBg = when {
-                                    !sub.isPassed -> Color(0xFFFEF2F2)
-                                    idx % 2 == 0 -> Color.White
-                                    else -> Color(0xFFF0FDF4)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Person,
+                                                contentDescription = "بيانات الطالب",
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "اسم الطالب الرباعي",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF64748B)
+                                        )
+                                        Text(
+                                            text = reportCard.studentName,
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF0F172A),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
+
+                                HorizontalDivider(thickness = 0.75.dp, color = Color(0xFFE2E8F0))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Class,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "${reportCard.gradeClass} — شعبة ${reportCard.sectionName}",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF065F46),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.CalendarToday,
+                                            contentDescription = null,
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = cleanIssueDate,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF475569),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // =========================================================================
+                        // 3. Official Grades Table (Emerald Header, Crisp Dividers, Smart Status Pills)
+                        // =========================================================================
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFF065F46).copy(alpha = 0.28f))
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Emerald Table Header
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(rowBg)
-                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                        .background(Color(0xFF065F46))
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = sub.subjectName,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (sub.isPassed) Color(0xFF0F172A) else Color(0xFFB91C1C),
-                                        modifier = Modifier.weight(1.4f)
+                                        text = "المادة الدراسية",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        modifier = Modifier.weight(1.35f)
                                     )
                                     Text(
-                                        text = "${sub.score} / ${sub.maxScoreScale}",
-                                        fontSize = 12.5.sp,
+                                        text = "الدرجة",
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = if (sub.isPassed) Color(0xFF047857) else Color(0xFFB91C1C),
+                                        color = Color(0xFFFDE68A),
                                         textAlign = TextAlign.Center,
-                                        modifier = Modifier.weight(0.8f)
+                                        modifier = Modifier.weight(0.95f)
                                     )
+                                    Text(
+                                        text = "التقدير / الحالة",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        textAlign = TextAlign.End,
+                                        modifier = Modifier.weight(1.0f)
+                                    )
+                                }
+
+                                if (reportCard.subjects.isEmpty()) {
                                     Box(
-                                        modifier = Modifier.weight(1f),
-                                        contentAlignment = Alignment.CenterEnd
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 18.dp, horizontal = 12.dp),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = if (sub.isPassed) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)
+                                        Text(
+                                            text = "لا توجد مواد مضافة لهذا الصف حالياً",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                } else {
+                                    reportCard.subjects.forEachIndexed { idx, sub ->
+                                        val isUnrecorded = sub.score <= 0
+                                        val scorePercent = if (sub.maxScoreScale > 0) {
+                                            (sub.score * 100) / sub.maxScoreScale
+                                        } else {
+                                            0
+                                        }
+
+                                        val rowBg = when {
+                                            isUnrecorded -> if (idx % 2 == 0) Color.White else Color(0xFFF6FBF8)
+                                            !sub.isPassed -> Color(0xFFFFF5F5)
+                                            idx % 2 == 0 -> Color.White
+                                            else -> Color(0xFFF6FBF8)
+                                        }
+
+                                        val subjectTextColor = when {
+                                            isUnrecorded -> Color(0xFF1E293B)
+                                            sub.isPassed -> Color(0xFF0F172A)
+                                            else -> Color(0xFF991B1B)
+                                        }
+
+                                        val scoreTextColor = when {
+                                            isUnrecorded -> Color(0xFF64748B)
+                                            sub.isPassed -> Color(0xFF047857)
+                                            else -> Color(0xFFB91C1C)
+                                        }
+
+                                        val (statusLabel, badgeBg, badgeBorder, badgeTextColor) = when {
+                                            isUnrecorded -> Quadruple(
+                                                "بانتظار الرصد",
+                                                Color(0xFFF1F5F9),
+                                                Color(0xFFCBD5E1),
+                                                Color(0xFF475569)
+                                            )
+                                            !sub.isPassed -> Quadruple(
+                                                "يحتاج دعم",
+                                                Color(0xFFFEE2E2),
+                                                Color(0xFFFCA5A5),
+                                                Color(0xFF991B1B)
+                                            )
+                                            scorePercent >= 90 -> Quadruple(
+                                                "ممتاز",
+                                                Color(0xFFDCFCE7),
+                                                Color(0xFF86EFAC),
+                                                Color(0xFF065F46)
+                                            )
+                                            scorePercent >= 80 -> Quadruple(
+                                                "جيد جداً",
+                                                Color(0xFFDCFCE7),
+                                                Color(0xFFA7F3D0),
+                                                Color(0xFF166534)
+                                            )
+                                            scorePercent >= 70 -> Quadruple(
+                                                "جيد",
+                                                Color(0xFFECFDF5),
+                                                Color(0xFFA7F3D0),
+                                                Color(0xFF047857)
+                                            )
+                                            else -> Quadruple(
+                                                "ناجح",
+                                                Color(0xFFECFDF5),
+                                                Color(0xFFA7F3D0),
+                                                Color(0xFF065F46)
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(rowBg)
+                                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = if (sub.isPassed) "ناجح" else "يحتاج دعم",
-                                                fontSize = 10.5.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = if (sub.isPassed) Color(0xFF166534) else Color(0xFF991B1B),
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                text = sub.subjectName,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = subjectTextColor,
                                                 maxLines = 1,
-                                                softWrap = false
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1.35f)
+                                            )
+                                            Text(
+                                                text = "${sub.score} من ${sub.maxScoreScale}",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = scoreTextColor,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.weight(0.95f)
+                                            )
+                                            Box(
+                                                modifier = Modifier.weight(1.0f),
+                                                contentAlignment = Alignment.CenterEnd
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = badgeBg,
+                                                    border = BorderStroke(0.75.dp, badgeBorder)
+                                                ) {
+                                                    Text(
+                                                        text = statusLabel,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = badgeTextColor,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (idx < reportCard.subjects.lastIndex) {
+                                            HorizontalDivider(
+                                                thickness = 0.75.dp,
+                                                color = Color(0xFFE2E8F0)
                                             )
                                         }
                                     }
                                 }
-                                HorizontalDivider(color = Color(0xFFE2E8F0))
                             }
                         }
-                    }
 
-                    // Summary Row: Total Score, Average %, and Electronic Stamp from إدارة المدرسة
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFECFDF5),
-                            border = BorderStroke(1.dp, Color(0xFF10B981))
+                        // =========================================================================
+                        // 4. Summary & Accreditation Row — 3 Strictly Uniform Boxes (height = 82.dp)
+                        // =========================================================================
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            // Box 1: المجموع الكلي
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(82.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFF6EE7B7))
                             ) {
-                                Text("المجموع الكلي", fontSize = 11.sp, color = Color(0xFF065F46), fontWeight = FontWeight.Bold)
-                                Text("${reportCard.totalScore}", fontSize = 16.sp, color = Color(0xFF047857), fontWeight = FontWeight.ExtraBold)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "المجموع الكلي",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF065F46),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = if (hasAnyRecordedGrade) "${reportCard.totalScore}" else "—",
+                                        fontSize = 17.sp,
+                                        color = Color(0xFF047857),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
                             }
-                        }
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFFFFBEB),
-                            border = BorderStroke(1.dp, Color(0xFFF59E0B))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("المعدل العام", fontSize = 11.sp, color = Color(0xFF92400E), fontWeight = FontWeight.Bold)
-                                Text("${reportCard.averagePercent}%", fontSize = 16.sp, color = Color(0xFFB45309), fontWeight = FontWeight.ExtraBold)
-                            }
-                        }
-                        Surface(
-                            modifier = Modifier.weight(1.2f),
-                            shape = RoundedCornerShape(14.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.2.dp, Color(0xFFD97706))
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("الختم والمصادقة", fontSize = 10.5.sp, color = Color(0xFF064E3B), fontWeight = FontWeight.ExtraBold)
-                                Text("مصادق • إدارة المدرسة", fontSize = 11.sp, color = Color(0xFFB45309), fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
-                            }
-                        }
-                    }
 
-                    // Bottom Action Buttons: Print Official PDF & Close
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = onPrintPdf,
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF047857),
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.weight(1.35f)
-                        ) {
-                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("طباعة / حفظ الكارت PDF", fontWeight = FontWeight.ExtraBold, fontSize = 11.5.sp, maxLines = 1, softWrap = false)
+                            // Box 2: المعدل العام
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(82.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFFFFBEB),
+                                border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "المعدل العام",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF92400E),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = if (hasAnyRecordedGrade) "${reportCard.averagePercent}%" else "—",
+                                        fontSize = 17.sp,
+                                        color = Color(0xFFB45309),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+
+                            // Box 3: المصادقة (No truncation, crisp vector seal icon)
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(82.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.65f))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "المصادقة",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF064E3B),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Verified,
+                                            contentDescription = "مصادقة إدارة المدرسة",
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "معتمد إدارياً",
+                                            fontSize = 10.5.sp,
+                                            color = Color(0xFF065F46),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = "إدارة المدرسة",
+                                        fontSize = 9.5.sp,
+                                        color = Color(0xFF64748B),
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
                         }
-                        OutlinedButton(
-                            onClick = onDismiss,
+
+                        // =========================================================================
+                        // 5. Educational Encouragement Footer Strip (Warm Ivory + Golden Right Accent Bar)
+                        // =========================================================================
+                        val footerTitle = when {
+                            !hasAnyRecordedGrade -> "بانتظار استكمال رصد الدرجات"
+                            effectiveOverallPassed -> "تهنئة وتقدير لولي أمر الطالب (${reportCard.studentName})"
+                            else -> "رسالة تربوية تشجيعية لولي أمر الطالب (${reportCard.studentName})"
+                        }
+                        val footerBody = when {
+                            !hasAnyRecordedGrade -> "لم يتم رصد درجات هذه الفترة الدراسية بعد؛ ستظهر الدرجات والتقديرات تلقائياً فور اعتمادها من قبل الكادر التدريسي وإدارة المدرسة."
+                            effectiveOverallPassed -> "تبارك إدارة ($resolvedSchoolName) للطالب وأسرته الكريمة هذا النجاح والتفوق، متمنين له دوام التميز والارتقاء."
+                            else -> "نثق بقدرات الطالب وهمته العالية، ونأمل متابعة المواد التي تحتاج دعماً ($recordedFailedCount مواد) لتحقيق التفوق في الامتحانات القادمة بإذن الله."
+                        }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier.weight(0.75f)
+                            color = Color(0xFFFFFBF0),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
                         ) {
-                            Text("إغلاق", fontWeight = FontWeight.ExtraBold)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(IntrinsicSize.Min)
+                            ) {
+                                // Thin golden accent side-bar on RTL right (start) edge
+                                Box(
+                                    modifier = Modifier
+                                        .width(4.dp)
+                                        .fillMaxHeight()
+                                        .background(Color(0xFFD97706))
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = footerTitle,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        text = footerBody,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF78350F),
+                                        lineHeight = 17.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // =========================================================================
+                        // 6. Bottom Action Buttons Row — Uniform 48.dp Height & Royal Emerald Identity
+                        // =========================================================================
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = onPrintPdf,
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF047857),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .height(48.dp)
+                                    .testTag("btn_report_card_print_pdf")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PictureAsPdf,
+                                    contentDescription = "طباعة أو حفظ الكارت PDF",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "طباعة / حفظ الكارت PDF",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.2.dp, Color(0xFF065F46).copy(alpha = 0.45f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFF065F46)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .weight(0.75f)
+                                    .height(48.dp)
+                                    .testTag("btn_report_card_close")
+                            ) {
+                                Text(
+                                    text = "إغلاق",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
@@ -7030,6 +7468,13 @@ fun LuxuryInteractiveReportCardModal(
         }
     }
 }
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)
 
 @Composable
 private fun CleanGradeInputBox(
@@ -8143,6 +8588,309 @@ private fun OfficialExamsCountdownHeaderWidget(
         }
     }
 }
+
+/**
+ * وحدة زجاجية ديناميكية مصقولة لتبويب «مركز إصدار وإرسال الكارتات المدرسية الذكية»:
+ * ترسم بـ Compose Canvas وثيقة شهادة مدرسية هندسية رسمية مع ختم اعتماد ذهبي
+ * وموجة لمعان قطرية بطيئة (Shimmer Sweep)، وتبدّل عبر Crossfade بين:
+ * ("شهادات رسمية معتمدة" ← "حساب آلي للنتائج" ← "إرسال فوري لأولياء الأمور").
+ */
+@Composable
+private fun ReportCardCertificateHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "شهادات رسمية معتمدة",
+            "حساب آلي للنتائج",
+            "إرسال فوري لأولياء الأمور"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2700L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "report_card_cert_shimmer")
+    val shimmerProgress by infiniteTransition.animateFloat(
+        initialValue = -0.45f,
+        targetValue = 1.45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "cert_diagonal_shimmer"
+    )
+    val sealGlow by infiniteTransition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.50f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "cert_seal_glow"
+    )
+
+    Surface(
+        modifier = modifier.width(136.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+
+                // 1. Official Geometric Certificate Card Body
+                val docLeft = w * 0.10f
+                val docTop = h * 0.10f
+                val docW = w * 0.78f
+                val docH = h * 0.78f
+                val docRadius = CornerRadius(7.dp.toPx(), 7.dp.toPx())
+
+                // Subtle certificate card base
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.20f),
+                    topLeft = Offset(docLeft, docTop),
+                    size = Size(docW, docH),
+                    cornerRadius = docRadius
+                )
+
+                // Slow diagonal light shimmer sweep constrained strictly inside certificate bounds
+                val sweepCenterX = docLeft + docW * shimmerProgress
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.10f),
+                            Color(0xFFFDE68A).copy(alpha = 0.34f),
+                            Color.White.copy(alpha = 0.10f),
+                            Color.Transparent
+                        ),
+                        start = Offset(sweepCenterX - docW * 0.36f, docTop),
+                        end = Offset(sweepCenterX + docW * 0.36f, docTop + docH)
+                    ),
+                    topLeft = Offset(docLeft, docTop),
+                    size = Size(docW, docH),
+                    cornerRadius = docRadius
+                )
+
+                // Crisp certificate frame border
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.55f),
+                    topLeft = Offset(docLeft, docTop),
+                    size = Size(docW, docH),
+                    cornerRadius = docRadius,
+                    style = Stroke(width = 1.1.dp.toPx())
+                )
+
+                // Thin gold top header strip inside certificate
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFFD97706), Color(0xFFFDE68A), Color(0xFFD97706))
+                    ),
+                    topLeft = Offset(docLeft + 5.dp.toPx(), docTop + 5.dp.toPx()),
+                    size = Size(docW - 10.dp.toPx(), 3.dp.toPx()),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+
+                // Clean geometric document lines (representing subject grade rows)
+                val lineLeft = docLeft + docW * 0.12f
+                val lineYs = listOf(docTop + docH * 0.36f, docTop + docH * 0.54f, docTop + docH * 0.72f)
+                val lineLengths = listOf(docW * 0.52f, docW * 0.44f, docW * 0.34f)
+                lineYs.forEachIndexed { idx, ly ->
+                    drawLine(
+                        color = Color.White.copy(alpha = if (idx == 0) 0.78f else 0.50f),
+                        start = Offset(lineLeft, ly),
+                        end = Offset(lineLeft + lineLengths[idx], ly),
+                        strokeWidth = if (idx == 0) 2.2.dp.toPx() else 1.7.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                // 2. Golden Accreditation Seal (Bottom-End Emblem + Ribbon Tails)
+                val sealCx = docLeft + docW * 0.84f
+                val sealCy = docTop + docH * 0.70f
+                val sealR = h * 0.21f
+
+                // Soft warm golden halo
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = sealGlow),
+                            Color.Transparent
+                        ),
+                        center = Offset(sealCx, sealCy),
+                        radius = sealR * 1.65f
+                    ),
+                    radius = sealR * 1.65f,
+                    center = Offset(sealCx, sealCy)
+                )
+
+                // Twin geometric ribbon tails beneath seal
+                val ribbonPath = Path().apply {
+                    moveTo(sealCx - sealR * 0.42f, sealCy + sealR * 0.65f)
+                    lineTo(sealCx - sealR * 0.62f, sealCy + sealR * 1.42f)
+                    lineTo(sealCx - sealR * 0.18f, sealCy + sealR * 1.18f)
+                    lineTo(sealCx, sealCy + sealR * 0.80f)
+                    lineTo(sealCx + sealR * 0.18f, sealCy + sealR * 1.18f)
+                    lineTo(sealCx + sealR * 0.62f, sealCy + sealR * 1.42f)
+                    lineTo(sealCx + sealR * 0.42f, sealCy + sealR * 0.65f)
+                    close()
+                }
+                drawPath(path = ribbonPath, color = Color(0xFFD97706))
+
+                // Outer golden seal medallion
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFB45309)),
+                        start = Offset(sealCx - sealR, sealCy - sealR),
+                        end = Offset(sealCx + sealR, sealCy + sealR)
+                    ),
+                    radius = sealR,
+                    center = Offset(sealCx, sealCy)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.70f),
+                    radius = sealR,
+                    center = Offset(sealCx, sealCy),
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                // Inner deep-emerald medallion core + crisp verification check stroke
+                drawCircle(
+                    color = Color(0xFF065F46),
+                    radius = sealR * 0.62f,
+                    center = Offset(sealCx, sealCy)
+                )
+                val checkPath = Path().apply {
+                    moveTo(sealCx - sealR * 0.28f, sealCy + sealR * 0.02f)
+                    lineTo(sealCx - sealR * 0.06f, sealCy + sealR * 0.24f)
+                    lineTo(sealCx + sealR * 0.30f, sealCy - sealR * 0.20f)
+                }
+                drawPath(
+                    path = checkPath,
+                    color = Color(0xFFFDE68A),
+                    style = Stroke(
+                        width = 1.8.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+            }
+
+            Crossfade(
+                targetState = phrases[phraseIndex],
+                animationSpec = tween(420),
+                label = "report_card_cert_phrase_crossfade"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * ختم مدرسي هندسي مصقول مرسوم بـ Compose Canvas لترويسة معاينة الكارت المدرسي الرسمي.
+ */
+@Composable
+private fun CertificateGeometricSealCanvas(
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val outerR = size.minDimension * 0.46f
+
+        // 12-point geometric rosette perimeter in royal gold
+        val rosettePath = Path()
+        val points = 24
+        for (i in 0 until points) {
+            val angle = (i * 360.0 / points) * kotlin.math.PI / 180.0
+            val r = if (i % 2 == 0) outerR else outerR * 0.88f
+            val px = cx + (r * kotlin.math.cos(angle)).toFloat()
+            val py = cy + (r * kotlin.math.sin(angle)).toFloat()
+            if (i == 0) rosettePath.moveTo(px, py) else rosettePath.lineTo(px, py)
+        }
+        rosettePath.close()
+
+        drawPath(
+            path = rosettePath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFD97706)),
+                start = Offset(cx - outerR, cy - outerR),
+                end = Offset(cx + outerR, cy + outerR)
+            )
+        )
+
+        // Inner deep-emerald seal ring
+        drawCircle(
+            color = Color(0xFF064E3B),
+            radius = outerR * 0.74f,
+            center = Offset(cx, cy)
+        )
+        drawCircle(
+            color = Color(0xFFFDE68A).copy(alpha = 0.78f),
+            radius = outerR * 0.64f,
+            center = Offset(cx, cy),
+            style = Stroke(width = 1.dp.toPx())
+        )
+
+        // Geometric open-book / crest emblem in the center
+        val bookW = outerR * 0.62f
+        val bookH = outerR * 0.36f
+        val bookPath = Path().apply {
+            // Left page
+            moveTo(cx, cy - bookH * 0.30f)
+            lineTo(cx - bookW * 0.50f, cy - bookH * 0.55f)
+            lineTo(cx - bookW * 0.50f, cy + bookH * 0.45f)
+            lineTo(cx, cy + bookH * 0.65f)
+            // Right page
+            lineTo(cx + bookW * 0.50f, cy + bookH * 0.45f)
+            lineTo(cx + bookW * 0.50f, cy - bookH * 0.55f)
+            close()
+        }
+        drawPath(
+            path = bookPath,
+            color = Color(0xFFFDE68A),
+            style = Stroke(
+                width = 1.6.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+        // Center spine
+        drawLine(
+            color = Color(0xFFFDE68A),
+            start = Offset(cx, cy - bookH * 0.30f),
+            end = Offset(cx, cy + bookH * 0.65f),
+            strokeWidth = 1.4.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
 
 
 
