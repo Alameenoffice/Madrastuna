@@ -199,6 +199,30 @@ fun DashboardScreen(
             )
         }
     }
+    val homeBannerAudioRoom = remember(activeEligibleLiveRoom, allLiveAudioRooms, currentUser, myStudent, parentChildrenForLive) {
+        activeEligibleLiveRoom ?: allLiveAudioRooms.firstOrNull { room ->
+            !room.isLive && com.example.livebroadcast.isUserIncludedInRoom(
+                room = room,
+                user = currentUser,
+                linkedStudent = myStudent,
+                parentChildren = parentChildrenForLive
+            )
+        }
+    }
+    val pastEndedAudioRooms = remember(allLiveAudioRooms, currentUser, myStudent, parentChildrenForLive) {
+        allLiveAudioRooms.filter { room ->
+            !room.isLive && com.example.livebroadcast.isUserIncludedInRoom(
+                room = room,
+                user = currentUser,
+                linkedStudent = myStudent,
+                parentChildren = parentChildrenForLive
+            )
+        }
+    }
+    var showPastBroadcastsHistoryDialog by remember { mutableStateOf(false) }
+    var isDeletingPastBroadcasts by remember { mutableStateOf(false) }
+    val liveHistoryContext = androidx.compose.ui.platform.LocalContext.current
+    val liveHistoryScope = rememberCoroutineScope()
 
     if (showLocalReadingOasis) {
         com.example.reading.ReadingOasisScreen(
@@ -230,13 +254,14 @@ fun DashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = PaddingValues(top = 0.dp, bottom = 28.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(top = 0.dp, bottom = 24.dp)
     ) {
-        // Zero-Gap Seamless Full-Bleed Wave Stack:
-        // 1) FIRST at the very top: 3D Royal Welcome Wave Hero ("مرحباً بك، ...")
-        // 2) SECOND (0.dp gap): Developer System Broadcast + Principal School Announcement
-        // 3) THIRD (0.dp gap): Top 3 Auto-Rotating Rated Teachers Wave Spotlight
+        // Compact High-Density Home Header Stack:
+        // 1) Slim Platform Developer Broadcast Bar (at the very top before green Welcome Hero)
+        // 2) Green Welcome Wave Hero ("مرحباً بك، ...")
+        // 3) Seamless Wavy School Alerts Strip (0.dp gap, docked directly under green Welcome Hero)
+        // 4) Compact Live / Ended Audio Broadcast Strip
         item {
             val welcomeSubtitle = when {
                 isParentOrStudent && myStudent != null ->
@@ -286,11 +311,64 @@ fun DashboardScreen(
                 }
             }
 
+            val visibleAdminBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds) {
+                developerBroadcasts.filterNot { bc ->
+                    val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                    bc.id in dismissedBroadcastIds || key in dismissedBroadcastIds
+                }
+            }
+            val latestAdminBroadcast = if (isAdmin) visibleAdminBroadcasts.firstOrNull() else null
+            val showOccasionBroadcast = occasionThemeConfig.isActive
+            val showAdminDirectBroadcast = latestAdminBroadcast != null &&
+                (!showOccasionBroadcast || latestAdminBroadcast.title != occasionThemeConfig.effectiveTitle)
+
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.Top
             ) {
-                // 1) FIRST: Welcome Hero Section ("مرحباً بك، ...") with SmartWelcomeProfileAvatar & Daily Status Ring
+                // 1) TOP SLIM BAR: شريط تنبيهات المطور (تعميم إدارة المنصة) أعلى الصفحة مباشرة قبل بطاقة الترحيب الخضراء
+                if (showOccasionBroadcast || (showAdminDirectBroadcast && latestAdminBroadcast != null)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp, bottom = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        if (showOccasionBroadcast) {
+                            val devIconKey = occasionThemeConfig.resolvedIconKey
+                            DeveloperSystemBroadcastBanner(
+                                title = occasionThemeConfig.effectiveTitle,
+                                subtitle = occasionThemeConfig.effectiveBannerText,
+                                badgeText = "تعميم المنصة",
+                                iconKey = devIconKey,
+                                illustrationType = devIconKey.toThreeDIllustrationType()
+                            )
+                        }
+
+                        if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
+                            val bcIconKey = OccasionIconKey.fromKey(latestAdminBroadcast.iconKey)
+                            DeveloperSystemBroadcastBanner(
+                                title = latestAdminBroadcast.title,
+                                subtitle = latestAdminBroadcast.message,
+                                badgeText = "تعميم المنصة",
+                                dateText = formatCleanDate(latestAdminBroadcast.createdAt),
+                                iconKey = bcIconKey,
+                                illustrationType = bcIconKey.toThreeDIllustrationType(),
+                                onDismiss = {
+                                    developerBroadcasts.forEach { bc ->
+                                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                                        viewModel.dismissDeveloperBroadcastForAdmin(key)
+                                        if (bc.id.isNotBlank()) {
+                                            viewModel.dismissDeveloperBroadcastForAdmin(bc.id)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // 2) Welcome Hero Section ("مرحباً بك، ...") with SmartWelcomeProfileAvatar & Daily Status Ring
                 val activeAvatarPhotoSource = remember(
                     isParentOrStudent,
                     myStudent?.id,
@@ -426,18 +504,7 @@ fun DashboardScreen(
                     modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 2) SECOND: بطاقتا «تعميم إدارة المنصة» و«تبليغ إدارة المدرسة» بتصميم زجاجي مصقول
-                val visibleAdminBroadcasts = remember(developerBroadcasts, dismissedBroadcastIds) {
-                    developerBroadcasts.filterNot { bc ->
-                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                        bc.id in dismissedBroadcastIds || key in dismissedBroadcastIds
-                    }
-                }
-                val latestAdminBroadcast = if (isAdmin) visibleAdminBroadcasts.firstOrNull() else null
-                val showOccasionBroadcast = occasionThemeConfig.isActive
-                val showAdminDirectBroadcast = latestAdminBroadcast != null &&
-                    (!showOccasionBroadcast || latestAdminBroadcast.title != occasionThemeConfig.effectiveTitle)
-                val hasDeveloperBannerAbove = showOccasionBroadcast || showAdminDirectBroadcast
+                // 3) شريط تنبيهات إدارة المدرسة الملتصق والمتموّج أسفل بطاقة الترحيب الخضراء (بدون تكرار عطلة اليوم المعروضة داخل الترحيب)
                 val activeDynamicSchoolAlerts = remember(
                     shouldShowUrgentAlertBanner,
                     currentUrgentSig,
@@ -450,8 +517,7 @@ fun DashboardScreen(
                     scopedNotifications,
                     myStudent?.gradeClass,
                     isAdmin,
-                    isParentOrStudent,
-                    schoolConfig.academicYear
+                    isParentOrStudent
                 ) {
                     val items = mutableListOf<SchoolBannerAlertItem>()
 
@@ -476,36 +542,8 @@ fun DashboardScreen(
                         )
                     }
 
-                    // 2) المرتبة الثانية: العطل الرسمية والمناسبات (عطلة اليوم أو عطلة رسمية قادمة خلال 3 أيام)
-                    if (todayHolidayLabel != null) {
-                        items.add(
-                            SchoolBannerAlertItem(
-                                id = "holiday_today_${todayIso}_${todayHolidayLabel.hashCode()}",
-                                type = SchoolBannerAlertType.OFFICIAL_HOLIDAY,
-                                badgeText = "عطلة رسمية ومناسبات",
-                                title = "عطلة رسمية: $todayHolidayLabel",
-                                subtitle = "اليوم عطلة رسمية معتمدة في التقويم المدرسي (${schoolConfig.academicYear})",
-                                displayDurationMs = 4000L,
-                                onClick = if (isAdmin) {
-                                    { viewModel.openHolidaysManagementModal() }
-                                } else null
-                            )
-                        )
-                    } else if (isDashboardUnifiedHoliday) {
-                        items.add(
-                            SchoolBannerAlertItem(
-                                id = "holiday_weekend_$todayIso",
-                                type = SchoolBannerAlertType.OFFICIAL_HOLIDAY,
-                                badgeText = "عطلة رسمية ومناسبات",
-                                title = "عطلة أسبوعية معتمدة",
-                                subtitle = "اليوم عطلة نهاية الأسبوع وفق إعدادات الدوام المدرسي الموحّد",
-                                displayDurationMs = 4000L,
-                                onClick = if (isAdmin) {
-                                    { viewModel.openHolidaysManagementModal() }
-                                } else null
-                            )
-                        )
-                    } else {
+                    // 2) العطل الرسمية القادمة فقط (خلال 1-3 أيام): نمنع تكرار عطلة اليوم لأنها معروضة بالفعل داخل بطاقة الترحيب الخضراء
+                    if (todayHolidayLabel == null && !isDashboardUnifiedHoliday) {
                         val upcomingHoliday = holidaysConfig.officialHolidays
                             .mapNotNull { hol ->
                                 val days = DateCountdownHelper.daysUntilDate(hol.dateIso)
@@ -535,7 +573,7 @@ fun DashboardScreen(
                         }
                     }
 
-                    // 3) المرتبة الثالثة: تنبيهات مهمة أخرى (الامتحانات القريبة أو الإشعارات العاجلة غير المقروءة)
+                    // 3) تنبيهات مهمة أخرى (الامتحانات القريبة أو الإشعارات العاجلة غير المقروءة)
                     val nearestUpcomingExam = examSchedules
                         .asSequence()
                         .filter { exam ->
@@ -599,73 +637,83 @@ fun DashboardScreen(
                     items.sortedBy { it.type.priorityOrder }
                 }
 
-                val hasAnyAnnouncementCard = hasDeveloperBannerAbove || activeDynamicSchoolAlerts.isNotEmpty()
-
-                if (hasAnyAnnouncementCard) {
-                    Column(
+                // شريط تنبيهات إدارة المدرسة ملتصق ومتموّج مباشرة أسفل بطاقة الترحيب الخضراء بدون أي فراغ أبيض
+                if (activeDynamicSchoolAlerts.isNotEmpty()) {
+                    SchoolDynamicAlertsCarouselBanner(
+                        alerts = activeDynamicSchoolAlerts,
+                        isAdmin = isAdmin,
+                        dockedUnderHeroWave = true,
+                        topWaveOverlapPadding = 22.dp,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp, bottom = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        if (showOccasionBroadcast) {
-                            val devIconKey = occasionThemeConfig.resolvedIconKey
-                            DeveloperSystemBroadcastBanner(
-                                title = occasionThemeConfig.effectiveTitle,
-                                subtitle = occasionThemeConfig.effectiveBannerText,
-                                badgeText = "تعميم إدارة المنصة • ${devIconKey.arabicLabel}",
-                                iconKey = devIconKey,
-                                illustrationType = devIconKey.toThreeDIllustrationType()
-                            )
-                        }
-
-                        if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
-                            val bcIconKey = OccasionIconKey.fromKey(latestAdminBroadcast.iconKey)
-                            DeveloperSystemBroadcastBanner(
-                                title = latestAdminBroadcast.title,
-                                subtitle = latestAdminBroadcast.message,
-                                badgeText = "تعميم إدارة المنصة",
-                                dateText = formatCleanDate(latestAdminBroadcast.createdAt),
-                                iconKey = bcIconKey,
-                                illustrationType = bcIconKey.toThreeDIllustrationType(),
-                                onDismiss = {
-                                    developerBroadcasts.forEach { bc ->
-                                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                                        viewModel.dismissDeveloperBroadcastForAdmin(key)
-                                        if (bc.id.isNotBlank()) {
-                                            viewModel.dismissDeveloperBroadcastForAdmin(bc.id)
-                                        }
-                                    }
-                                }
-                            )
-                        }
-
-                        if (activeDynamicSchoolAlerts.isNotEmpty()) {
-                            SchoolDynamicAlertsCarouselBanner(
-                                alerts = activeDynamicSchoolAlerts,
-                                isAdmin = isAdmin
-                            )
-                        }
-                    }
-                }
-
-                if (activeEligibleLiveRoom != null) {
-                    com.example.livebroadcast.HomeLiveAudioBroadcastCard(
-                        room = activeEligibleLiveRoom,
-                        onJoinClick = {
-                            if (onJoinLiveAudioRoom != null) {
-                                onJoinLiveAudioRoom(activeEligibleLiveRoom)
-                            } else {
-                                viewModel.navigateToSection(AppSection.LIVE_AUDIO_BROADCAST)
-                            }
-                        },
-                        modifier = Modifier.padding(top = 10.dp, bottom = 6.dp)
+                            .seamlessWaveOverlap(24.dp)
+                            .zIndex(3f)
                     )
                 }
 
-                // 3) THIRD: Top 3 Auto-Rotating Rated Teachers Wave Spotlight
+                // 4) شريط تنبيه البث الصوتي الانسيابي الممتد بكامل عرض الشاشة (مباشر أو منتهي تلقائياً)
+                if (homeBannerAudioRoom != null) {
+                    val hasDockedAlertsAbove = activeDynamicSchoolAlerts.isNotEmpty()
+                    com.example.livebroadcast.HomeLiveAudioBroadcastCard(
+                        room = homeBannerAudioRoom,
+                        topOverlapPadding = if (hasDockedAlertsAbove) 14.dp else 22.dp,
+                        onJoinClick = {
+                            if (homeBannerAudioRoom.isLive && onJoinLiveAudioRoom != null) {
+                                onJoinLiveAudioRoom(homeBannerAudioRoom)
+                            } else {
+                                showPastBroadcastsHistoryDialog = true
+                            }
+                        },
+                        onOpenHistoryClick = {
+                            showPastBroadcastsHistoryDialog = true
+                        },
+                        modifier = Modifier
+                            .seamlessWaveOverlap(if (hasDockedAlertsAbove) 16.dp else 24.dp)
+                            .zIndex(2f)
+                    )
+                }
+
+                if (showPastBroadcastsHistoryDialog) {
+                    val activeSchoolIdForHistory = schoolConfig.schoolId.ifBlank { "default_school" }
+                    com.example.livebroadcast.PastBroadcastsHistoryDialog(
+                        endedRooms = pastEndedAudioRooms,
+                        isPrincipal = isAdmin,
+                        isProcessingDelete = isDeletingPastBroadcasts,
+                        onDeleteSingle = { roomToDelete ->
+                            isDeletingPastBroadcasts = true
+                            liveHistoryScope.launch {
+                                com.example.livebroadcast.LiveAudioBroadcastCloudStore.deleteRoomFromHistory(
+                                    context = liveHistoryContext,
+                                    rawSchoolId = activeSchoolIdForHistory,
+                                    roomId = roomToDelete.id
+                                )
+                                isDeletingPastBroadcasts = false
+                                viewModel.showToastAlert("تم حذف البث من السجل بنجاح", isSuccess = true)
+                            }
+                        },
+                        onClearAll = {
+                            isDeletingPastBroadcasts = true
+                            liveHistoryScope.launch {
+                                val deletedCount = com.example.livebroadcast.LiveAudioBroadcastCloudStore.clearAllEndedHistory(
+                                    context = liveHistoryContext,
+                                    rawSchoolId = activeSchoolIdForHistory
+                                )
+                                isDeletingPastBroadcasts = false
+                                viewModel.showToastAlert("تم مسح $deletedCount من سجل البثوث السابقة بنجاح", isSuccess = true)
+                            }
+                        },
+                        onDismiss = { showPastBroadcastsHistoryDialog = false }
+                    )
+                }
+
+                // 5) Top 3 Auto-Rotating Rated Teachers Wave Spotlight
                 if (featureSettings.showTopTeacherOnHome && topRatedTeachers.isNotEmpty() && topTeacherSummary != null) {
-                    val spotlightOverlap = if (hasAnyAnnouncementCard || activeEligibleLiveRoom != null) 0.dp else 26.dp
+                    val hasDockedSchoolStrip = activeDynamicSchoolAlerts.isNotEmpty()
+                    val hasAudioStrip = homeBannerAudioRoom != null
+                    val spotlightOverlap = when {
+                        hasAudioStrip -> 0.dp
+                        hasDockedSchoolStrip -> 12.dp
+                        else -> 24.dp
+                    }
                     SeamlessWaveTeacherSpotlightSection(
                         teacherName = topTeacherSummary.teacher.fullName,
                         teacherSubjects = topTeacherSummary.teacher.specialty,
@@ -673,7 +721,7 @@ fun DashboardScreen(
                         totalRatingsCount = topTeacherSummary.totalRatingsCount,
                         topTeachers = topRatedTeachers,
                         isAdmin = isAdmin,
-                        topOverlapPadding = if (hasAnyAnnouncementCard) 0.dp else (spotlightOverlap - 4.dp),
+                        topOverlapPadding = if (hasAudioStrip) 0.dp else (spotlightOverlap - 4.dp).coerceAtLeast(0.dp),
                         onOpenEvaluationSection = {
                             viewModel.navigateToSection(AppSection.TEACHER_EVALUATION)
                         },
@@ -681,6 +729,7 @@ fun DashboardScreen(
                             viewModel.toggleShowTopTeacherOnHome(false)
                         },
                         modifier = Modifier
+                            .then(if (hasAudioStrip) Modifier.padding(top = 6.dp) else Modifier)
                             .seamlessWaveOverlap(spotlightOverlap)
                             .zIndex(1f)
                     )

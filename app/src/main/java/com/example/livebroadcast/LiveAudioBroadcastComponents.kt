@@ -22,6 +22,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,25 +30,39 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,6 +70,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import com.example.ui.components.formatCleanDate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -71,8 +90,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -83,6 +104,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -557,161 +579,489 @@ fun CalmAcousticEmptyStateCard(
 }
 
 /**
- * Refined Live Broadcast Banner Card for the Home Dashboard.
- * Shown ONLY to users who match the active live room's targetAudience while status == "live".
- * - 18.dp rounded glass card with thin emerald-gold vertical edge accent on the right (RTL).
- * - Pulsing Canvas broadcast dot + "بث صوتي مباشر الآن" + audience badge.
- * - Broadcast title + host name.
- * - Compact left button "انضمام الآن" with directional arrow opening the live room immediately.
+ * Sleek Edge-to-Edge Full-Width Live Audio Broadcast Ribbon seamlessly docked under the Welcome Hero.
+ * - Zero floating box borders, zero rounded card margins, zero harsh black backgrounds.
+ * - LIVE state: Bright emerald-mint gradient (Light & Dark harmonious) + 3 interactive oscillating
+ *   vector acoustic waves across the full width (reacts with wave boost & luminous sweep on touch)
+ *   + compact "انضمام" button.
+ * - ENDED state: Calm light mint-gray gradient with soft hairline bottom border + slow breathing
+ *   thin vector wave in the background + crisp dark typography + light refined "سجل البثوث" button.
  */
 @Composable
 fun HomeLiveAudioBroadcastCard(
     room: LiveAudioRoom,
     onJoinClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenHistoryClick: () -> Unit = onJoinClick,
+    topOverlapPadding: Dp = 0.dp
 ) {
-    val colorScheme = MaterialTheme.colorScheme
     val isDark = isSystemInDarkTheme()
-    val cardBg = if (isDark) {
-        colorScheme.surfaceVariant.copy(alpha = 0.78f)
-    } else {
-        Color(0xFFF3FBF7)
-    }
+    val isLive = room.isLive
+    val scope = rememberCoroutineScope()
 
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(onClick = onJoinClick)
-            .testTag("home_live_audio_broadcast_card"),
-        shape = RoundedCornerShape(18.dp),
-        color = cardBg,
-        shadowElevation = 4.dp,
-        border = BorderStroke(
-            width = 1.dp,
-            brush = Brush.horizontalGradient(
-                colors = listOf(
-                    BroadcastGoldAccent.copy(alpha = 0.55f),
-                    colorScheme.primary.copy(alpha = 0.45f)
-                )
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val touchBoost by animateFloatAsState(
+        targetValue = if (isPressed) 1f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "broadcast_strip_touch_boost"
+    )
+    val tapFlashProgress = remember { Animatable(0f) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "home_broadcast_vector_waves")
+    val livePhasePrimary by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "live_wave_phase_primary"
+    )
+    val livePhaseSecondary by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4700, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "live_wave_phase_secondary"
+    )
+    val endedBreath by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 5400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "ended_wave_calm_breath"
+    )
+
+    val stripGradientBrush = when {
+        isLive && !isDark -> Brush.horizontalGradient(
+            colors = listOf(
+                Color(0xFFCFF7E6),
+                Color(0xFFE5FCF2),
+                Color(0xFFC4F2DE)
             )
         )
-    ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            // Sleek emerald-gold right vertical stripe (start in RTL)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .width(5.dp)
-                    .matchParentSize()
+        isLive && isDark -> Brush.horizontalGradient(
+            colors = listOf(
+                Color(0xFF0A4737),
+                Color(0xFF0E5A45),
+                Color(0xFF0B3F33)
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Right-side accent bar (first child in RTL layout)
-                Canvas(
-                    modifier = Modifier
-                        .width(5.dp)
-                        .height(86.dp)
-                ) {
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                BroadcastGoldAccent,
-                                colorScheme.primary,
-                                BroadcastDeepEmerald
-                            )
+        )
+        !isLive && !isDark -> Brush.horizontalGradient(
+            colors = listOf(
+                Color(0xFFEDF5F2),
+                Color(0xFFF5FAF8),
+                Color(0xFFE8F2EE)
+            )
+        )
+        else -> Brush.horizontalGradient(
+            colors = listOf(
+                Color(0xFF1E2F2B),
+                Color(0xFF243833),
+                Color(0xFF1C2C28)
+            )
+        )
+    }
+
+    val bottomHairlineColor = when {
+        isLive && !isDark -> Color(0xFF059669).copy(alpha = 0.24f)
+        isLive && isDark -> Color(0xFF34D399).copy(alpha = 0.30f)
+        !isLive && !isDark -> Color(0xFFC5D8D0)
+        else -> Color(0xFF3A544C)
+    }
+    val titleColor = when {
+        isLive && !isDark -> Color(0xFF044635)
+        isLive && isDark -> Color(0xFFF0FDF4)
+        !isLive && !isDark -> Color(0xFF16352C)
+        else -> Color(0xFFE6F4EF)
+    }
+    val metaColor = when {
+        isLive && !isDark -> Color(0xFF0F5E48)
+        isLive && isDark -> Color(0xFFA7F3D0).copy(alpha = 0.92f)
+        !isLive && !isDark -> Color(0xFF3E5D53)
+        else -> Color(0xFFA8C6BC)
+    }
+
+    val wavePrimaryColor = when {
+        isLive && !isDark -> Color(0xFF059669).copy(alpha = 0.16f + 0.10f * touchBoost)
+        isLive && isDark -> Color(0xFF34D399).copy(alpha = 0.22f + 0.12f * touchBoost)
+        !isLive && !isDark -> Color(0xFF059669).copy(alpha = 0.12f + 0.06f * touchBoost)
+        else -> Color(0xFF6EE7B7).copy(alpha = 0.15f + 0.08f * touchBoost)
+    }
+    val waveSecondaryColor = when {
+        isLive && !isDark -> Color(0xFF10B981).copy(alpha = 0.13f + 0.08f * touchBoost)
+        isLive && isDark -> Color(0xFFA7F3D0).copy(alpha = 0.14f + 0.08f * touchBoost)
+        !isLive && !isDark -> Color(0xFF64748B).copy(alpha = 0.10f)
+        else -> Color(0xFF94A3B8).copy(alpha = 0.12f)
+    }
+    val waveGoldColor = if (isDark) {
+        BroadcastGoldLight.copy(alpha = 0.19f + 0.12f * touchBoost)
+    } else {
+        BroadcastGoldAccent.copy(alpha = 0.18f + 0.12f * touchBoost)
+    }
+    val shimmerSweepColor = if (isDark) {
+        Color(0xFFA7F3D0)
+    } else {
+        Color.White
+    }
+
+    val clickAction: () -> Unit = {
+        scope.launch {
+            tapFlashProgress.snapTo(0f)
+            tapFlashProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 480, easing = FastOutSlowInEasing)
+            )
+            tapFlashProgress.snapTo(0f)
+        }
+        if (isLive) onJoinClick() else onOpenHistoryClick()
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(stripGradientBrush)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(
+                    color = if (isLive) Color(0xFF059669) else Color(0xFF64748B)
+                ),
+                onClick = clickAction
+            )
+            .testTag("home_live_audio_broadcast_card")
+    ) {
+        // Full-Width Interactive Vector Acoustic Wave Animation Background
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            if (w <= 0f || h <= 0f) return@Canvas
+            val topSafe = topOverlapPadding.toPx().coerceAtMost(h * 0.45f)
+            val usableH = (h - topSafe).coerceAtLeast(18f)
+            val centerY = topSafe + usableH * 0.56f
+            val stepPx = (w / 46f).coerceIn(8f, 22f)
+
+            if (isLive) {
+                val ampScale = 1f + 0.42f * touchBoost
+
+                // Soft translucent fill wave behind primary vector line
+                val fillPath = Path()
+                val wave1Path = Path()
+                val wave2Path = Path()
+                val wave3Path = Path()
+
+                var x = 0f
+                var first = true
+                while (x <= w + stepPx) {
+                    val cx = x.coerceAtMost(w)
+                    val normX = cx / w
+                    // Envelope tapers gently near far edges while staying vibrant across width
+                    val env = 0.55f + 0.45f * sin(normX * PI).toFloat()
+
+                    val y1 = centerY + sin(normX * 4.4 * PI + livePhasePrimary).toFloat() * (usableH * 0.21f * env * ampScale)
+                    val y2 = centerY + 2.dp.toPx() + sin(normX * 3.1 * PI - livePhaseSecondary + 1.1).toFloat() * (usableH * 0.16f * env * ampScale)
+                    val y3 = centerY - 2.dp.toPx() + sin(normX * 6.0 * PI + livePhasePrimary * 1.35 + 2.3).toFloat() * (usableH * 0.11f * env * ampScale)
+
+                    if (first) {
+                        wave1Path.moveTo(cx, y1)
+                        wave2Path.moveTo(cx, y2)
+                        wave3Path.moveTo(cx, y3)
+                        fillPath.moveTo(cx, h)
+                        fillPath.lineTo(cx, y1)
+                        first = false
+                    } else {
+                        wave1Path.lineTo(cx, y1)
+                        wave2Path.lineTo(cx, y2)
+                        wave3Path.lineTo(cx, y3)
+                        fillPath.lineTo(cx, y1)
+                    }
+                    if (cx >= w) break
+                    x += stepPx
+                }
+                fillPath.lineTo(w, h)
+                fillPath.close()
+
+                drawPath(
+                    path = fillPath,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            wavePrimaryColor.copy(alpha = wavePrimaryColor.alpha * 0.36f),
+                            Color.Transparent
                         ),
-                        topLeft = Offset.Zero,
-                        size = Size(size.width, size.height),
-                        cornerRadius = CornerRadius(8f, 8f)
+                        startY = topSafe,
+                        endY = h
                     )
+                )
+                drawPath(
+                    path = wave2Path,
+                    color = waveSecondaryColor,
+                    style = Stroke(width = 1.25.dp.toPx(), cap = StrokeCap.Round)
+                )
+                drawPath(
+                    path = wave3Path,
+                    color = waveGoldColor,
+                    style = Stroke(width = 1.05.dp.toPx(), cap = StrokeCap.Round)
+                )
+                drawPath(
+                    path = wave1Path,
+                    color = wavePrimaryColor,
+                    style = Stroke(width = 1.65.dp.toPx(), cap = StrokeCap.Round)
+                )
+            } else {
+                // Calm, refined slow-breathing thin vector wave for ENDED broadcast
+                val breathShift = (endedBreath - 0.5f) * 1.45f
+                val calmAmp = usableH * (0.12f + 0.045f * endedBreath + 0.06f * touchBoost)
+
+                val calmWaveMain = Path()
+                val calmWaveEcho = Path()
+                var x = 0f
+                var first = true
+                while (x <= w + stepPx) {
+                    val cx = x.coerceAtMost(w)
+                    val normX = cx / w
+                    val yMain = centerY + sin(normX * 2.6 * PI + breathShift).toFloat() * calmAmp
+                    val yEcho = centerY + 3.dp.toPx() + sin(normX * 1.9 * PI - breathShift * 0.8 + 0.9).toFloat() * (calmAmp * 0.68f)
+                    if (first) {
+                        calmWaveMain.moveTo(cx, yMain)
+                        calmWaveEcho.moveTo(cx, yEcho)
+                        first = false
+                    } else {
+                        calmWaveMain.lineTo(cx, yMain)
+                        calmWaveEcho.lineTo(cx, yEcho)
+                    }
+                    if (cx >= w) break
+                    x += stepPx
                 }
 
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                drawPath(
+                    path = calmWaveEcho,
+                    color = waveSecondaryColor,
+                    style = Stroke(width = 0.95.dp.toPx(), cap = StrokeCap.Round)
+                )
+                drawPath(
+                    path = calmWaveMain,
+                    color = wavePrimaryColor,
+                    style = Stroke(width = 1.35.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+
+            // Soft luminous flash sweep across width on tap interaction
+            val flash = tapFlashProgress.value
+            if (flash > 0f && flash < 1f) {
+                val sweepCenterX = w * flash
+                val sweepHalfW = w * 0.28f
+                val alphaPeak = sin(flash * PI).toFloat() * (if (isLive) 0.24f else 0.16f)
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            shimmerSweepColor.copy(alpha = alphaPeak),
+                            Color.Transparent
+                        ),
+                        startX = (sweepCenterX - sweepHalfW).coerceAtLeast(0f),
+                        endX = (sweepCenterX + sweepHalfW).coerceAtMost(w)
+                    )
+                )
+            }
+        }
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 16.dp,
+                        end = 14.dp,
+                        top = topOverlapPadding + 7.dp,
+                        bottom = 8.dp
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    // Row 1: Status pill ("بث مباشر" / "بث منتهي") + Broadcast Title in single line
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            PulsingLiveDotCanvas(size = 12.dp)
-                            Text(
-                                text = "بث صوتي مباشر الآن",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = if (isDark) BroadcastMintSoft else BroadcastDeepEmerald,
-                                fontWeight = FontWeight.ExtraBold
-                            )
+                        if (isLive) {
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = BroadcastGoldAccent.copy(alpha = if (isDark) 0.22f else 0.16f),
-                                border = BorderStroke(0.75.dp, BroadcastGoldAccent.copy(alpha = 0.55f))
+                                color = if (isDark) Color(0xFF5A161E).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.88f),
+                                border = BorderStroke(
+                                    0.75.dp,
+                                    if (isDark) Color(0xFFF87171).copy(alpha = 0.65f) else Color(0xFFFCA5A5)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    PulsingLiveDotCanvas(size = 9.dp)
+                                    Text(
+                                        text = "بث مباشر",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (isDark) Color(0xFFFCA5A5) else Color(0xFFDC2626),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isDark) Color.White.copy(alpha = 0.11f) else Color(0xFF047857).copy(alpha = 0.09f),
+                                border = BorderStroke(
+                                    0.7.dp,
+                                    if (isDark) Color(0xFF6EE7B7).copy(alpha = 0.28f) else Color(0xFF047857).copy(alpha = 0.20f)
+                                )
                             ) {
                                 Text(
-                                    text = room.audienceDisplayLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isDark) BroadcastGoldLight else Color(0xFF7A530D),
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    text = "بث منتهي",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isDark) Color(0xFFCBE5DC) else Color(0xFF1F5143),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                                 )
                             }
                         }
 
                         Text(
                             text = room.title,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = colorScheme.onSurface,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-
-                        Text(
-                            text = "المشرف: ${room.hostName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = titleColor,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                     }
 
-                    // Compact left-side Join CTA with clean directional arrow
+                    // Row 2: Host + Audience (when live) OR Duration + Host (when ended) in single line
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        if (!isLive) {
+                            Icon(
+                                imageVector = Icons.Filled.Schedule,
+                                contentDescription = null,
+                                tint = metaColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "المدة: ${room.formattedDurationArabic()} • ${room.hostName}",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = metaColor,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        } else {
+                            Text(
+                                text = "المشرف: ${room.hostName} • ${room.audienceDisplayLabel}",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = metaColor,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                // Compact Action CTA (RTL end): "انضمام" when live, light refined "سجل البثوث" when ended
+                if (isLive) {
                     Surface(
                         onClick = onJoinClick,
-                        shape = RoundedCornerShape(13.dp),
-                        color = colorScheme.primary,
-                        contentColor = colorScheme.onPrimary,
-                        shadowElevation = 2.dp,
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isDark) Color(0xFF10B981) else Color(0xFF047857),
+                        contentColor = if (isDark) Color(0xFF022C22) else Color.White,
+                        shadowElevation = 1.dp,
                         modifier = Modifier
-                            .height(38.dp)
+                            .height(32.dp)
                             .testTag("home_live_audio_join_button")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = "انضمام الآن",
-                                style = MaterialTheme.typography.labelMedium,
+                                text = "انضمام",
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1,
                                 softWrap = false
                             )
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "انضمام الآن",
-                                modifier = Modifier.size(16.dp)
+                                contentDescription = "انضمام للبث",
+                                modifier = Modifier.size(13.5.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        onClick = onOpenHistoryClick,
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isDark) Color.White.copy(alpha = 0.11f) else Color.White.copy(alpha = 0.88f),
+                        border = BorderStroke(
+                            0.85.dp,
+                            if (isDark) Color(0xFF6B9386).copy(alpha = 0.55f) else Color(0xFFB7CFC6)
+                        ),
+                        modifier = Modifier
+                            .height(30.dp)
+                            .testTag("home_live_audio_history_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.History,
+                                contentDescription = "سجل البثوث",
+                                tint = if (isDark) Color(0xFFD5EDE4) else Color(0xFF1A4B3E),
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "سجل البثوث",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDark) Color(0xFFE6F4EF) else Color(0xFF1A4B3E),
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
                 }
             }
+
+            // Soft subtle hairline bottom border
+            HorizontalDivider(
+                thickness = 0.85.dp,
+                color = bottomHairlineColor
+            )
         }
     }
 }
@@ -932,3 +1282,623 @@ fun ZegoCloudPlatformSettingsCard(
         }
     }
 }
+
+fun formatParticipantsCountArabic(count: Int): String {
+    val safe = count.coerceAtLeast(1)
+    return when (safe) {
+        1 -> "مشارك واحد"
+        2 -> "مشاركان"
+        in 3..10 -> "$safe مشاركين"
+        else -> "$safe مشاركاً"
+    }
+}
+
+/**
+ * Dedicated Past Broadcasts History Modal Dialog ("سجل البثوث السابقة").
+ * Displays every ended broadcast with title, host name, date, exact Arabic duration,
+ * and real participant count. Grants Principal-only single delete and clear-all with confirmation.
+ */
+@Composable
+fun PastBroadcastsHistoryDialog(
+    endedRooms: List<LiveAudioRoom>,
+    isPrincipal: Boolean,
+    isProcessingDelete: Boolean = false,
+    onDeleteSingle: (LiveAudioRoom) -> Unit,
+    onClearAll: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val isDark = isSystemInDarkTheme()
+    var pendingDeleteRoom by remember { mutableStateOf<LiveAudioRoom?>(null) }
+    var showClearAllConfirm by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .heightIn(max = 640.dp)
+                .testTag("past_broadcasts_history_dialog"),
+            shape = RoundedCornerShape(22.dp),
+            color = colorScheme.surface,
+            tonalElevation = 6.dp,
+            shadowElevation = 10.dp,
+            border = BorderStroke(1.dp, colorScheme.primary.copy(alpha = if (isDark) 0.34f else 0.18f))
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Emerald-Gold Header Strip
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(BroadcastDeepEmerald, BroadcastRichEmerald, colorScheme.primary)
+                            )
+                        )
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.White.copy(alpha = 0.16f),
+                                border = BorderStroke(0.8.dp, BroadcastGoldLight.copy(alpha = 0.55f)),
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.History,
+                                        contentDescription = null,
+                                        tint = BroadcastGoldLight,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = "سجل البثوث الصوتية السابقة",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (endedRooms.isEmpty()) "لا توجد جلسات محفوظة حالياً"
+                                    else "إجمالي الجلسات المؤرشفة: ${endedRooms.size}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = BroadcastMintSoft
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.testTag("close_past_broadcasts_history_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "إغلاق سجل البثوث",
+                                tint = Color.White
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(thickness = 1.2.dp, color = BroadcastGoldAccent.copy(alpha = 0.65f))
+
+                // Principal-Only Clear-All Toolbar
+                if (isPrincipal && endedRooms.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isDark) colorScheme.surfaceVariant.copy(alpha = 0.35f) else Color(0xFFF8FAFC))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "إدارة أرشيف البثوث (صلاحية المدير)",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Surface(
+                            onClick = { if (!isProcessingDelete) showClearAllConfirm = true },
+                            shape = RoundedCornerShape(10.dp),
+                            color = BroadcastCoralEnd.copy(alpha = if (isDark) 0.24f else 0.12f),
+                            border = BorderStroke(0.9.dp, BroadcastCoralEnd.copy(alpha = 0.55f)),
+                            modifier = Modifier.testTag("clear_all_past_broadcasts_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.DeleteSweep,
+                                    contentDescription = "مسح السجل بالكامل",
+                                    tint = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "مسح السجل بالكامل",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+                    HorizontalDivider(thickness = 0.8.dp, color = colorScheme.outlineVariant.copy(alpha = 0.5f))
+                }
+
+                // Ended Broadcasts List or Calm Empty State
+                if (endedRooms.isEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp, vertical = 38.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = colorScheme.primary.copy(alpha = 0.10f),
+                            modifier = Modifier.size(56.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.History,
+                                    contentDescription = null,
+                                    tint = colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "سجل البثوث السابقة فارغ حالياً",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = colorScheme.onSurface
+                        )
+                        Text(
+                            text = "سيتم حفظ كل بث صوتي منتهٍ تلقائياً هنا مع مدته الدقيقة وعدد المشاركين.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = false)
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(endedRooms, key = { "history_dlg_${it.id}" }) { room ->
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isDark) colorScheme.surfaceVariant.copy(alpha = 0.45f) else Color(0xFFF8FAFC),
+                                border = BorderStroke(0.9.dp, colorScheme.outlineVariant.copy(alpha = 0.65f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = room.title,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = colorScheme.onSurface,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Person,
+                                                    contentDescription = null,
+                                                    tint = colorScheme.primary,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = "المشرف: ${room.hostName} • ${room.audienceDisplayLabel}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+
+                                        if (isPrincipal) {
+                                            IconButton(
+                                                onClick = { if (!isProcessingDelete) pendingDeleteRoom = room },
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .testTag("delete_history_room_${room.id}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Delete,
+                                                    contentDescription = "حذف هذا البث من السجل",
+                                                    tint = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
+                                                    modifier = Modifier.size(19.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Metadata Row: Date + Exact Arabic Duration + Real Participants Count
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = colorScheme.primary.copy(alpha = if (isDark) 0.18f else 0.10f)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Schedule,
+                                                    contentDescription = null,
+                                                    tint = colorScheme.primary,
+                                                    modifier = Modifier.size(12.dp)
+                                                )
+                                                Text(
+                                                    text = room.formattedDurationArabic(),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = BroadcastGoldAccent.copy(alpha = if (isDark) 0.20f else 0.14f)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Groups,
+                                                    contentDescription = null,
+                                                    tint = if (isDark) BroadcastGoldLight else Color(0xFF92600A),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = formatParticipantsCountArabic(room.totalParticipantsCount),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (isDark) BroadcastGoldLight else Color(0xFF784E06),
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Text(
+                                        text = "التاريخ: ${formatCleanDate(room.resolvedCreatedDateForDisplay())}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Bottom Close Button
+                HorizontalDivider(thickness = 0.8.dp, color = colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("إغلاق", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    // Confirmation Dialog for Single Broadcast Delete (Principal only)
+    pendingDeleteRoom?.let { targetRoom ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteRoom = null },
+            title = {
+                Text(
+                    text = "تأكيد حذف البث من السجل",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(
+                    text = "هل أنت متأكد من حذف جلسة «${targetRoom.title}» نهائياً من سجل البثوث السابقة لدى جميع المستخدمين؟",
+                    lineHeight = 22.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toDelete = targetRoom
+                        pendingDeleteRoom = null
+                        onDeleteSingle(toDelete)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BroadcastCoralEnd),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("confirm_delete_single_broadcast_btn")
+                ) {
+                    Text("حذف نهائي", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteRoom = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    // Confirmation Dialog for Clear-All Past Broadcasts (Principal only)
+    if (showClearAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearAllConfirm = false },
+            title = {
+                Text(
+                    text = "تأكيد مسح سجل البثوث بالكامل",
+                    fontWeight = FontWeight.ExtraBold
+                )
+            },
+            text = {
+                Text(
+                    text = "سيتم حذف جميع جلسات البث المنتهية (${endedRooms.size} جلسات) نهائياً من قاعدة البيانات ولن يمكن استرجاعها. هل تريد المتابعة؟",
+                    lineHeight = 22.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearAllConfirm = false
+                        onClearAll()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BroadcastCoralEnd),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("confirm_clear_all_broadcasts_btn")
+                ) {
+                    Text("مسح السجل بالكامل", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllConfirm = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+}
+
+/**
+ * Prominent Urgent Broadcast Join Invite Dialog displayed instantly on the recipient's screen
+ * when the Principal sends an urgent join alert from inside the live broadcast room.
+ */
+@Composable
+fun UrgentBroadcastInviteOverlayDialog(
+    invite: LiveRoomUrgentInvite,
+    onJoinNow: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val isDark = isSystemInDarkTheme()
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.90f)
+                .testTag("urgent_broadcast_invite_dialog"),
+            shape = RoundedCornerShape(22.dp),
+            color = colorScheme.surface,
+            shadowElevation = 14.dp,
+            border = BorderStroke(
+                width = 1.5.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(BroadcastGoldAccent, Color(0xFF059669), BroadcastGoldLight)
+                )
+            )
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(BroadcastDeepEmerald, BroadcastRichEmerald)
+                            )
+                        )
+                        .padding(horizontal = 18.dp, vertical = 16.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFEF4444).copy(alpha = 0.25f),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5).copy(alpha = 0.7f)),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.NotificationsActive,
+                                    contentDescription = null,
+                                    tint = BroadcastGoldLight,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                PulsingLiveDotCanvas(size = 10.dp)
+                                Text(
+                                    text = "تنبيه عاجل للدخول للبث المباشر",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = BroadcastGoldLight,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                            Text(
+                                text = invite.roomTitle.ifBlank { "جلسة بث صوتي مباشر" },
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isDark) colorScheme.surfaceVariant.copy(alpha = 0.55f) else Color(0xFFF0FDF4),
+                        border = BorderStroke(0.8.dp, colorScheme.primary.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "تدعوك ${invite.senderName} للانضمام فوراً إلى غرفة البث الصوتي المباشر الجارية الآن.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colorScheme.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+
+                    SpringBroadcastButton(
+                        text = "انضمام فوري للبث",
+                        icon = Icons.Filled.Podcasts,
+                        onClick = onJoinNow,
+                        height = 48.dp,
+                        cornerRadius = 14.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                        testTagName = "urgent_invite_join_now_btn"
+                    )
+
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .testTag("urgent_invite_dismiss_btn")
+                    ) {
+                        Text(
+                            text = "لاحقاً",
+                            color = colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Calm, polite Android 13+ notification permission dialog so users can opt into
+ * external status-bar alerts for new live audio broadcasts and urgent join invites.
+ */
+@Composable
+fun LiveNotificationPermissionRationaleDialog(
+    onEnableNotifications: () -> Unit,
+    onLater: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onLater,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.NotificationsActive,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = "تفعيل إشعارات البث الصوتي المباشر",
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = "لإشعارك فور انطلاق أي بث صوتي مباشر أو وصول دعوة عاجلة من إدارة المدرسة حتى عند استخدام تطبيقات أخرى، يمكنك تفعيل إذن الإشعارات.",
+                lineHeight = 22.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onEnableNotifications,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.testTag("enable_live_notifications_btn")
+            ) {
+                Text("تفعيل الإشعارات", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onLater,
+                modifier = Modifier.testTag("later_live_notifications_btn")
+            ) {
+                Text("لاحقاً")
+            }
+        }
+    )
+}
+

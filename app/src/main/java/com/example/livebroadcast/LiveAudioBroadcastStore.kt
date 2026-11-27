@@ -29,6 +29,7 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
+import java.util.Collections
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -52,6 +53,78 @@ enum class LiveRoomAudienceType(
     }
 }
 
+data class LiveRoomParticipant(
+    val userId: String,
+    val fullName: String,
+    val role: String = "TEACHER",
+    val gender: String = "",
+    val avatarUrl: String = "",
+    val joinedAt: Long = System.currentTimeMillis()
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("userId", userId)
+        put("fullName", fullName)
+        put("role", role)
+        put("gender", gender)
+        put("avatarUrl", avatarUrl)
+        put("joinedAt", joinedAt)
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject, fallbackUserId: String = ""): LiveRoomParticipant? {
+            val uid = obj.optString("userId").ifBlank { fallbackUserId }.trim()
+            if (uid.isBlank()) return null
+            val name = obj.optString("fullName").trim().ifBlank { "مشارك" }
+            return LiveRoomParticipant(
+                userId = uid,
+                fullName = name,
+                role = obj.optString("role", "TEACHER").trim(),
+                gender = obj.optString("gender").trim(),
+                avatarUrl = obj.optString("avatarUrl").trim(),
+                joinedAt = obj.optLong("joinedAt", System.currentTimeMillis())
+            )
+        }
+    }
+}
+
+data class LiveRoomUrgentInvite(
+    val id: String,
+    val roomId: String,
+    val roomTitle: String,
+    val targetUserId: String,
+    val targetUserName: String,
+    val senderName: String,
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("roomId", roomId)
+        put("roomTitle", roomTitle)
+        put("targetUserId", targetUserId)
+        put("targetUserName", targetUserName)
+        put("senderName", senderName)
+        put("createdAt", createdAt)
+    }
+
+    companion object {
+        fun fromJson(obj: JSONObject): LiveRoomUrgentInvite? {
+            val id = obj.optString("id").trim()
+            val roomId = obj.optString("roomId").trim()
+            val targetUserId = obj.optString("targetUserId").trim()
+            if (id.isBlank() || roomId.isBlank() || targetUserId.isBlank()) return null
+            return LiveRoomUrgentInvite(
+                id = id,
+                roomId = roomId,
+                roomTitle = obj.optString("roomTitle").trim(),
+                targetUserId = targetUserId,
+                targetUserName = obj.optString("targetUserName").trim(),
+                senderName = obj.optString("senderName").trim().ifBlank { "إدارة المدرسة" },
+                createdAt = obj.optLong("createdAt", System.currentTimeMillis())
+            )
+        }
+    }
+}
+
 data class LiveAudioRoom(
     val id: String,
     val schoolId: String,
@@ -64,13 +137,56 @@ data class LiveAudioRoom(
     val status: String = "live", // "live" | "ended"
     val createdAt: Long = System.currentTimeMillis(),
     val createdAtIso: String = "",
+    val startedAt: Long = 0L,
+    val endedAt: Long = 0L,
+    val updatedAt: Long = 0L,
     val targetAudience: String = "all", // "staff" | "all" | "class"
     val targetGrade: String = "",
     val targetSection: String = "",
-    val coHosts: List<String> = emptyList()
+    val coHosts: List<String> = emptyList(),
+    val activeParticipants: Map<String, LiveRoomParticipant> = emptyMap(),
+    val participantIdsHistory: List<String> = emptyList(),
+    val mutedUserIds: List<String> = emptyList(),
+    val kickedUsers: Map<String, Long> = emptyMap(),
+    val bannedUserIds: List<String> = emptyList(),
+    val bannedUsersInfo: Map<String, String> = emptyMap(),
+    val urgentInvites: List<LiveRoomUrgentInvite> = emptyList()
 ) {
     val isLive: Boolean
         get() = status.equals("live", ignoreCase = true)
+
+    val effectiveStartedAt: Long
+        get() = if (startedAt > 0L) startedAt else createdAt
+
+    val totalParticipantsCount: Int
+        get() = buildSet {
+            if (hostId.isNotBlank()) add(hostId)
+            addAll(participantIdsHistory.filter { it.isNotBlank() })
+            addAll(activeParticipants.keys.filter { it.isNotBlank() })
+        }.size
+
+    fun isUserMuted(userId: String): Boolean {
+        if (userId.isBlank()) return false
+        return mutedUserIds.any { it.equals(userId, ignoreCase = true) }
+    }
+
+    fun isUserBanned(userId: String): Boolean {
+        if (userId.isBlank()) return false
+        return bannedUserIds.any { it.equals(userId, ignoreCase = true) }
+    }
+
+    fun kickedAtForUser(userId: String): Long {
+        if (userId.isBlank()) return 0L
+        return kickedUsers.entries.firstOrNull { it.key.equals(userId, ignoreCase = true) }?.value ?: 0L
+    }
+
+    fun formattedDurationArabic(): String {
+        val startMs = effectiveStartedAt
+        if (endedAt > startMs && startMs > 0L) {
+            return formatSecondsToArabicDuration(((endedAt - startMs) / 1000L).coerceAtLeast(1L))
+        }
+        return "مكتمل • ${resolvedCreatedDateForDisplay().substringAfter(" ", "").ifBlank { resolvedCreatedDateForDisplay() }}"
+    }
 
     val audienceType: LiveRoomAudienceType
         get() = LiveRoomAudienceType.fromKey(targetAudience)
@@ -99,7 +215,7 @@ data class LiveAudioRoom(
     fun resolvedCreatedDateForDisplay(): String {
         if (createdAtIso.isNotBlank()) return createdAtIso
         val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-        return fmt.format(Date(createdAt))
+        return fmt.format(Date(effectiveStartedAt))
     }
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -114,34 +230,152 @@ data class LiveAudioRoom(
         put("status", status)
         put("createdAt", createdAt)
         put("createdAtIso", resolvedCreatedDateForDisplay())
+        put("startedAt", effectiveStartedAt)
+        if (endedAt > 0L) {
+            put("endedAt", endedAt)
+        }
+        put("updatedAt", updatedAt.takeIf { it > 0L } ?: System.currentTimeMillis())
         put("targetAudience", targetAudience)
         put("targetGrade", targetGrade)
         put("targetSection", targetSection)
         put("coHosts", JSONArray().apply { coHosts.forEach { put(it) } })
+        put("activeParticipants", JSONObject().apply {
+            activeParticipants.forEach { (uid, p) ->
+                put(uid, p.toJson())
+            }
+        })
+        put("participantIdsHistory", JSONArray().apply { participantIdsHistory.distinct().forEach { put(it) } })
+        put("mutedUserIds", JSONArray().apply { mutedUserIds.distinct().forEach { put(it) } })
+        put("kickedUsers", JSONObject().apply {
+            kickedUsers.forEach { (uid, ts) -> put(uid, ts) }
+        })
+        put("bannedUserIds", JSONArray().apply { bannedUserIds.distinct().forEach { put(it) } })
+        put("bannedUsersInfo", JSONObject().apply {
+            bannedUsersInfo.forEach { (uid, name) -> put(uid, name) }
+        })
+        put("urgentInvites", JSONArray().apply { urgentInvites.forEach { put(it.toJson()) } })
     }
 
     companion object {
+        fun formatSecondsToArabicDuration(totalSeconds: Long): String {
+            val safeSec = totalSeconds.coerceAtLeast(1L)
+            val hours = (safeSec / 3600L).toInt()
+            val minutes = ((safeSec % 3600L) / 60L).toInt()
+            val seconds = (safeSec % 60L).toInt()
+
+            val parts = mutableListOf<String>()
+            if (hours > 0) {
+                parts.add(
+                    when (hours) {
+                        1 -> "ساعة واحدة"
+                        2 -> "ساعتان"
+                        in 3..10 -> "$hours ساعات"
+                        else -> "$hours ساعة"
+                    }
+                )
+            }
+            if (minutes > 0) {
+                parts.add(
+                    when (minutes) {
+                        1 -> "دقيقة واحدة"
+                        2 -> "دقيقتان"
+                        in 3..10 -> "$minutes دقائق"
+                        else -> "$minutes دقيقة"
+                    }
+                )
+            }
+            if (seconds > 0 || parts.isEmpty()) {
+                parts.add(
+                    when (seconds) {
+                        1 -> "ثانية واحدة"
+                        2 -> "ثانيتان"
+                        in 3..10 -> "$seconds ثوانٍ"
+                        else -> "$seconds ثانية"
+                    }
+                )
+            }
+            return parts.joinToString(" و")
+        }
+
         fun fromJson(obj: JSONObject, fallbackId: String = "", fallbackSchoolId: String = ""): LiveAudioRoom? {
             val id = obj.optString("id").ifBlank { fallbackId }.trim()
             val title = obj.optString("title").trim()
             if (id.isBlank() || title.isBlank()) return null
-            val coHostsList = mutableListOf<String>()
-            val coHostsArr = obj.optJSONArray("coHosts")
-            if (coHostsArr != null) {
-                for (i in 0 until coHostsArr.length()) {
-                    val item = coHostsArr.optString(i).trim()
-                    if (item.isNotBlank()) coHostsList.add(item)
+
+            fun readStringArray(key: String): List<String> {
+                val list = mutableListOf<String>()
+                val arr = obj.optJSONArray(key)
+                if (arr != null) {
+                    for (i in 0 until arr.length()) {
+                        val item = arr.optString(i).trim()
+                        if (item.isNotBlank()) list.add(item)
+                    }
+                }
+                return list.distinct()
+            }
+
+            val participantsMap = LinkedHashMap<String, LiveRoomParticipant>()
+            val participantsObj = obj.optJSONObject("activeParticipants")
+            if (participantsObj != null) {
+                val pKeys = participantsObj.keys()
+                while (pKeys.hasNext()) {
+                    val key = pKeys.next()
+                    val pObj = participantsObj.optJSONObject(key) ?: continue
+                    LiveRoomParticipant.fromJson(pObj, fallbackUserId = key)?.let { p ->
+                        participantsMap[p.userId] = p
+                    }
                 }
             }
+
+            val kickedMap = LinkedHashMap<String, Long>()
+            val kickedObj = obj.optJSONObject("kickedUsers")
+            if (kickedObj != null) {
+                val kKeys = kickedObj.keys()
+                while (kKeys.hasNext()) {
+                    val key = kKeys.next()
+                    val ts = kickedObj.optLong(key, 0L)
+                    if (key.isNotBlank() && ts > 0L) kickedMap[key] = ts
+                }
+            }
+
+            val bannedInfoMap = LinkedHashMap<String, String>()
+            val bannedInfoObj = obj.optJSONObject("bannedUsersInfo")
+            if (bannedInfoObj != null) {
+                val bKeys = bannedInfoObj.keys()
+                while (bKeys.hasNext()) {
+                    val key = bKeys.next()
+                    val name = bannedInfoObj.optString(key).trim()
+                    if (key.isNotBlank() && name.isNotBlank()) bannedInfoMap[key] = name
+                }
+            }
+
+            val invitesList = mutableListOf<LiveRoomUrgentInvite>()
+            val invitesArr = obj.optJSONArray("urgentInvites")
+            if (invitesArr != null) {
+                for (i in 0 until invitesArr.length()) {
+                    val invObj = invitesArr.optJSONObject(i) ?: continue
+                    LiveRoomUrgentInvite.fromJson(invObj)?.let { invitesList.add(it) }
+                }
+            }
+
             val createdMs = obj.optLong("createdAt", 0L).takeIf { it > 0L } ?: System.currentTimeMillis()
+            val startedMs = obj.optLong("startedAt", 0L).takeIf { it > 0L } ?: createdMs
             val createdIso = obj.optString("createdAtIso").ifBlank {
                 SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(createdMs))
             }
+            val hostId = obj.optString("hostId").trim()
+            val historyIds = readStringArray("participantIdsHistory").ifEmpty {
+                buildList {
+                    if (hostId.isNotBlank()) add(hostId)
+                    addAll(participantsMap.keys)
+                }.distinct()
+            }
+
             return LiveAudioRoom(
                 id = id,
                 schoolId = obj.optString("schoolId").ifBlank { fallbackSchoolId }.trim(),
                 title = title,
-                hostId = obj.optString("hostId").trim(),
+                hostId = hostId,
                 hostName = obj.optString("hostName").trim(),
                 hostRole = obj.optString("hostRole", "ADMIN").trim(),
                 hostGender = obj.optString("hostGender").trim(),
@@ -149,10 +383,20 @@ data class LiveAudioRoom(
                 status = obj.optString("status", "live").trim().lowercase(Locale.ROOT),
                 createdAt = createdMs,
                 createdAtIso = createdIso,
+                startedAt = startedMs,
+                endedAt = obj.optLong("endedAt", 0L).coerceAtLeast(0L),
+                updatedAt = obj.optLong("updatedAt", createdMs).coerceAtLeast(0L),
                 targetAudience = obj.optString("targetAudience", "all").trim().lowercase(Locale.ROOT),
                 targetGrade = obj.optString("targetGrade").trim(),
                 targetSection = obj.optString("targetSection").trim(),
-                coHosts = coHostsList.distinct()
+                coHosts = readStringArray("coHosts"),
+                activeParticipants = participantsMap,
+                participantIdsHistory = historyIds,
+                mutedUserIds = readStringArray("mutedUserIds"),
+                kickedUsers = kickedMap,
+                bannedUserIds = readStringArray("bannedUserIds"),
+                bannedUsersInfo = bannedInfoMap,
+                urgentInvites = invitesList
             )
         }
     }
@@ -269,7 +513,8 @@ private fun matchesGradeAndSection(
 
 /**
  * Isolated Real-Time Firebase Cloud Store for Live Audio Broadcasts.
- * Persists rooms under:
+ * Persists rooms, real-time participants, moderation controls (mute/kick/ban),
+ * urgent join invites, duration timestamps, and history deletions under:
  *   - Firestore: schools/{schoolId}/live_rooms/{roomId}
  *   - RTDB:      schools/{schoolId}/live_rooms/{roomId}.json (with live SSE stream for instant updates)
  * Persists global ZEGOCLOUD settings under:
@@ -291,6 +536,9 @@ object LiveAudioBroadcastCloudStore {
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    // Prevents stale Firestore reads from resurrecting a room that was just deleted by the Principal
+    private val recentlyDeletedRoomIds: MutableSet<String> = Collections.synchronizedSet(mutableSetOf())
 
     @Volatile
     private var observedSchoolId: String = ""
@@ -349,7 +597,9 @@ object LiveAudioBroadcastCloudStore {
                     mergeRoomLists(rtdbRooms, fsRooms)
                 }
                 if (merged != null) {
-                    val sorted = merged.sortedByDescending { it.createdAt }
+                    val sorted = merged
+                        .filterNot { it.id in recentlyDeletedRoomIds }
+                        .sortedByDescending { it.createdAt }
                     saveCachedRooms(context.applicationContext, cleanSchoolId, sorted)
                     if (observedSchoolId.isBlank() || observedSchoolId == cleanSchoolId) {
                         _rooms.value = sorted
@@ -381,6 +631,15 @@ object LiveAudioBroadcastCloudStore {
         val nowIso = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(nowMs))
         val docId = "room_${nowMs}_${UUID.randomUUID().toString().replace("-", "").take(6)}"
 
+        val hostParticipant = LiveRoomParticipant(
+            userId = hostUser.id,
+            fullName = hostUser.fullName.ifBlank { hostUser.role.arabicTitle },
+            role = hostUser.role.name,
+            gender = hostUser.gender,
+            avatarUrl = hostUser.photoBase64,
+            joinedAt = nowMs
+        )
+
         val room = LiveAudioRoom(
             id = docId,
             schoolId = cleanSchoolId,
@@ -393,26 +652,206 @@ object LiveAudioBroadcastCloudStore {
             status = "live",
             createdAt = nowMs,
             createdAtIso = nowIso,
+            startedAt = nowMs,
+            endedAt = 0L,
+            updatedAt = nowMs,
             targetAudience = audienceType.key,
             targetGrade = if (audienceType == LiveRoomAudienceType.CLASS) targetGrade.trim() else "",
             targetSection = if (audienceType == LiveRoomAudienceType.CLASS) targetSection.trim() else "",
-            coHosts = coHosts.filter { it.isNotBlank() && it != hostUser.id }.distinct()
+            coHosts = coHosts.filter { it.isNotBlank() && it != hostUser.id }.distinct(),
+            activeParticipants = if (hostUser.id.isNotBlank()) mapOf(hostUser.id to hostParticipant) else emptyMap(),
+            participantIdsHistory = listOfNotNull(hostUser.id.takeIf { it.isNotBlank() })
         )
 
-        // Optimistically update local StateFlow immediately for instant UX
         val updated = (listOf(room) + _rooms.value.filterNot { it.id == room.id })
             .sortedByDescending { it.createdAt }
         _rooms.value = updated
         saveCachedRooms(context.applicationContext, cleanSchoolId, updated)
 
-        // Persist in parallel to Firestore schools/{schoolId}/live_rooms/{roomId} + RTDB
-        coroutineScope {
-            val rtdbJob = async { writeRoomToRtdb(cleanSchoolId, room) }
-            val fsJob = async { writeRoomToFirestore(cleanSchoolId, room) }
-            rtdbJob.await()
-            fsJob.await()
-        }
+        persistRoomToCloud(cleanSchoolId, room)
         room
+    }
+
+    suspend fun recordParticipantJoined(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        user: UserAccount
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        if (cleanSchoolId.isBlank() || roomId.isBlank() || user.id.isBlank()) return@withContext false
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (!existing.isLive || existing.isUserBanned(user.id)) return@withContext false
+
+        val nowMs = System.currentTimeMillis()
+        val participant = LiveRoomParticipant(
+            userId = user.id,
+            fullName = user.fullName.ifBlank { user.role.arabicTitle },
+            role = user.role.name,
+            gender = user.gender,
+            avatarUrl = user.photoBase64,
+            joinedAt = existing.activeParticipants[user.id]?.joinedAt ?: nowMs
+        )
+        val updatedParticipants = existing.activeParticipants.toMutableMap().apply {
+            put(user.id, participant)
+        }
+        val updatedHistory = (existing.participantIdsHistory + user.id).distinct()
+        val updatedRoom = existing.copy(
+            activeParticipants = updatedParticipants,
+            participantIdsHistory = updatedHistory,
+            updatedAt = nowMs
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun recordParticipantLeft(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        userId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        if (cleanSchoolId.isBlank() || roomId.isBlank() || userId.isBlank()) return@withContext false
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (!existing.activeParticipants.containsKey(userId)) return@withContext true
+
+        val updatedParticipants = existing.activeParticipants.toMutableMap().apply {
+            remove(userId)
+        }
+        val updatedRoom = existing.copy(
+            activeParticipants = updatedParticipants,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun toggleMuteParticipant(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targetUserId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (targetUserId.isBlank()) return@withContext false
+        val alreadyMuted = existing.isUserMuted(targetUserId)
+        val nextMuted = if (alreadyMuted) {
+            existing.mutedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        } else {
+            (existing.mutedUserIds + targetUserId).distinct()
+        }
+        val updatedRoom = existing.copy(
+            mutedUserIds = nextMuted,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun kickParticipant(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targetUserId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (targetUserId.isBlank()) return@withContext false
+        val nowMs = System.currentTimeMillis()
+        val nextKicked = existing.kickedUsers.toMutableMap().apply {
+            put(targetUserId, nowMs)
+        }
+        val nextParticipants = existing.activeParticipants.toMutableMap().apply {
+            remove(targetUserId)
+        }
+        val updatedRoom = existing.copy(
+            activeParticipants = nextParticipants,
+            kickedUsers = nextKicked,
+            updatedAt = nowMs
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun banParticipant(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targetUserId: String,
+        targetFullName: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (targetUserId.isBlank()) return@withContext false
+        val nowMs = System.currentTimeMillis()
+        val nextBanned = (existing.bannedUserIds + targetUserId).distinct()
+        val nextBannedInfo = existing.bannedUsersInfo.toMutableMap().apply {
+            put(targetUserId, targetFullName.ifBlank { existing.activeParticipants[targetUserId]?.fullName ?: "مستخدم" })
+        }
+        val nextParticipants = existing.activeParticipants.toMutableMap().apply {
+            remove(targetUserId)
+        }
+        val nextMuted = existing.mutedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val updatedRoom = existing.copy(
+            activeParticipants = nextParticipants,
+            bannedUserIds = nextBanned,
+            bannedUsersInfo = nextBannedInfo,
+            mutedUserIds = nextMuted,
+            updatedAt = nowMs
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun unbanParticipant(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targetUserId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (targetUserId.isBlank()) return@withContext false
+        val nextBanned = existing.bannedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextBannedInfo = existing.bannedUsersInfo.toMutableMap().apply {
+            remove(targetUserId)
+        }
+        val updatedRoom = existing.copy(
+            bannedUserIds = nextBanned,
+            bannedUsersInfo = nextBannedInfo,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun sendUrgentInvites(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targets: List<UserAccount>,
+        senderName: String
+    ): List<LiveRoomUrgentInvite> = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext emptyList()
+        if (!existing.isLive || targets.isEmpty()) return@withContext emptyList()
+
+        val nowMs = System.currentTimeMillis()
+        val cleanSender = InputSanitizer.sanitize(senderName).ifBlank { "إدارة المدرسة" }
+        val newInvites = targets.filter { it.id.isNotBlank() }.map { user ->
+            LiveRoomUrgentInvite(
+                id = "inv_${nowMs}_${UUID.randomUUID().toString().replace("-", "").take(6)}",
+                roomId = existing.id,
+                roomTitle = existing.title,
+                targetUserId = user.id,
+                targetUserName = user.fullName.ifBlank { user.role.arabicTitle },
+                senderName = cleanSender,
+                createdAt = nowMs
+            )
+        }
+        val mergedInvites = (existing.urgentInvites + newInvites).takeLast(60)
+        val updatedRoom = existing.copy(
+            urgentInvites = mergedInvites,
+            updatedAt = nowMs
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+        newInvites
     }
 
     suspend fun updateRoomCoHosts(
@@ -424,17 +863,11 @@ object LiveAudioBroadcastCloudStore {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
         val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
         val distinctCoHosts = newCoHosts.filter { it.isNotBlank() && it != existing.hostId }.distinct()
-        val updatedRoom = existing.copy(coHosts = distinctCoHosts)
-
-        val updatedList = _rooms.value.map { if (it.id == roomId) updatedRoom else it }
-        _rooms.value = updatedList
-        saveCachedRooms(context.applicationContext, cleanSchoolId, updatedList)
-
-        coroutineScope {
-            val rtdbOk = async { writeRoomToRtdb(cleanSchoolId, updatedRoom) }
-            val fsOk = async { writeRoomToFirestore(cleanSchoolId, updatedRoom) }
-            rtdbOk.await() || fsOk.await()
-        }
+        val updatedRoom = existing.copy(
+            coHosts = distinctCoHosts,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
     }
 
     suspend fun endLiveRoom(
@@ -444,17 +877,93 @@ object LiveAudioBroadcastCloudStore {
     ): Boolean = withContext(Dispatchers.IO) {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
         val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
-        val endedRoom = existing.copy(status = "ended")
+        val nowMs = System.currentTimeMillis()
+        val startMs = existing.effectiveStartedAt
+        val endedAtMs = if (existing.endedAt > startMs) existing.endedAt else maxOf(nowMs, startMs + 1_000L)
+        val finalizedHistory = buildList {
+            if (existing.hostId.isNotBlank()) add(existing.hostId)
+            addAll(existing.participantIdsHistory)
+            addAll(existing.activeParticipants.keys)
+        }.distinct()
+        val endedRoom = existing.copy(
+            status = "ended",
+            startedAt = startMs,
+            endedAt = endedAtMs,
+            updatedAt = nowMs,
+            activeParticipants = emptyMap(),
+            participantIdsHistory = finalizedHistory
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, endedRoom)
+    }
 
-        val updatedList = _rooms.value.map { if (it.id == roomId) endedRoom else it }
-        _rooms.value = updatedList
-        saveCachedRooms(context.applicationContext, cleanSchoolId, updatedList)
+    /**
+     * Permanently deletes a single ended broadcast from RTDB, Firestore, and local cache (Principal-only).
+     */
+    suspend fun deleteRoomFromHistory(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        if (cleanSchoolId.isBlank() || roomId.isBlank()) return@withContext false
+        recentlyDeletedRoomIds.add(roomId)
+
+        val remaining = _rooms.value.filterNot { it.id == roomId }
+        _rooms.value = remaining
+        saveCachedRooms(context.applicationContext, cleanSchoolId, remaining)
 
         coroutineScope {
-            val rtdbOk = async { writeRoomToRtdb(cleanSchoolId, endedRoom) }
-            val fsOk = async { writeRoomToFirestore(cleanSchoolId, endedRoom) }
-            rtdbOk.await() || fsOk.await()
+            val rtdbDel = async { deleteRoomFromRtdb(cleanSchoolId, roomId) }
+            val fsDel = async { deleteRoomFromFirestore(cleanSchoolId, roomId) }
+            rtdbDel.await() || fsDel.await()
         }
+    }
+
+    /**
+     * Permanently clears all ended broadcasts from history in RTDB, Firestore, and local cache (Principal-only).
+     * Active live rooms are preserved untouched.
+     */
+    suspend fun clearAllEndedHistory(
+        context: Context,
+        rawSchoolId: String
+    ): Int = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        if (cleanSchoolId.isBlank()) return@withContext 0
+
+        val endedRooms = _rooms.value.filter { !it.isLive }
+        if (endedRooms.isEmpty()) return@withContext 0
+
+        endedRooms.forEach { recentlyDeletedRoomIds.add(it.id) }
+        val remaining = _rooms.value.filter { it.isLive }
+        _rooms.value = remaining
+        saveCachedRooms(context.applicationContext, cleanSchoolId, remaining)
+
+        coroutineScope {
+            endedRooms.map { room ->
+                async {
+                    deleteRoomFromRtdb(cleanSchoolId, room.id)
+                    deleteRoomFromFirestore(cleanSchoolId, room.id)
+                }
+            }.forEach { it.await() }
+        }
+        endedRooms.size
+    }
+
+    private suspend fun commitRoomLocallyAndCloud(
+        context: Context,
+        cleanSchoolId: String,
+        updatedRoom: LiveAudioRoom
+    ): Boolean {
+        val updatedList = _rooms.value.map { if (it.id == updatedRoom.id) updatedRoom else it }
+        _rooms.value = updatedList
+        saveCachedRooms(context.applicationContext, cleanSchoolId, updatedList)
+        return persistRoomToCloud(cleanSchoolId, updatedRoom)
+    }
+
+    private suspend fun persistRoomToCloud(cleanSchoolId: String, room: LiveAudioRoom): Boolean = coroutineScope {
+        val rtdbOk = async { writeRoomToRtdb(cleanSchoolId, room) }
+        val fsOk = async { writeRoomToFirestore(cleanSchoolId, room) }
+        rtdbOk.await() || fsOk.await()
     }
 
     suspend fun fetchZegoConfig(context: Context): ZegoPlatformConfig = withContext(Dispatchers.IO) {
@@ -564,13 +1073,23 @@ object LiveAudioBroadcastCloudStore {
             val dataVal = envelope.opt("data")
             if (path == "/" || path.isBlank()) {
                 val parsed = parseRoomsMapFromRtdbValue(dataVal, cleanSchoolId)
+                    .filterNot { it.id in recentlyDeletedRoomIds }
                 val sorted = parsed.sortedByDescending { it.createdAt }
                 _rooms.value = sorted
                 saveCachedRooms(context, cleanSchoolId, sorted)
             } else {
-                // Sub-path changed (e.g. "/room_123" or "/room_123/status") -> quick refresh
+                // Sub-path changed (e.g. "/room_123" or moderation/invite update) -> fast refresh
                 scope.launch {
-                    refreshRoomsFromCloud(context, cleanSchoolId)
+                    val refreshed = fetchRoomsFromRtdb(cleanSchoolId)
+                    if (refreshed != null) {
+                        val sorted = refreshed
+                            .filterNot { it.id in recentlyDeletedRoomIds }
+                            .sortedByDescending { it.createdAt }
+                        _rooms.value = sorted
+                        saveCachedRooms(context, cleanSchoolId, sorted)
+                    } else {
+                        refreshRoomsFromCloud(context, cleanSchoolId)
+                    }
                 }
             }
         }
@@ -633,27 +1152,95 @@ object LiveAudioBroadcastCloudStore {
                 ?: f.optLong("integerValue", def)
         }
 
+        fun strArray(key: String): List<String> {
+            val list = mutableListOf<String>()
+            val values = fields.optJSONObject(key)
+                ?.optJSONObject("arrayValue")
+                ?.optJSONArray("values")
+            if (values != null) {
+                for (i in 0 until values.length()) {
+                    val v = values.optJSONObject(i)?.optString("stringValue").orEmpty().trim()
+                    if (v.isNotBlank()) list.add(v)
+                }
+            }
+            return list.distinct()
+        }
+
         val title = str("title").trim()
         if (docId.isBlank() || title.isBlank()) return null
-        val coHosts = mutableListOf<String>()
-        val coHostsValues = fields.optJSONObject("coHosts")
-            ?.optJSONObject("arrayValue")
-            ?.optJSONArray("values")
-        if (coHostsValues != null) {
-            for (i in 0 until coHostsValues.length()) {
-                val v = coHostsValues.optJSONObject(i)?.optString("stringValue").orEmpty().trim()
-                if (v.isNotBlank()) coHosts.add(v)
+
+        val participantsMap = LinkedHashMap<String, LiveRoomParticipant>()
+        val rawParticipants = str("activeParticipantsJson")
+        if (rawParticipants.isNotBlank()) {
+            runCatching {
+                val obj = JSONObject(rawParticipants)
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val item = obj.optJSONObject(k) ?: continue
+                    LiveRoomParticipant.fromJson(item, fallbackUserId = k)?.let { participantsMap[it.userId] = it }
+                }
             }
         }
+
+        val kickedMap = LinkedHashMap<String, Long>()
+        val rawKicked = str("kickedUsersJson")
+        if (rawKicked.isNotBlank()) {
+            runCatching {
+                val obj = JSONObject(rawKicked)
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val ts = obj.optLong(k, 0L)
+                    if (k.isNotBlank() && ts > 0L) kickedMap[k] = ts
+                }
+            }
+        }
+
+        val bannedInfoMap = LinkedHashMap<String, String>()
+        val rawBannedInfo = str("bannedUsersInfoJson")
+        if (rawBannedInfo.isNotBlank()) {
+            runCatching {
+                val obj = JSONObject(rawBannedInfo)
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val name = obj.optString(k).trim()
+                    if (k.isNotBlank() && name.isNotBlank()) bannedInfoMap[k] = name
+                }
+            }
+        }
+
+        val invitesList = mutableListOf<LiveRoomUrgentInvite>()
+        val rawInvites = str("urgentInvitesJson")
+        if (rawInvites.isNotBlank()) {
+            runCatching {
+                val arr = JSONArray(rawInvites)
+                for (i in 0 until arr.length()) {
+                    val item = arr.optJSONObject(i) ?: continue
+                    LiveRoomUrgentInvite.fromJson(item)?.let { invitesList.add(it) }
+                }
+            }
+        }
+
         val createdMs = lng("createdAt", System.currentTimeMillis()).takeIf { it > 0L } ?: System.currentTimeMillis()
+        val startedMs = lng("startedAt", createdMs).takeIf { it > 0L } ?: createdMs
         val createdIso = str("createdAtIso").ifBlank {
             SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(createdMs))
         }
+        val hostId = str("hostId")
+        val historyIds = strArray("participantIdsHistory").ifEmpty {
+            buildList {
+                if (hostId.isNotBlank()) add(hostId)
+                addAll(participantsMap.keys)
+            }.distinct()
+        }
+
         return LiveAudioRoom(
             id = str("id", docId).ifBlank { docId },
             schoolId = str("schoolId", cleanSchoolId).ifBlank { cleanSchoolId },
             title = title,
-            hostId = str("hostId"),
+            hostId = hostId,
             hostName = str("hostName"),
             hostRole = str("hostRole", "ADMIN"),
             hostGender = str("hostGender"),
@@ -661,10 +1248,20 @@ object LiveAudioBroadcastCloudStore {
             status = str("status", "live").lowercase(Locale.ROOT),
             createdAt = createdMs,
             createdAtIso = createdIso,
+            startedAt = startedMs,
+            endedAt = lng("endedAt", 0L).coerceAtLeast(0L),
+            updatedAt = lng("updatedAt", createdMs).coerceAtLeast(0L),
             targetAudience = str("targetAudience", "all").lowercase(Locale.ROOT),
             targetGrade = str("targetGrade"),
             targetSection = str("targetSection"),
-            coHosts = coHosts.distinct()
+            coHosts = strArray("coHosts"),
+            activeParticipants = participantsMap,
+            participantIdsHistory = historyIds,
+            mutedUserIds = strArray("mutedUserIds"),
+            kickedUsers = kickedMap,
+            bannedUserIds = strArray("bannedUserIds"),
+            bannedUsersInfo = bannedInfoMap,
+            urgentInvites = invitesList
         )
     }
 
@@ -674,14 +1271,36 @@ object LiveAudioBroadcastCloudStore {
         return executeHttpWrite(url, "PUT", room.toJson().toString())
     }
 
+    private fun deleteRoomFromRtdb(cleanSchoolId: String, roomId: String): Boolean {
+        val url =
+            "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/${FirebaseConfigConstants.COL_LIVE_ROOMS}/$roomId.json"
+        return executeHttpDelete(url)
+    }
+
     private fun writeRoomToFirestore(cleanSchoolId: String, room: LiveAudioRoom): Boolean {
         val url =
             "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/${FirebaseConfigConstants.COL_LIVE_ROOMS}/${room.id}?key=${FirebaseConfigConstants.API_KEY}"
-        val coHostValues = JSONArray().apply {
-            room.coHosts.forEach { uid ->
-                put(JSONObject().put("stringValue", uid))
-            }
-        }
+
+        fun toFsArray(list: List<String>): JSONObject = JSONObject().put(
+            "arrayValue",
+            JSONObject().put("values", JSONArray().apply {
+                list.distinct().forEach { item -> put(JSONObject().put("stringValue", item)) }
+            })
+        )
+
+        val activeParticipantsJson = JSONObject().apply {
+            room.activeParticipants.forEach { (uid, p) -> put(uid, p.toJson()) }
+        }.toString()
+        val kickedUsersJson = JSONObject().apply {
+            room.kickedUsers.forEach { (uid, ts) -> put(uid, ts) }
+        }.toString()
+        val bannedInfoJson = JSONObject().apply {
+            room.bannedUsersInfo.forEach { (uid, name) -> put(uid, name) }
+        }.toString()
+        val urgentInvitesJson = JSONArray().apply {
+            room.urgentInvites.forEach { put(it.toJson()) }
+        }.toString()
+
         val body = JSONObject().apply {
             put("fields", JSONObject().apply {
                 put("id", JSONObject().put("stringValue", room.id))
@@ -695,19 +1314,31 @@ object LiveAudioBroadcastCloudStore {
                 put("status", JSONObject().put("stringValue", room.status))
                 put("createdAt", JSONObject().put("integerValue", room.createdAt.toString()))
                 put("createdAtIso", JSONObject().put("stringValue", room.resolvedCreatedDateForDisplay()))
+                put("startedAt", JSONObject().put("integerValue", room.effectiveStartedAt.toString()))
+                if (room.endedAt > 0L) {
+                    put("endedAt", JSONObject().put("integerValue", room.endedAt.toString()))
+                }
+                put("updatedAt", JSONObject().put("integerValue", room.updatedAt.takeIf { it > 0L }?.toString() ?: System.currentTimeMillis().toString()))
                 put("targetAudience", JSONObject().put("stringValue", room.targetAudience))
                 put("targetGrade", JSONObject().put("stringValue", room.targetGrade))
                 put("targetSection", JSONObject().put("stringValue", room.targetSection))
-                put(
-                    "coHosts",
-                    JSONObject().put(
-                        "arrayValue",
-                        JSONObject().put("values", coHostValues)
-                    )
-                )
+                put("coHosts", toFsArray(room.coHosts))
+                put("participantIdsHistory", toFsArray(room.participantIdsHistory))
+                put("mutedUserIds", toFsArray(room.mutedUserIds))
+                put("bannedUserIds", toFsArray(room.bannedUserIds))
+                put("activeParticipantsJson", JSONObject().put("stringValue", activeParticipantsJson))
+                put("kickedUsersJson", JSONObject().put("stringValue", kickedUsersJson))
+                put("bannedUsersInfoJson", JSONObject().put("stringValue", bannedInfoJson))
+                put("urgentInvitesJson", JSONObject().put("stringValue", urgentInvitesJson))
             })
         }.toString()
         return executeHttpWrite(url, "PATCH", body)
+    }
+
+    private fun deleteRoomFromFirestore(cleanSchoolId: String, roomId: String): Boolean {
+        val url =
+            "https://firestore.googleapis.com/v1/projects/${FirebaseConfigConstants.PROJECT_ID}/databases/(default)/documents/schools/$cleanSchoolId/${FirebaseConfigConstants.COL_LIVE_ROOMS}/$roomId?key=${FirebaseConfigConstants.API_KEY}"
+        return executeHttpDelete(url)
     }
 
     private fun fetchZegoConfigFromFirestore(): ZegoPlatformConfig? {
@@ -748,16 +1379,39 @@ object LiveAudioBroadcastCloudStore {
         fsRooms: List<LiveAudioRoom>?
     ): List<LiveAudioRoom>? {
         if (rtdbRooms == null && fsRooms == null) return null
+        // When RTDB succeeded, treat RTDB as primary live truth for deletions of ended rooms
         val map = LinkedHashMap<String, LiveAudioRoom>()
-        fsRooms.orEmpty().forEach { map[it.id] = it }
+        if (rtdbRooms != null && fsRooms != null) {
+            val rtdbIds = rtdbRooms.map { it.id }.toSet()
+            // Include Firestore rooms that exist in RTDB or are live
+            fsRooms.forEach { fsRoom ->
+                if (fsRoom.id in rtdbIds || fsRoom.isLive) {
+                    map[fsRoom.id] = fsRoom
+                }
+            }
+        } else {
+            fsRooms.orEmpty().forEach { map[it.id] = it }
+        }
+
         rtdbRooms.orEmpty().forEach { rtdbRoom ->
             val existing = map[rtdbRoom.id]
             if (existing == null) {
                 map[rtdbRoom.id] = rtdbRoom
             } else {
-                // If either source reports "ended", honor "ended" immediately
+                val fresher = if (rtdbRoom.updatedAt >= existing.updatedAt) rtdbRoom else existing
                 val resolvedStatus = if (!rtdbRoom.isLive || !existing.isLive) "ended" else "live"
-                map[rtdbRoom.id] = rtdbRoom.copy(status = resolvedStatus)
+                val resolvedEndedAt = maxOf(rtdbRoom.endedAt, existing.endedAt)
+                val mergedHistory = (rtdbRoom.participantIdsHistory + existing.participantIdsHistory).distinct()
+                val mergedInvites = (rtdbRoom.urgentInvites + existing.urgentInvites)
+                    .distinctBy { it.id }
+                    .sortedBy { it.createdAt }
+                    .takeLast(60)
+                map[rtdbRoom.id] = fresher.copy(
+                    status = resolvedStatus,
+                    endedAt = resolvedEndedAt,
+                    participantIdsHistory = mergedHistory,
+                    urgentInvites = mergedInvites
+                )
             }
         }
         return map.values.toList()
@@ -798,6 +1452,24 @@ object LiveAudioBroadcastCloudStore {
             }
             OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
             conn.responseCode in 200..299
+        } catch (_: Exception) {
+            false
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun executeHttpDelete(urlStr: String): Boolean {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+                requestMethod = "DELETE"
+                connectTimeout = 8_000
+                readTimeout = 8_000
+                useCaches = false
+            }
+            val code = conn.responseCode
+            code in 200..299 || code == 404
         } catch (_: Exception) {
             false
         } finally {

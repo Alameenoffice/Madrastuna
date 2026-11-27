@@ -822,6 +822,127 @@ fun AuthenticatedMainPlatform(
         com.example.livebroadcast.LiveAudioBroadcastCloudStore.startObservingSchool(context, activeLiveSchoolCode)
         com.example.livebroadcast.LiveAudioBroadcastCloudStore.fetchZegoConfig(context)
     }
+
+    val allLiveBroadcastRooms by com.example.livebroadcast.LiveAudioBroadcastCloudStore.rooms.collectAsState()
+    val dismissedUrgentInviteIds = remember { mutableStateListOf<String>() }
+    val chimedUrgentInviteIds = remember { mutableStateListOf<String>() }
+    var pendingUrgentInvite by remember {
+        mutableStateOf<Pair<com.example.livebroadcast.LiveRoomUrgentInvite, com.example.livebroadcast.LiveAudioRoom>?>(null)
+    }
+    var showLiveNotifPermissionRationale by remember { mutableStateOf(false) }
+    val liveNotifPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            viewModel.showToastAlert("تم تفعيل إشعارات البث الصوتي المباشر بنجاح", isSuccess = true)
+        }
+    }
+
+    fun requestLiveNotificationPermissionGentlyIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            !com.example.util.SystemNotificationHelper.hasNotificationPermission(context) &&
+            !com.example.util.SystemNotificationHelper.hasAskedNotificationPermission(context)
+        ) {
+            com.example.util.SystemNotificationHelper.markAskedNotificationPermission(context)
+            showLiveNotifPermissionRationale = true
+        }
+    }
+
+    fun enterLiveAudioRoomGuarded(room: com.example.livebroadcast.LiveAudioRoom) {
+        val user = currentUser
+        if (user != null && user.role != UserRole.ADMIN && room.isUserBanned(user.id)) {
+            viewModel.showToastAlert(
+                "تم حظرك من الدخول لهذا البث الصوتي من قِبل إدارة المدرسة",
+                isSuccess = false
+            )
+            return
+        }
+        activeLiveAudioRoom = room
+    }
+
+    LaunchedEffect(activeSection) {
+        if (activeSection == AppSection.LIVE_AUDIO_BROADCAST) {
+            requestLiveNotificationPermissionGentlyIfNeeded()
+        }
+    }
+
+    // Global Real-Time Observer for New Live Broadcasts & Urgent Member Invites
+    LaunchedEffect(
+        allLiveBroadcastRooms,
+        currentUser?.id,
+        loggedInStudentRecord?.id,
+        parentChildren,
+        activeLiveAudioRoom?.id
+    ) {
+        val user = currentUser ?: return@LaunchedEffect
+        val nowMs = System.currentTimeMillis()
+        val eligibleLiveRooms = allLiveBroadcastRooms.filter { room ->
+            room.isLive &&
+                (user.role == UserRole.ADMIN || !room.isUserBanned(user.id)) &&
+                com.example.livebroadcast.isUserIncludedInRoom(
+                    room = room,
+                    user = user,
+                    linkedStudent = loggedInStudentRecord,
+                    parentChildren = parentChildren
+                )
+        }
+
+        if (eligibleLiveRooms.isNotEmpty()) {
+            requestLiveNotificationPermissionGentlyIfNeeded()
+        }
+
+        // 1) Deduplicated external system notification whenever a new live broadcast starts
+        eligibleLiveRooms.forEach { room ->
+            val isFreshRoom = (nowMs - room.effectiveStartedAt) < 6L * 60L * 60L * 1000L
+            if (room.hostId != user.id && isFreshRoom) {
+                com.example.util.SystemNotificationHelper.showLiveBroadcastNotificationOnce(
+                    context = context,
+                    dedupKey = "live_room_${room.id}_${user.id}",
+                    title = "بث صوتي مباشر الآن",
+                    body = "${room.title} • بإشراف ${room.hostName}",
+                    isUrgentInvite = false
+                )
+            }
+        }
+
+        // 2) Urgent Member Invite ("تنبيه عضو للدخول"): chime + external notification + prominent in-app overlay
+        val latestMatchingInvite: Pair<com.example.livebroadcast.LiveRoomUrgentInvite, com.example.livebroadcast.LiveAudioRoom>? =
+            allLiveBroadcastRooms
+                .filter { it.isLive && (user.role == UserRole.ADMIN || !it.isUserBanned(user.id)) }
+                .flatMap { room ->
+                    room.urgentInvites
+                        .filter { inv ->
+                            inv.targetUserId == user.id &&
+                                inv.id !in dismissedUrgentInviteIds &&
+                                (nowMs - inv.createdAt) < 15L * 60L * 1000L
+                        }
+                        .map { inv -> inv to room }
+                }
+                .maxByOrNull { it.first.createdAt }
+
+        if (latestMatchingInvite != null) {
+            val (invite, targetRoom) = latestMatchingInvite
+            com.example.util.SystemNotificationHelper.showLiveBroadcastNotificationOnce(
+                context = context,
+                dedupKey = "urgent_invite_${invite.id}",
+                title = "تنبيه عاجل للدخول للبث المباشر",
+                body = "تدعوك ${invite.senderName} للانضمام فوراً إلى «${invite.roomTitle.ifBlank { targetRoom.title }}»",
+                isUrgentInvite = true
+            )
+            if (activeLiveAudioRoom?.id != targetRoom.id) {
+                if (invite.id !in chimedUrgentInviteIds) {
+                    chimedUrgentInviteIds.add(invite.id)
+                    com.example.util.SystemNotificationHelper.playGentleInviteChime(context)
+                }
+                pendingUrgentInvite = invite to targetRoom
+            }
+        } else {
+            val currentShown = pendingUrgentInvite
+            if (currentShown != null && allLiveBroadcastRooms.none { it.id == currentShown.second.id && it.isLive }) {
+                pendingUrgentInvite = null
+            }
+        }
+    }
     val showSmartWelcomeHub by viewModel.showSmartWelcomeHub.collectAsState()
     val userInterfacePreferences by viewModel.userInterfacePreferences.collectAsState()
     val platformPresenceSummary by viewModel.platformPresenceSummary.collectAsState()
@@ -1030,6 +1151,20 @@ fun AuthenticatedMainPlatform(
                 summary = platformPresenceSummary,
                 onRefreshNow = { viewModel.refreshActivePresenceNow(isManual = true) },
                 onDismiss = { showPresenceSheetFromWelcomeHub = false }
+            )
+        }
+        pendingUrgentInvite?.let { (invite, targetRoom) ->
+            com.example.livebroadcast.UrgentBroadcastInviteOverlayDialog(
+                invite = invite,
+                onJoinNow = {
+                    dismissedUrgentInviteIds.add(invite.id)
+                    pendingUrgentInvite = null
+                    enterLiveAudioRoomGuarded(targetRoom)
+                },
+                onDismiss = {
+                    dismissedUrgentInviteIds.add(invite.id)
+                    pendingUrgentInvite = null
+                }
             )
         }
         return
@@ -2128,7 +2263,7 @@ fun AuthenticatedMainPlatform(
                                     showReadingOasisOverlay = true
                                 },
                                 onJoinLiveAudioRoom = { room ->
-                                    activeLiveAudioRoom = room
+                                    enterLiveAudioRoomGuarded(room)
                                 }
                             )
                             AppSection.LIVE_OPERATIONS_RADAR -> LiveOperationsRadarScreen(viewModel = viewModel)
@@ -2149,7 +2284,7 @@ fun AuthenticatedMainPlatform(
                             AppSection.EVENTS_NEWS -> EventsAndNewsScreen(viewModel = viewModel)
                             AppSection.LIVE_AUDIO_BROADCAST -> com.example.livebroadcast.LiveAudioBroadcastHubScreen(
                                 viewModel = viewModel,
-                                onEnterRoom = { room -> activeLiveAudioRoom = room }
+                                onEnterRoom = { room -> enterLiveAudioRoomGuarded(room) }
                             )
                             AppSection.TEACHING_STAFF -> AdminAccountsScreen(viewModel = viewModel, initialForcedTab = 0)
                             AppSection.STUDENTS_DIRECTORY -> AdminAccountsScreen(viewModel = viewModel, initialForcedTab = 1)
@@ -2168,6 +2303,37 @@ fun AuthenticatedMainPlatform(
         IndexedLeaveRequestsModalDialog(
             viewModel = viewModel,
             onDismiss = { viewModel.dismissIndexedLeaveRequestsModal() }
+        )
+    }
+
+    // Prominent Urgent Live Broadcast Invite Overlay Dialog (Recipient Side)
+    pendingUrgentInvite?.let { (invite, targetRoom) ->
+        com.example.livebroadcast.UrgentBroadcastInviteOverlayDialog(
+            invite = invite,
+            onJoinNow = {
+                dismissedUrgentInviteIds.add(invite.id)
+                pendingUrgentInvite = null
+                enterLiveAudioRoomGuarded(targetRoom)
+            },
+            onDismiss = {
+                dismissedUrgentInviteIds.add(invite.id)
+                pendingUrgentInvite = null
+            }
+        )
+    }
+
+    // Gentle Android 13+ Notification Permission Rationale Dialog for Live Broadcasts
+    if (showLiveNotifPermissionRationale) {
+        com.example.livebroadcast.LiveNotificationPermissionRationaleDialog(
+            onEnableNotifications = {
+                showLiveNotifPermissionRationale = false
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    liveNotifPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            },
+            onLater = {
+                showLiveNotifPermissionRationale = false
+            }
         )
     }
 

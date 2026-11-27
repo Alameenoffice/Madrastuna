@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.media.RingtoneManager
+import android.media.ToneGenerator
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -56,7 +58,7 @@ object InputSanitizer {
 /**
  * Fires external Android System Push Notifications in the phone's top status bar
  * with alert sound and vibration whenever a new lesson/preparation, homework,
- * chat message, official report, or attendance/grade notification arrives.
+ * chat message, official report, attendance/grade alert, or live audio broadcast arrives.
  */
 object SystemNotificationHelper {
 
@@ -64,10 +66,39 @@ object SystemNotificationHelper {
     private const val CHANNEL_NAME = "إشعارات منصة مدرستي الفورية"
     private const val CHANNEL_DESC = "تنبيهات الدروس والواجبات والرسائل والدرجات والغيابات"
 
+    private const val LIVE_BROADCAST_CHANNEL_ID = "madrasati_live_broadcast_channel"
+    private const val LIVE_BROADCAST_CHANNEL_NAME = "إشعارات البث الصوتي المباشر"
+    private const val LIVE_BROADCAST_CHANNEL_DESC = "تنبيهات انطلاق البثوث الصوتية المباشرة ودعوات الدخول العاجلة"
+
+    private const val DEDUP_PREFS_NAME = "madrasati_notification_dedup_prefs"
+    private const val KEY_DISPATCHED_KEYS = "dispatched_broadcast_notif_keys"
+    private const val KEY_ASKED_NOTIF_PERMISSION = "asked_post_notifications_rationale_v1"
+
+    fun hasNotificationPermission(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun hasAskedNotificationPermission(context: Context): Boolean {
+        return context.getSharedPreferences(DEDUP_PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_ASKED_NOTIF_PERMISSION, false)
+    }
+
+    fun markAskedNotificationPermission(context: Context) {
+        context.getSharedPreferences(DEDUP_PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_ASKED_NOTIF_PERMISSION, true)
+            .apply()
+    }
+
     fun ensureChannelCreated(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            val channel = NotificationChannel(
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            val mainChannel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_HIGH
@@ -77,8 +108,125 @@ object SystemNotificationHelper {
                 vibrationPattern = longArrayOf(0L, 280L, 140L, 280L)
                 setSound(soundUri, null)
             }
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            manager?.createNotificationChannel(channel)
+            val broadcastChannel = NotificationChannel(
+                LIVE_BROADCAST_CHANNEL_ID,
+                LIVE_BROADCAST_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = LIVE_BROADCAST_CHANNEL_DESC
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0L, 240L, 120L, 240L)
+                setSound(soundUri, null)
+            }
+            manager?.createNotificationChannel(mainChannel)
+            manager?.createNotificationChannel(broadcastChannel)
+        }
+    }
+
+    private fun isKeyAlreadyNotified(context: Context, dedupKey: String): Boolean {
+        if (dedupKey.isBlank()) return false
+        val prefs = context.getSharedPreferences(DEDUP_PREFS_NAME, Context.MODE_PRIVATE)
+        val existing = prefs.getStringSet(KEY_DISPATCHED_KEYS, emptySet()).orEmpty()
+        return dedupKey in existing
+    }
+
+    private fun markKeyNotified(context: Context, dedupKey: String) {
+        if (dedupKey.isBlank()) return
+        val prefs = context.getSharedPreferences(DEDUP_PREFS_NAME, Context.MODE_PRIVATE)
+        val existing = prefs.getStringSet(KEY_DISPATCHED_KEYS, emptySet()).orEmpty().toMutableList()
+        if (dedupKey !in existing) {
+            existing.add(dedupKey)
+            // Keep bounded size to prevent unbounded SharedPreferences growth
+            val trimmed = if (existing.size > 160) existing.takeLast(120) else existing
+            prefs.edit().putStringSet(KEY_DISPATCHED_KEYS, trimmed.toSet()).apply()
+        }
+    }
+
+    /**
+     * Shows an external Android system notification for a Live Audio Broadcast start or Urgent Join Invite,
+     * with strict persisted deduplication so the exact same broadcast/invite never fires twice.
+     */
+    fun showLiveBroadcastNotificationOnce(
+        context: Context,
+        dedupKey: String,
+        title: String,
+        body: String,
+        isUrgentInvite: Boolean = false
+    ): Boolean {
+        if (dedupKey.isNotBlank() && isKeyAlreadyNotified(context, dedupKey)) {
+            return false
+        }
+        try {
+            ensureChannelCreated(context)
+            if (!hasNotificationPermission(context)) {
+                return false
+            }
+
+            val launchIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("open_live_broadcast", true)
+            }
+            val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val requestCode = (dedupKey.ifBlank { title }.hashCode() and 0x7FFFFFFF)
+            val pendingIntent = PendingIntent.getActivity(context, requestCode, launchIntent, pendingFlags)
+            val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+            val cleanTitle = InputSanitizer.stripEmojis(title).ifBlank { "بث صوتي مباشر" }
+            val cleanBody = InputSanitizer.stripEmojis(body)
+
+            val builder = NotificationCompat.Builder(context, LIVE_BROADCAST_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(cleanTitle)
+                .setContentText(cleanBody)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(cleanBody))
+                .setPriority(
+                    if (isUrgentInvite) NotificationCompat.PRIORITY_MAX
+                    else NotificationCompat.PRIORITY_HIGH
+                )
+                .setCategory(
+                    if (isUrgentInvite) NotificationCompat.CATEGORY_CALL
+                    else NotificationCompat.CATEGORY_EVENT
+                )
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setSound(defaultSoundUri)
+                .setVibrate(
+                    if (isUrgentInvite) longArrayOf(0L, 260L, 120L, 260L, 120L, 260L)
+                    else longArrayOf(0L, 220L, 120L, 220L)
+                )
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+
+            val notifId = if (dedupKey.isNotBlank()) dedupKey.hashCode() else Random.nextInt(10000, 99999)
+            NotificationManagerCompat.from(context).notify(notifId, builder.build())
+            if (dedupKey.isNotBlank()) {
+                markKeyNotified(context, dedupKey)
+            }
+            return true
+        } catch (_: Exception) {
+            return false
+        }
+    }
+
+    /**
+     * Plays a gentle, non-intrusive chime when an urgent in-app broadcast invite arrives.
+     */
+    fun playGentleInviteChime(context: Context) {
+        runCatching {
+            val toneGen = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 65)
+            toneGen.startTone(ToneGenerator.TONE_PROP_BEEP2, 240)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                runCatching { toneGen.release() }
+            }, 380L)
+        }.onFailure {
+            runCatching {
+                val uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val ringtone = RingtoneManager.getRingtone(context.applicationContext, uri)
+                ringtone?.play()
+            }
         }
     }
 
@@ -92,13 +240,7 @@ object SystemNotificationHelper {
         try {
             ensureChannelCreated(context)
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val granted = ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-                if (!granted) return
-            }
+            if (!hasNotificationPermission(context)) return
 
             val launchIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

@@ -23,9 +23,11 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
@@ -62,9 +64,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -6014,186 +6019,307 @@ private val SeamlessFullWidthWaveShape = GenericShape { size, _ ->
 }
 
 /**
- * 1) بطاقة تعميم إدارة المنصة (Platform Administration Announcement Card):
- * - بطاقة بيضاء/زجاجية مصقولة بزوايا 18.dp وظل ناعم وحدّ جانبي ذهبي-زمردي رفيع على اليمين (RTL).
- * - أيقونة متجهة هندسية مرسومة بـ Compose Canvas مع نبض هالة ذهبية خفيفة جداً.
- * - هرمية نصية واضحة: شارة "تعميم إدارة المنصة" + التاريخ المنسق عبر formatCleanDate + زر إغلاق دائري رشيق.
+ * 1) شريط تعميم إدارة المنصة النحيل (Ultra-Slim Single-Row Platform Announcement Bar):
+ * - صف واحد نحيل وهادئ متناسق مع هوية التطبيق في الوضعين النهاري والليلي (RTL).
+ * - يعرض أيقونة صغيرة + شارة "تعميم المنصة" + النص مختصراً بنقاط في سطر واحد + زر إغلاق صغير.
+ * - عند الضغط عليه تفتح نافذة منبثقة أنيقة تعرض النص الكامل والتاريخ.
  */
 @Composable
 fun DeveloperSystemBroadcastBanner(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
-    badgeText: String = "تعميم إدارة المنصة",
+    badgeText: String = "تعميم المنصة",
     dateText: String = "",
     iconKey: OccasionIconKey = OccasionIconKey.BELL,
     illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
     topOverlapPadding: Dp = 0.dp,
     onDismiss: (() -> Unit)? = null
 ) {
+    val isDark = androidx.compose.foundation.isSystemInDarkTheme()
     val cleanDate = remember(dateText) { formatCleanDate(dateText) }
     val resolvedBadge = remember(badgeText) {
-        badgeText
-            .replace("إشعار النظام العام / تعميم المطور", "تعميم إدارة المنصة")
-            .replace("تعميم المطور", "تعميم إدارة المنصة")
-            .replace("إشعار النظام العام", "تعميم إدارة المنصة")
-            .ifBlank { "تعميم إدارة المنصة" }
+        val cleaned = badgeText
+            .replace("إشعار النظام العام / تعميم المطور", "تعميم المنصة")
+            .replace("تعميم إدارة المنصة", "تعميم المنصة")
+            .replace("تعميم المطور", "تعميم المنصة")
+            .replace("إشعار النظام العام", "تعميم المنصة")
+            .trim()
+        if (cleaned.length > 18 || cleaned.isBlank()) "تعميم المنصة" else cleaned
     }
+    val singleLineSummary = remember(title, subtitle) {
+        val t = title.trim()
+        val s = subtitle.trim()
+        when {
+            t.isNotBlank() && s.isNotBlank() && !s.equals(t, ignoreCase = true) -> "$t • $s"
+            t.isNotBlank() -> t
+            else -> s
+        }
+    }
+
+    var showDetailsDialog by remember { mutableStateOf(false) }
+
+    val barShape = RoundedCornerShape(13.dp)
+    val bgBrush = if (!isDark) {
+        Brush.horizontalGradient(
+            colors = listOf(Color(0xFFF3FAF7), Color(0xFFFFFCF5))
+        )
+    } else {
+        Brush.horizontalGradient(
+            colors = listOf(Color(0xFF102A23), Color(0xFF1A2824))
+        )
+    }
+    val borderColor = if (!isDark) {
+        Color(0xFF059669).copy(alpha = 0.22f)
+    } else {
+        Color(0xFF34D399).copy(alpha = 0.28f)
+    }
+    val badgeBg = if (!isDark) Color(0xFFFEF3C7) else Color(0xFFD9A441).copy(alpha = 0.22f)
+    val badgeTextCol = if (!isDark) Color(0xFF92400E) else Color(0xFFFDE68A)
+    val textCol = if (!isDark) Color(0xFF064E3B) else Color(0xFFECFDF5)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(18.dp),
-                ambientColor = Color(0xFF065F46).copy(alpha = 0.14f),
-                spotColor = Color(0xFF065F46).copy(alpha = 0.14f)
-            ),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.18f))
+            .clip(barShape)
+            .clickable { showDetailsDialog = true }
+            .testTag("platform_announcement_slim_bar"),
+        shape = barShape,
+        color = Color.Transparent,
+        shadowElevation = if (isDark) 2.dp else 1.5.dp,
+        border = BorderStroke(0.9.dp, borderColor)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color.White,
-                            Color(0xFFF7FCFA),
-                            Color(0xFFFFFCF5)
-                        )
-                    )
-                )
-                .height(IntrinsicSize.Min)
+                .background(bgBrush)
+                .padding(horizontal = 9.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            // حدّ جانبي ذهبي-زمردي رفيع على اليمين (RTL start) يميّز التعميم الرسمي العام
+            // أيقونة هندسية مصغّرة للمنصة
             Box(
                 modifier = Modifier
-                    .width(4.dp)
-                    .fillMaxHeight()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFFD97706),
-                                Color(0xFFF59E0B),
-                                Color(0xFF059669)
-                            )
-                        )
-                    )
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(if (isDark) Color(0xFF163D32) else Color(0xFFECFDF5)),
+                contentAlignment = Alignment.Center
+            ) {
+                PlatformAnnouncementEmblemCanvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(3.dp)
+                )
+            }
+
+            // شارة "تعميم المنصة" المختصرة
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = badgeBg,
+                border = BorderStroke(
+                    0.7.dp,
+                    if (isDark) Color(0xFFF59E0B).copy(alpha = 0.42f) else Color(0xFFFCD34D)
+                )
+            ) {
+                Text(
+                    text = resolvedBadge,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = badgeTextCol,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                )
+            }
+
+            // نص التنبيه مختصراً في سطر واحد بدون زيادة ارتفاع الشريط
+            Text(
+                text = singleLineSummary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = textCol,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
             )
 
-            Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 13.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(11.dp)
-            ) {
-                // حاوية زجاجية هادئة تحتوي أيقونة المنصة الهندسية بـ Compose Canvas مع نبض هالة ذهبية خفيفة
+            // زر إغلاق صغير
+            if (onDismiss != null) {
                 Surface(
-                    modifier = Modifier.size(46.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFECFDF5).copy(alpha = 0.85f),
-                    border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.30f))
+                    shape = CircleShape,
+                    color = if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFF064E3B).copy(alpha = 0.08f),
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .clickable { onDismiss() }
+                        .testTag("platform_announcement_dismiss_btn")
                 ) {
-                    PlatformAnnouncementEmblemCanvas(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(5.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "إغلاق تعميم المنصة",
+                            tint = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
+            }
+        }
+    }
 
+    // نافذة منبثقة لعرض النص الكامل والتاريخ عند الضغط على الشريط
+    if (showDetailsDialog) {
+        Dialog(onDismissRequest = { showDetailsDialog = false }) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = if (isDark) Color(0xFF10241E) else Color.White,
+                border = BorderStroke(
+                    1.dp,
+                    if (isDark) Color(0xFF34D399).copy(alpha = 0.32f) else Color(0xFF059669).copy(alpha = 0.22f)
+                ),
+                shadowElevation = 10.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("platform_announcement_details_dialog")
+            ) {
                 Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // الصف العلوي: شارة "تعميم إدارة المنصة" + التاريخ المنسّق + زر إغلاق دائري رشيق (X)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            modifier = Modifier.weight(1f),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color(0xFFFFFBEB),
-                                border = BorderStroke(0.8.dp, Color(0xFFFDE68A))
-                            ) {
-                                Text(
-                                    text = resolvedBadge,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF92400E),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
-                                )
-                            }
-
-                            if (cleanDate.isNotBlank()) {
-                                Text(
-                                    text = cleanDate,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF64748B),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-
-                        if (onDismiss != null) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = CircleShape,
-                                color = Color(0xFFF1F5F9),
-                                border = BorderStroke(0.75.dp, Color(0xFFE2E8F0)),
+                            Box(
                                 modifier = Modifier
-                                    .size(28.dp)
+                                    .size(34.dp)
                                     .clip(CircleShape)
-                                    .clickable { onDismiss() }
-                                    .testTag("platform_announcement_dismiss_btn")
+                                    .background(if (isDark) Color(0xFF163D32) else Color(0xFFECFDF5)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Close,
-                                        contentDescription = "إغلاق تعميم إدارة المنصة",
-                                        tint = Color(0xFF475569),
-                                        modifier = Modifier.size(15.dp)
+                                PlatformAnnouncementEmblemCanvas(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(5.dp)
+                                )
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = badgeBg
+                                ) {
+                                    Text(
+                                        text = "تعميم إدارة المنصة",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = badgeTextCol,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                                if (cleanDate.isNotBlank()) {
+                                    Text(
+                                        text = cleanDate,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
                                     )
                                 }
                             }
                         }
+
+                        IconButton(
+                            onClick = { showDetailsDialog = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "إغلاق",
+                                tint = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
 
-                    // عنوان التعميم بخط عريض واضح
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF064E3B),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                    HorizontalDivider(
+                        thickness = 0.75.dp,
+                        color = if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFFE2E8F0)
                     )
 
-                    // نص التعميم بوضوح
-                    if (subtitle.isNotBlank()) {
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color(0xFF334155),
-                            lineHeight = 18.sp,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (title.isNotBlank()) {
+                            Text(
+                                text = title,
+                                fontSize = 15.5.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isDark) Color(0xFFECFDF5) else Color(0xFF064E3B)
+                            )
+                        }
+                        if (subtitle.isNotBlank()) {
+                            Text(
+                                text = subtitle,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 21.sp,
+                                color = if (isDark) Color(0xFFD1E7DD) else Color(0xFF334155)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (onDismiss != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    showDetailsDialog = false
+                                    onDismiss()
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isDark) Color(0xFF34D399).copy(alpha = 0.35f) else Color(0xFFCBD5E1)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "إخفاء التعميم",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFFA7F3D0) else Color(0xFF475569)
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = { showDetailsDialog = false },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isDark) Color(0xFF10B981) else Color(0xFF047857),
+                                contentColor = if (isDark) Color(0xFF022C22) else Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "إغلاق",
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                     }
                 }
             }
@@ -6965,17 +7091,38 @@ private fun CompactGlassAlertPillButton(
 }
 
 /**
- * نظام عرض التنبيهات الديناميكي المتعدد بروح "اللافتة الزجاجية المعمارية الفاخرة" (Layered Editorial Glass Banner):
- * - يرتّب القائمة دائماً بحيث يكون تنبيه المدير في المرتبة الأولى (Index 0).
- * - يمنح تنبيه المدير مدة عرض 6.5 ثوانٍ مقابل 4 ثوانٍ لبقية التنبيهات.
- * - ينتقل فوراً إلى تنبيه المدير الجديد عند وصوله عبر المزامنة الحية.
- * - يدعم السحب باللمس (Swipe) مع إيقاف التبديل مؤقتاً أثناء اللمس، ويدعم الوضعين النهاري والليلي بـ RTL.
+ * شكل الحافة الموجية الناعمة لشريط تنبيهات إدارة المدرسة الملتصق أسفل بطاقة الترحيب الخضراء
+ * بدون أي فراغ أبيض فاصل بينهما.
+ */
+private val DockedSchoolAlertBottomWaveShape = GenericShape { size, _ ->
+    val w = size.width
+    val h = size.height
+    val waveAmp = (h * 0.16f).coerceIn(8f, 15f)
+    moveTo(0f, 0f)
+    lineTo(w, 0f)
+    lineTo(w, h - waveAmp)
+    cubicTo(
+        w * 0.72f, h + waveAmp * 0.35f,
+        w * 0.28f, h - waveAmp * 1.45f,
+        0f, h - waveAmp * 0.45f
+    )
+    close()
+}
+
+/**
+ * شريط تنبيهات إدارة المدرسة المدمج والمتموّج أسفل بطاقة الترحيب الخضراء (Seamless Wavy Single-Row Strip):
+ * - يلتصق مباشرة بأسفل بطاقة الترحيب الخضراء بنفس درجة لونها السفلي (بدون أي فراغ أبيض أو بطاقة سوداء ضخمة).
+ * - صف واحد نحيل جداً يعرض الأيقونة الهندسية + عنوان ومتن التبليغ مختصراً في سطر واحد + أسهم تنقل صغيرة مع العداد.
+ * - ينقل أزرار المدير (تعديل، إيقاف، تم الاطلاع) إلى قائمة خيارات مصغّرة في طرف الشريط وإلى نافذة تفاصيل التنبيه عند الضغط عليه.
+ * - يحافظ على أولوية قصوى لتنبيه المدير (Index 0)، التبديل التلقائي (6.5ث للمدير / 4ث للبقية)، والإيقاف المؤقت عند اللمس والسحب.
  */
 @Composable
 fun SchoolDynamicAlertsCarouselBanner(
     alerts: List<SchoolBannerAlertItem>,
     isAdmin: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    dockedUnderHeroWave: Boolean = false,
+    topWaveOverlapPadding: Dp = 0.dp
 ) {
     val sortedAlerts = remember(alerts) {
         alerts.sortedBy { it.type.priorityOrder }
@@ -6987,6 +7134,8 @@ fun SchoolDynamicAlertsCarouselBanner(
     var currentIndex by remember { mutableIntStateOf(0) }
     var slideDirection by remember { mutableIntStateOf(1) }
     var isUserTouching by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    var inspectedAlert by remember { mutableStateOf<SchoolBannerAlertItem?>(null) }
 
     // Clamp index cleanly if an alert (e.g. Principal alert after "تم الاطلاع") is dismissed
     val safeIndex = currentIndex.coerceIn(0, sortedAlerts.lastIndex)
@@ -7007,10 +7156,12 @@ fun SchoolDynamicAlertsCarouselBanner(
         lastObservedPrincipalId = activePrincipalId
     }
 
-    // Auto-rotation timer: 6.5s for Principal alert, 4s for Holiday & other alerts; pauses while touched
+    // Auto-rotation timer: 6.5s for Principal alert, 4s for other alerts; pauses while touched or dialog/menu open
     val alertsSignature = remember(sortedAlerts) { sortedAlerts.joinToString("|") { it.id } }
-    LaunchedEffect(alertsSignature, safeIndex, isUserTouching) {
-        if (sortedAlerts.size <= 1 || isUserTouching) return@LaunchedEffect
+    LaunchedEffect(alertsSignature, safeIndex, isUserTouching, showOverflowMenu, inspectedAlert) {
+        if (sortedAlerts.size <= 1 || isUserTouching || showOverflowMenu || inspectedAlert != null) {
+            return@LaunchedEffect
+        }
         val currentItem = sortedAlerts.getOrNull(safeIndex) ?: return@LaunchedEffect
         delay(currentItem.displayDurationMs)
         slideDirection = 1
@@ -7018,53 +7169,53 @@ fun SchoolDynamicAlertsCarouselBanner(
     }
 
     val activeAlert = sortedAlerts[safeIndex]
-    val palette = resolveSchoolBannerPalette(activeAlert.type, isDark)
+    val hasEdit = activeAlert.showPrincipalActions && isAdmin && activeAlert.onEditPrincipalAlert != null
+    val hasStop = activeAlert.showPrincipalActions && isAdmin && activeAlert.onStopPrincipalAlert != null
+    val hasDismiss = activeAlert.showPrincipalActions && activeAlert.onDismissPrincipalAlert != null
+    val hasOverflowActions = hasEdit || hasStop || hasDismiss
 
-    // Gentle breathing animation for the live frosted circular icon & glowing status dot
-    val pulseTransition = rememberInfiniteTransition(label = "editorial_alert_pulse")
-    val haloScale by pulseTransition.animateFloat(
-        initialValue = 0.94f,
-        targetValue = 1.12f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "editorial_alert_halo_scale"
-    )
-    val haloAlpha by pulseTransition.animateFloat(
-        initialValue = 0.24f,
-        targetValue = 0.05f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "editorial_alert_halo_alpha"
-    )
-    val liveDotAlpha by pulseTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 0.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "editorial_alert_live_dot_alpha"
-    )
+    // Soft emerald-teal gradient seamlessly continuing the lower tone of ThreeDHeroHeaderCard (#047857 -> #0F3D5E)
+    val stripBrush = if (dockedUnderHeroWave) {
+        if (!isDark) {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF046A52),
+                    Color(0xFF085756),
+                    Color(0xFF0F3D5E)
+                )
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF065341),
+                    Color(0xFF0A4448),
+                    Color(0xFF0E3450)
+                )
+            )
+        }
+    } else {
+        val standalonePalette = resolveSchoolBannerPalette(activeAlert.type, isDark)
+        Brush.linearGradient(standalonePalette.cardGradientColors)
+    }
 
-    val bannerShape = RoundedCornerShape(22.dp)
+    val stripShape = if (dockedUnderHeroWave) DockedSchoolAlertBottomWaveShape else RoundedCornerShape(14.dp)
+    val onStripPrimaryText = if (dockedUnderHeroWave) Color.White else resolveSchoolBannerPalette(activeAlert.type, isDark).titleColor
+    val onStripSecondaryText = if (dockedUnderHeroWave) Color(0xFFDDF7EC) else resolveSchoolBannerPalette(activeAlert.type, isDark).bodyColor
+    val controlBg = if (dockedUnderHeroWave) Color.White.copy(alpha = 0.14f) else Color(0xFF065F46).copy(alpha = if (isDark) 0.25f else 0.08f)
+    val controlIconTint = if (dockedUnderHeroWave) Color(0xFFF3D58D) else resolveSchoolBannerPalette(activeAlert.type, isDark).arrowTint
 
-    Surface(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .testTag("dynamic_school_alerts_carousel_card")
             .shadow(
-                elevation = if (isDark) 10.dp else 8.dp,
-                shape = bannerShape,
-                ambientColor = palette.shadowColor,
-                spotColor = palette.shadowColor
+                elevation = if (dockedUnderHeroWave) 5.dp else 2.dp,
+                shape = stripShape,
+                ambientColor = Color(0xFF047857).copy(alpha = 0.22f),
+                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.25f)
             )
-            .clip(bannerShape)
-            .animateContentSize(animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing))
-            // Pause auto-rotation immediately whenever user touches the card (without consuming clicks/swipes)
+            .clip(stripShape)
+            .background(stripBrush)
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -7073,17 +7224,14 @@ fun SchoolDynamicAlertsCarouselBanner(
                     }
                 }
             }
-            // Horizontal swipe navigation between active alerts
             .pointerInput(sortedAlerts.size) {
                 if (sortedAlerts.size > 1) {
                     var totalDragX = 0f
                     detectHorizontalDragGestures(
                         onDragStart = { totalDragX = 0f },
-                        onHorizontalDrag = { _, dragAmount ->
-                            totalDragX += dragAmount
-                        },
+                        onHorizontalDrag = { _, dragAmount -> totalDragX += dragAmount },
                         onDragEnd = {
-                            if (abs(totalDragX) > 48f) {
+                            if (abs(totalDragX) > 42f) {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 if (totalDragX > 0f) {
                                     slideDirection = 1
@@ -7098,342 +7246,532 @@ fun SchoolDynamicAlertsCarouselBanner(
                         onDragCancel = { totalDragX = 0f }
                     )
                 }
-            },
-        shape = bannerShape,
-        color = Color.Transparent,
-        border = BorderStroke(1.dp, palette.borderColor)
+            }
+            .clickable { inspectedAlert = activeAlert }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Brush.linearGradient(palette.cardGradientColors))
-        ) {
-            // Subtle architectural glass sheen & radial ambient highlight
+        // Subtle luminous wave contour accent along the bottom edge when docked under the green Welcome Hero
+        if (dockedUnderHeroWave) {
             Canvas(modifier = Modifier.matchParentSize()) {
                 val w = size.width
                 val h = size.height
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(palette.ambientGlowColor, Color.Transparent),
-                        center = Offset(w * 0.92f, h * 0.16f),
-                        radius = w * 0.55f
-                    ),
-                    radius = w * 0.55f,
-                    center = Offset(w * 0.92f, h * 0.16f)
+                val waveAmp = (h * 0.16f).coerceIn(8f, 15f)
+                val sheenPath = Path().apply {
+                    moveTo(0f, h - waveAmp * 0.45f - 1.dp.toPx())
+                    cubicTo(
+                        w * 0.28f, h - waveAmp * 1.45f - 1.dp.toPx(),
+                        w * 0.72f, h + waveAmp * 0.35f - 1.dp.toPx(),
+                        w, h - waveAmp - 1.dp.toPx()
+                    )
+                }
+                drawPath(
+                    path = sheenPath,
+                    color = Color(0xFFF3D58D).copy(alpha = 0.34f),
+                    style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
                 )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFFD9A441).copy(alpha = if (isDark) 0.08f else 0.06f),
-                            Color.Transparent
-                        ),
-                        center = Offset(w * 0.08f, h * 0.88f),
-                        radius = w * 0.40f
-                    ),
-                    radius = w * 0.40f,
-                    center = Offset(w * 0.08f, h * 0.88f)
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = if (dockedUnderHeroWave) 16.dp else 11.dp,
+                    end = if (dockedUnderHeroWave) 14.dp else 10.dp,
+                    top = if (dockedUnderHeroWave) (topWaveOverlapPadding + 7.dp) else 8.dp,
+                    bottom = if (dockedUnderHeroWave) 15.dp else 8.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // أيقونة فيكتور متحركة بخلفية شفافة تندمج مباشرة على الشريط الزمردي دون دائرة بيضاء ثقيلة
+            val isLiveBroadcastAlert = isLiveAudioBroadcastAlertItem(activeAlert)
+            if (dockedUnderHeroWave) {
+                Box(
+                    modifier = Modifier.size(26.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    when {
+                        isLiveBroadcastAlert -> LiveBroadcastEqualizerVectorIcon(
+                            modifier = Modifier.fillMaxSize(),
+                            onDarkSurface = true
+                        )
+                        activeAlert.type == SchoolBannerAlertType.PRINCIPAL_URGENT -> DockedTransparentBroadcastPulseIcon(
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        activeAlert.type == SchoolBannerAlertType.OFFICIAL_HOLIDAY -> DockedTransparentHolidayEmblemIcon(
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        else -> DockedTransparentBellPulseIcon(
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+            } else {
+                val standalonePalette = resolveSchoolBannerPalette(activeAlert.type, isDark)
+                if (isLiveBroadcastAlert) {
+                    Box(
+                        modifier = Modifier.size(26.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LiveBroadcastEqualizerVectorIcon(
+                            modifier = Modifier.fillMaxSize(),
+                            onDarkSurface = isDark
+                        )
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier.size(28.dp),
+                        shape = CircleShape,
+                        color = standalonePalette.iconContainerBg,
+                        border = BorderStroke(0.8.dp, standalonePalette.iconContainerBorder)
+                    ) {
+                        when (activeAlert.type) {
+                            SchoolBannerAlertType.PRINCIPAL_URGENT -> SchoolBroadcastWavesCanvas(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(4.dp)
+                            )
+                            SchoolBannerAlertType.OFFICIAL_HOLIDAY -> HolidayCalendarEmblemCanvas(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(5.dp)
+                            )
+                            SchoolBannerAlertType.OTHER_IMPORTANT -> ImportantAlertBellCanvas(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(5.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // صف نصي واحد مدمج: العنوان + مختصر المحتوى مع اختصار تلقائي بنقاط
+            AnimatedContent(
+                targetState = activeAlert,
+                transitionSpec = {
+                    val dir = if (slideDirection >= 0) 1 else -1
+                    (fadeIn(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
+                        slideInHorizontally(
+                            animationSpec = tween(240, easing = FastOutSlowInEasing),
+                            initialOffsetX = { fullWidth -> (fullWidth * 0.08f * dir).toInt() }
+                        ))
+                        .togetherWith(
+                            fadeOut(animationSpec = tween(180, easing = FastOutSlowInEasing)) +
+                                slideOutHorizontally(
+                                    animationSpec = tween(180, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { fullWidth -> (-fullWidth * 0.08f * dir).toInt() }
+                                )
+                        )
+                },
+                label = "dynamic_school_alerts_carousel_content",
+                modifier = Modifier.weight(1f)
+            ) { item ->
+                val combinedLine = remember(item.title, item.subtitle, onStripPrimaryText, onStripSecondaryText) {
+                    buildAnnotatedString {
+                        val cleanTitle = item.title.trim()
+                        val cleanSub = item.subtitle.trim()
+                        if (cleanTitle.isNotBlank()) {
+                            withStyle(
+                                SpanStyle(
+                                    color = onStripPrimaryText,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            ) {
+                                append(cleanTitle)
+                            }
+                        }
+                        if (cleanSub.isNotBlank() && !cleanSub.equals(cleanTitle, ignoreCase = true)) {
+                            if (cleanTitle.isNotBlank()) {
+                                withStyle(SpanStyle(color = Color(0xFFF3D58D).copy(alpha = 0.90f), fontWeight = FontWeight.Bold)) {
+                                    append(": ")
+                                }
+                            }
+                            withStyle(
+                                SpanStyle(
+                                    color = onStripSecondaryText,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            ) {
+                                append(cleanSub)
+                            }
+                        }
+                    }
+                }
+                Text(
+                    text = combinedLine,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            Row(
+            // أسهم تنقّل صغيرة جداً مع العداد عند وجود أكثر من تنبيه نشط
+            if (sortedAlerts.size > 1) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = controlBg,
+                    border = BorderStroke(
+                        0.7.dp,
+                        if (dockedUnderHeroWave) Color.White.copy(alpha = 0.22f) else Color.Transparent
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    slideDirection = -1
+                                    currentIndex = (safeIndex - 1 + sortedAlerts.size) % sortedAlerts.size
+                                }
+                                .testTag("dynamic_alert_prev_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                contentDescription = "التنبيه السابق",
+                                tint = controlIconTint,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "${safeIndex + 1}/${sortedAlerts.size}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = onStripPrimaryText,
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier.testTag("dynamic_alert_counter_text")
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    slideDirection = 1
+                                    currentIndex = (safeIndex + 1) % sortedAlerts.size
+                                }
+                                .testTag("dynamic_alert_next_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "التنبيه التالي",
+                                tint = controlIconTint,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // قائمة خيارات مصغّرة في طرف الشريط لأزرار المدير و«تم الاطلاع»
+            if (hasOverflowActions) {
+                Box {
+                    Surface(
+                        shape = CircleShape,
+                        color = controlBg,
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .clickable { showOverflowMenu = true }
+                            .testTag("school_alert_options_menu_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = "خيارات التبليغ",
+                                tint = onStripPrimaryText,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        if (hasDismiss) {
+                            DropdownMenuItem(
+                                text = { Text("تم الاطلاع", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.DoneAll,
+                                        contentDescription = null,
+                                        tint = Color(0xFF059669),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    activeAlert.onDismissPrincipalAlert?.invoke()
+                                },
+                                modifier = Modifier.testTag("urgent_alert_banner_dismiss_btn")
+                            )
+                        }
+                        if (hasEdit) {
+                            DropdownMenuItem(
+                                text = { Text("تعديل التبليغ", fontWeight = FontWeight.Bold, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.Edit,
+                                        contentDescription = null,
+                                        tint = Color(0xFF047857),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    activeAlert.onEditPrincipalAlert?.invoke()
+                                },
+                                modifier = Modifier.testTag("urgent_alert_banner_edit_btn")
+                            )
+                        }
+                        if (hasStop) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "إيقاف التبليغ",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFFDC2626)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Filled.StopCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFFDC2626),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    activeAlert.onStopPrincipalAlert?.invoke()
+                                },
+                                modifier = Modifier.testTag("urgent_alert_banner_delete_btn")
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // نافذة تفاصيل التنبيه الكاملة (تفتح عند الضغط على الشريط وتضم النص الكامل + أزرار التحكم)
+    inspectedAlert?.let { modalItem ->
+        val modalPalette = resolveSchoolBannerPalette(modalItem.type, isDark)
+        val modalHasEdit = modalItem.showPrincipalActions && isAdmin && modalItem.onEditPrincipalAlert != null
+        val modalHasStop = modalItem.showPrincipalActions && isAdmin && modalItem.onStopPrincipalAlert != null
+        val modalHasDismiss = modalItem.showPrincipalActions && modalItem.onDismissPrincipalAlert != null
+
+        Dialog(onDismissRequest = { inspectedAlert = null }) {
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = if (isDark) Color(0xFF0E241E) else Color.White,
+                border = BorderStroke(1.dp, modalPalette.borderColor),
+                shadowElevation = 10.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(IntrinsicSize.Min)
+                    .testTag("school_alert_details_dialog")
             ) {
-                // خط عمودي متوهج رفيع (3.dp) بتدرج زمردي-ذهبي على الحافة اليمنى (RTL start)
-                Box(
-                    modifier = Modifier
-                        .padding(start = 2.dp, top = 12.dp, bottom = 12.dp)
-                        .width(3.dp)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(50))
-                        .background(Brush.verticalGradient(palette.accentBarColors))
-                )
-
                 Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 11.dp, end = 14.dp, top = 12.dp, bottom = 11.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    AnimatedContent(
-                        targetState = activeAlert,
-                        transitionSpec = {
-                            val dir = if (slideDirection >= 0) 1 else -1
-                            (fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)) +
-                                slideInHorizontally(
-                                    animationSpec = tween(300, easing = FastOutSlowInEasing),
-                                    initialOffsetX = { fullWidth -> (fullWidth * 0.12f * dir).toInt() }
-                                ))
-                                .togetherWith(
-                                    fadeOut(animationSpec = tween(220, easing = FastOutSlowInEasing)) +
-                                        slideOutHorizontally(
-                                            animationSpec = tween(220, easing = FastOutSlowInEasing),
-                                            targetOffsetX = { fullWidth -> (-fullWidth * 0.12f * dir).toInt() }
-                                        )
-                                )
-                        },
-                        label = "dynamic_school_alerts_carousel_content"
-                    ) { item ->
-                        val itemPalette = resolveSchoolBannerPalette(item.type, isDark)
-                        val hasEdit = item.showPrincipalActions && isAdmin && item.onEditPrincipalAlert != null
-                        val hasStop = item.showPrincipalActions && isAdmin && item.onStopPrincipalAlert != null
-                        val hasDismiss = item.showPrincipalActions && item.onDismissPrincipalAlert != null
-                        val showFooter = (sortedAlerts.size > 1) || hasEdit || hasStop || hasDismiss
-
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(9.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            // القسم الرئيسي: أيقونة دائرية زجاجية نابضة + تدرج نصي تحريري نظيف
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .then(
-                                        if (item.onClick != null) {
-                                            Modifier.clickable { item.onClick.invoke() }
-                                        } else Modifier
-                                    ),
-                                verticalAlignment = Alignment.Top,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                // دائرة زجاجية ضبابية نابضة ببطء تحوي الأيقونة الهندسية المرسومة بـ Canvas
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 2.dp)
-                                        .size(48.dp),
-                                    contentAlignment = Alignment.Center
+                            val modalIsLiveBroadcast = isLiveAudioBroadcastAlertItem(modalItem)
+                            if (modalIsLiveBroadcast) {
+                                Surface(
+                                    modifier = Modifier.size(36.dp),
+                                    shape = CircleShape,
+                                    color = if (isDark) Color(0xFF064E3B).copy(alpha = 0.65f) else Color(0xFFECFDF5),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isDark) Color(0xFF34D399).copy(alpha = 0.45f) else Color(0xFF6EE7B7)
+                                    )
                                 ) {
-                                    Box(
+                                    LiveBroadcastEqualizerVectorIcon(
                                         modifier = Modifier
-                                            .size(48.dp)
-                                            .graphicsLayer {
-                                                scaleX = haloScale
-                                                scaleY = haloScale
-                                            }
-                                            .clip(CircleShape)
-                                            .background(itemPalette.pulseHaloColor.copy(alpha = haloAlpha))
+                                            .fillMaxSize()
+                                            .padding(6.dp),
+                                        onDarkSurface = isDark
                                     )
-                                    Surface(
-                                        modifier = Modifier.size(44.dp),
-                                        shape = CircleShape,
-                                        color = itemPalette.iconContainerBg,
-                                        border = BorderStroke(1.dp, itemPalette.iconContainerBorder)
-                                    ) {
-                                        when (item.type) {
-                                            SchoolBannerAlertType.PRINCIPAL_URGENT -> SchoolBroadcastWavesCanvas(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(7.dp)
-                                            )
-                                            SchoolBannerAlertType.OFFICIAL_HOLIDAY -> HolidayCalendarEmblemCanvas(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(8.dp)
-                                            )
-                                            SchoolBannerAlertType.OTHER_IMPORTANT -> ImportantAlertBellCanvas(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(8.dp)
-                                            )
-                                        }
-                                    }
                                 }
-
-                                // المحتوى التحريري (شريط الوسم والعداد + العنوان + المتن)
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                            } else {
+                                Surface(
+                                    modifier = Modifier.size(36.dp),
+                                    shape = CircleShape,
+                                    color = modalPalette.iconContainerBg,
+                                    border = BorderStroke(1.dp, modalPalette.iconContainerBorder)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Surface(
-                                            shape = RoundedCornerShape(50),
-                                            color = itemPalette.badgeBg,
-                                            border = BorderStroke(0.75.dp, itemPalette.badgeBorder)
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(6.dp)
-                                                        .clip(CircleShape)
-                                                        .background(
-                                                            itemPalette.liveDotColor.copy(alpha = liveDotAlpha)
-                                                        )
-                                                )
-                                                Text(
-                                                    text = item.badgeText,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = itemPalette.badgeTextColor,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            if (sortedAlerts.size > 1) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(50),
-                                                    color = itemPalette.counterBg
-                                                ) {
-                                                    Text(
-                                                        text = "${safeIndex + 1} / ${sortedAlerts.size}",
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = itemPalette.counterTextColor,
-                                                        maxLines = 1,
-                                                        softWrap = false,
-                                                        modifier = Modifier
-                                                            .padding(horizontal = 8.dp, vertical = 2.5.dp)
-                                                            .testTag("dynamic_alert_counter_text")
-                                                    )
-                                                }
-                                            }
-                                            if (item.onClick != null) {
-                                                Icon(
-                                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                                    contentDescription = "عرض تفاصيل التنبيه",
-                                                    tint = itemPalette.arrowTint,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Text(
-                                        text = item.title,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontSize = 14.5.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = itemPalette.titleColor,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-
-                                    if (item.subtitle.isNotBlank()) {
-                                        Text(
-                                            text = item.subtitle,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontSize = 12.5.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = itemPalette.bodyColor,
-                                            lineHeight = 18.5.sp,
-                                            maxLines = 3,
-                                            overflow = TextOverflow.Ellipsis
+                                    when (modalItem.type) {
+                                        SchoolBannerAlertType.PRINCIPAL_URGENT -> SchoolBroadcastWavesCanvas(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(6.dp)
+                                        )
+                                        SchoolBannerAlertType.OFFICIAL_HOLIDAY -> HolidayCalendarEmblemCanvas(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(7.dp)
+                                        )
+                                        SchoolBannerAlertType.OTHER_IMPORTANT -> ImportantAlertBellCanvas(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(7.dp)
                                         )
                                     }
                                 }
                             }
-
-                            // الشريط السفلي المدمج: نقاط التنقل يميناً + كبسولات الإجراء المضغوطة يساراً
-                            if (showFooter) {
-                                HorizontalDivider(
-                                    thickness = 0.65.dp,
-                                    color = itemPalette.dividerColor
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = modalPalette.badgeBg,
+                                border = BorderStroke(0.8.dp, modalPalette.badgeBorder)
+                            ) {
+                                Text(
+                                    text = modalItem.badgeText,
+                                    fontSize = 10.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = modalPalette.badgeTextColor,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                                 )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    // مؤشر نقاط التنقل (Pagination Dots) على اليمين (RTL start)
-                                    if (sortedAlerts.size > 1) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            sortedAlerts.forEachIndexed { idx, alertItem ->
-                                                val isSelected = idx == safeIndex
-                                                val dotWidth by animateDpAsState(
-                                                    targetValue = if (isSelected) 20.dp else 6.dp,
-                                                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
-                                                    label = "alert_dot_width_$idx"
-                                                )
-                                                val dotColor = if (isSelected) {
-                                                    resolveSchoolBannerPalette(alertItem.type, isDark).activeDotColor
-                                                } else {
-                                                    itemPalette.inactiveDotColor
-                                                }
-                                                Box(
-                                                    modifier = Modifier
-                                                        .height(6.dp)
-                                                        .width(dotWidth)
-                                                        .clip(RoundedCornerShape(50))
-                                                        .background(dotColor)
-                                                        .clickable {
-                                                            if (idx != safeIndex) {
-                                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                                slideDirection = if (idx > safeIndex) 1 else -1
-                                                                currentIndex = idx
-                                                            }
-                                                        }
-                                                        .testTag("dynamic_alert_dot_$idx")
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        Spacer(modifier = Modifier.width(1.dp))
-                                    }
-
-                                    // كبسولات الإجراء المدمجة والمضغوطة (غير ممطوطة) على اليسار (RTL end)
-                                    if (hasEdit || hasStop || hasDismiss) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            if (hasEdit) {
-                                                CompactGlassAlertPillButton(
-                                                    label = "تعديل",
-                                                    icon = Icons.Filled.Edit,
-                                                    containerColor = if (isDark) Color(0xFF143A30) else Color(0xFFECFDF5),
-                                                    borderColor = if (isDark) Color(0xFF34D399).copy(alpha = 0.35f) else Color(0xFFA7F3D0),
-                                                    contentColor = if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46),
-                                                    onClick = { item.onEditPrincipalAlert?.invoke() },
-                                                    testTagValue = "urgent_alert_banner_edit_btn"
-                                                )
-                                            }
-                                            if (hasStop) {
-                                                CompactGlassAlertPillButton(
-                                                    label = "إيقاف",
-                                                    icon = Icons.Filled.StopCircle,
-                                                    containerColor = if (isDark) Color(0xFF3B1A1D) else Color(0xFFFEF2F2),
-                                                    borderColor = if (isDark) Color(0xFFF87171).copy(alpha = 0.35f) else Color(0xFFFECACA),
-                                                    contentColor = if (isDark) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
-                                                    onClick = { item.onStopPrincipalAlert?.invoke() },
-                                                    testTagValue = "urgent_alert_banner_delete_btn"
-                                                )
-                                            }
-                                            if (hasDismiss) {
-                                                CompactGlassAlertPillButton(
-                                                    label = "تم الاطلاع",
-                                                    icon = Icons.Filled.DoneAll,
-                                                    containerColor = if (isDark) Color(0xFF059669).copy(alpha = 0.28f) else Color(0xFF065F46).copy(alpha = 0.10f),
-                                                    borderColor = if (isDark) Color(0xFF34D399).copy(alpha = 0.45f) else Color(0xFF059669).copy(alpha = 0.32f),
-                                                    contentColor = if (isDark) Color(0xFFECFDF5) else Color(0xFF065F46),
-                                                    onClick = {
-                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        item.onDismissPrincipalAlert?.invoke()
-                                                    },
-                                                    testTagValue = "urgent_alert_banner_dismiss_btn"
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
                             }
+                        }
+
+                        IconButton(
+                            onClick = { inspectedAlert = null },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "إغلاق",
+                                tint = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(thickness = 0.75.dp, color = modalPalette.dividerColor)
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
+                        Text(
+                            text = modalItem.title,
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = modalPalette.titleColor
+                        )
+                        if (modalItem.subtitle.isNotBlank()) {
+                            Text(
+                                text = modalItem.subtitle,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 21.sp,
+                                color = modalPalette.bodyColor
+                            )
+                        }
+                    }
+
+                    // أزرار التحكم داخل نافذة التفاصيل
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (modalHasEdit) {
+                            CompactGlassAlertPillButton(
+                                label = "تعديل",
+                                icon = Icons.Filled.Edit,
+                                containerColor = if (isDark) Color(0xFF143A30) else Color(0xFFECFDF5),
+                                borderColor = if (isDark) Color(0xFF34D399).copy(alpha = 0.35f) else Color(0xFFA7F3D0),
+                                contentColor = if (isDark) Color(0xFFA7F3D0) else Color(0xFF065F46),
+                                onClick = {
+                                    inspectedAlert = null
+                                    modalItem.onEditPrincipalAlert?.invoke()
+                                },
+                                testTagValue = "school_alert_modal_edit_btn"
+                            )
+                        }
+                        if (modalHasStop) {
+                            CompactGlassAlertPillButton(
+                                label = "إيقاف",
+                                icon = Icons.Filled.StopCircle,
+                                containerColor = if (isDark) Color(0xFF3B1A1D) else Color(0xFFFEF2F2),
+                                borderColor = if (isDark) Color(0xFFF87171).copy(alpha = 0.35f) else Color(0xFFFECACA),
+                                contentColor = if (isDark) Color(0xFFFCA5A5) else Color(0xFFB91C1C),
+                                onClick = {
+                                    inspectedAlert = null
+                                    modalItem.onStopPrincipalAlert?.invoke()
+                                },
+                                testTagValue = "school_alert_modal_stop_btn"
+                            )
+                        }
+                        if (modalHasDismiss) {
+                            CompactGlassAlertPillButton(
+                                label = "تم الاطلاع",
+                                icon = Icons.Filled.DoneAll,
+                                containerColor = if (isDark) Color(0xFF10B981) else Color(0xFF047857),
+                                borderColor = Color.Transparent,
+                                contentColor = if (isDark) Color(0xFF022C22) else Color.White,
+                                onClick = {
+                                    inspectedAlert = null
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    modalItem.onDismissPrincipalAlert?.invoke()
+                                },
+                                testTagValue = "school_alert_modal_dismiss_btn"
+                            )
+                        } else if (modalItem.onClick != null) {
+                            CompactGlassAlertPillButton(
+                                label = "فتح القسم",
+                                icon = Icons.AutoMirrored.Filled.ArrowForward,
+                                containerColor = if (isDark) Color(0xFF10B981) else Color(0xFF047857),
+                                borderColor = Color.Transparent,
+                                contentColor = if (isDark) Color(0xFF022C22) else Color.White,
+                                onClick = {
+                                    inspectedAlert = null
+                                    modalItem.onClick.invoke()
+                                },
+                                testTagValue = "school_alert_modal_open_btn"
+                            )
+                        } else {
+                            CompactGlassAlertPillButton(
+                                label = "إغلاق",
+                                icon = Icons.Filled.Close,
+                                containerColor = if (isDark) Color(0xFF1E3A32) else Color(0xFFF1F5F9),
+                                borderColor = Color.Transparent,
+                                contentColor = if (isDark) Color(0xFFECFDF5) else Color(0xFF334155),
+                                onClick = { inspectedAlert = null },
+                                testTagValue = "school_alert_modal_close_btn"
+                            )
                         }
                     }
                 }
@@ -7555,6 +7893,260 @@ private fun ImportantAlertBellCanvas(modifier: Modifier = Modifier) {
             color = Color(0xFFFEF3C7),
             radius = w * 0.05f,
             center = Offset(cx - w * 0.08f, h * 0.38f)
+        )
+    }
+}
+
+private fun isLiveAudioBroadcastAlertItem(item: SchoolBannerAlertItem): Boolean {
+    return item.title.contains("بث صوتي") ||
+        item.title.contains("بث مباشر") ||
+        item.subtitle.contains("بث صوتي") ||
+        item.badgeText.contains("بث")
+}
+
+/**
+ * أيقونة فيكتور متحركة بخلفية شفافة لتنبيه البث الصوتي المباشر:
+ * 4 أعمدة معادل صوتي (Equalizer) ترتفع وتنخفض بانسيابية عضوية ناعمة مع نقطة بث نابضة متناغمة.
+ */
+@Composable
+private fun LiveBroadcastEqualizerVectorIcon(
+    modifier: Modifier = Modifier,
+    onDarkSurface: Boolean = true
+) {
+    val infinite = rememberInfiniteTransition(label = "docked_live_eq_icon")
+    val eqPhase by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1550, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "docked_live_eq_phase"
+    )
+    val pulseProgress by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "docked_live_dot_pulse"
+    )
+
+    val barStartColor = if (onDarkSurface) Color(0xFF6EE7B7) else Color(0xFF059669)
+    val barEndColor = if (onDarkSurface) Color(0xFFECFDF5) else Color(0xFF10B981)
+    val liveDotColor = if (onDarkSurface) Color(0xFFFB7185) else Color(0xFFE11D48)
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = (w * 0.115f).coerceIn(2.0.dp.toPx(), 3.0.dp.toPx())
+        val baseBottom = h * 0.84f
+        val maxBarHeight = h * 0.54f
+        val minBarHeight = h * 0.16f
+
+        val barPositions = floatArrayOf(0.18f, 0.38f, 0.58f, 0.78f)
+        val phaseOffsets = floatArrayOf(0.0f, 1.35f, 2.55f, 3.85f)
+        val freqScales = floatArrayOf(1.0f, 2.0f, 1.0f, 2.0f)
+
+        for (i in barPositions.indices) {
+            val wave = (kotlin.math.sin((eqPhase * freqScales[i] + phaseOffsets[i]).toDouble()).toFloat() + 1f) * 0.5f
+            val barH = minBarHeight + (maxBarHeight - minBarHeight) * (0.22f + 0.78f * wave)
+            val x = w * barPositions[i]
+            drawLine(
+                brush = Brush.verticalGradient(
+                    colors = listOf(barEndColor, barStartColor),
+                    startY = baseBottom - barH,
+                    endY = baseBottom
+                ),
+                start = Offset(x, baseBottom),
+                end = Offset(x, baseBottom - barH),
+                strokeWidth = strokeW,
+                cap = StrokeCap.Round
+            )
+        }
+
+        // نقطة البث الحي النابضة بخفة وتناغم أعلى الزاوية
+        val dotCenter = Offset(w * 0.82f, h * 0.21f)
+        val haloRadius = (w * 0.11f) + (w * 0.14f) * pulseProgress
+        drawCircle(
+            color = liveDotColor.copy(alpha = (1f - pulseProgress) * 0.52f),
+            radius = haloRadius,
+            center = dotCenter
+        )
+        drawCircle(
+            color = liveDotColor,
+            radius = w * 0.105f,
+            center = dotCenter
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = 0.85f),
+            radius = w * 0.036f,
+            center = Offset(dotCenter.x - w * 0.025f, dotCenter.y - w * 0.025f)
+        )
+    }
+}
+
+/**
+ * أيقونة إشارات بث إدارية شفافة ومضيئة بلون نعناعي/ذهبي تندمج مباشرة على الشريط الزمردي الداكن.
+ */
+@Composable
+private fun DockedTransparentBroadcastPulseIcon(modifier: Modifier = Modifier) {
+    val infinite = rememberInfiniteTransition(label = "docked_admin_broadcast_pulse")
+    val pulse by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "docked_admin_pulse_val"
+    )
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val center = Offset(w * 0.5f, h * 0.5f)
+        val strokeW = 1.65.dp.toPx()
+
+        drawCircle(
+            color = Color(0xFF6EE7B7).copy(alpha = (1f - pulse) * 0.55f),
+            radius = w * (0.20f + 0.27f * pulse),
+            center = center,
+            style = Stroke(width = strokeW * 0.85f)
+        )
+        drawArc(
+            color = Color(0xFFA7F3D0).copy(alpha = 0.90f),
+            startAngle = -42f,
+            sweepAngle = 84f,
+            useCenter = false,
+            topLeft = Offset(w * 0.14f, h * 0.14f),
+            size = Size(w * 0.72f, h * 0.72f),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+        )
+        drawArc(
+            color = Color(0xFFA7F3D0).copy(alpha = 0.90f),
+            startAngle = 138f,
+            sweepAngle = 84f,
+            useCenter = false,
+            topLeft = Offset(w * 0.14f, h * 0.14f),
+            size = Size(w * 0.72f, h * 0.72f),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+        )
+        drawCircle(
+            color = Color(0xFFF3D58D),
+            radius = w * 0.135f,
+            center = center
+        )
+    }
+}
+
+/**
+ * أيقونة تقويم شفافة مضيئة بخطوط ناعمة لتنبيهات العطل على الشريط الزمردي الداكن.
+ */
+@Composable
+private fun DockedTransparentHolidayEmblemIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 1.6.dp.toPx()
+        val pad = w * 0.13f
+        val topY = h * 0.24f
+        val boxW = w - pad * 2f
+        val boxH = h * 0.62f
+
+        drawRoundRect(
+            color = Color(0xFFA7F3D0).copy(alpha = 0.92f),
+            topLeft = Offset(pad, topY),
+            size = Size(boxW, boxH),
+            cornerRadius = CornerRadius(w * 0.16f, w * 0.16f),
+            style = Stroke(width = strokeW)
+        )
+        drawLine(
+            color = Color(0xFFF3D58D).copy(alpha = 0.90f),
+            start = Offset(pad + strokeW, topY + boxH * 0.30f),
+            end = Offset(w - pad - strokeW, topY + boxH * 0.30f),
+            strokeWidth = strokeW * 0.9f
+        )
+        drawLine(
+            color = Color(0xFFF3D58D),
+            start = Offset(w * 0.34f, h * 0.12f),
+            end = Offset(w * 0.34f, topY + h * 0.06f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = Color(0xFFF3D58D),
+            start = Offset(w * 0.66f, h * 0.12f),
+            end = Offset(w * 0.66f, topY + h * 0.06f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        val check = Path().apply {
+            moveTo(w * 0.34f, h * 0.63f)
+            lineTo(w * 0.46f, h * 0.74f)
+            lineTo(w * 0.67f, h * 0.53f)
+        }
+        drawPath(
+            path = check,
+            color = Color(0xFFECFDF5),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+/**
+ * أيقونة جرس خطي شفاف ونابض بلطف للتنبيهات العامة على الشريط الزمردي الداكن (بدون خلفية بيضاء أو صفراء ثقيلة).
+ */
+@Composable
+private fun DockedTransparentBellPulseIcon(modifier: Modifier = Modifier) {
+    val infinite = rememberInfiniteTransition(label = "docked_bell_soft_pulse")
+    val glowAlpha by infinite.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "docked_bell_glow_alpha"
+    )
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cx = w * 0.5f
+        val strokeW = 1.65.dp.toPx()
+
+        val bellPath = Path().apply {
+            moveTo(cx - w * 0.28f, h * 0.72f)
+            lineTo(cx - w * 0.23f, h * 0.44f)
+            cubicTo(
+                cx - w * 0.23f, h * 0.20f,
+                cx + w * 0.23f, h * 0.20f,
+                cx + w * 0.23f, h * 0.44f
+            )
+            lineTo(cx + w * 0.28f, h * 0.72f)
+            close()
+        }
+        drawPath(
+            path = bellPath,
+            color = Color(0xFFA7F3D0).copy(alpha = 0.94f),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+        drawLine(
+            color = Color(0xFFECFDF5).copy(alpha = 0.92f),
+            start = Offset(cx - w * 0.34f, h * 0.72f),
+            end = Offset(cx + w * 0.34f, h * 0.72f),
+            strokeWidth = strokeW,
+            cap = StrokeCap.Round
+        )
+        drawCircle(
+            color = Color(0xFFF3D58D).copy(alpha = glowAlpha),
+            radius = w * 0.085f,
+            center = Offset(cx, h * 0.84f)
+        )
+        drawCircle(
+            color = Color(0xFF6EE7B7).copy(alpha = glowAlpha),
+            radius = w * 0.065f,
+            center = Offset(w * 0.76f, h * 0.23f)
         )
     }
 }

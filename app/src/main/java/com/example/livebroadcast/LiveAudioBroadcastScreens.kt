@@ -46,23 +46,34 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import android.webkit.JavascriptInterface
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PersonAddAlt1
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SupervisorAccount
+import com.example.util.SystemNotificationHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -182,7 +193,21 @@ fun LiveAudioBroadcastHubScreen(
         }
     }
 
+    val isPrincipal = currentUser?.role == UserRole.ADMIN
     var showCreateSheet by remember { mutableStateOf(false) }
+    var showPastHistoryDialog by remember { mutableStateOf(false) }
+    var isDeletingHistory by remember { mutableStateOf(false) }
+    var pendingDeletePastRoom by remember { mutableStateOf<LiveAudioRoom?>(null) }
+    var bannedEntryRoomTitle by remember { mutableStateOf<String?>(null) }
+
+    fun attemptEnterRoom(room: LiveAudioRoom) {
+        val uid = currentUser?.id.orEmpty()
+        if (!isPrincipal && uid.isNotBlank() && room.isUserBanned(uid)) {
+            bannedEntryRoomTitle = room.title
+            return
+        }
+        onEnterRoom(room)
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -199,49 +224,112 @@ fun LiveAudioBroadcastHubScreen(
             )
         }
 
-        // 2) Principal / Authorized Supervisor Launch Action Bar
-        if (canLaunchNewBroadcast) {
-            item(key = "launch_broadcast_action") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+        // 2) Principal / Authorized Supervisor Launch Action Bar + Quick Archive Button
+        item(key = "launch_broadcast_action") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (canLaunchNewBroadcast) {
                     SpringBroadcastButton(
                         text = "بدء بث صوتي جديد",
                         icon = Icons.Filled.Podcasts,
                         onClick = { showCreateSheet = true },
-                        height = 50.dp,
-                        cornerRadius = 16.dp,
+                        height = 48.dp,
+                        cornerRadius = 15.dp,
                         modifier = Modifier.weight(1f),
                         testTagName = "start_new_broadcast_button"
                     )
+                } else {
                     Surface(
-                        onClick = {
-                            scope.launch {
-                                LiveAudioBroadcastCloudStore.refreshRoomsFromCloud(context, cleanSchoolId)
-                            }
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        onClick = { showPastHistoryDialog = true },
+                        shape = RoundedCornerShape(15.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
                         modifier = Modifier
-                            .size(50.dp)
-                            .testTag("refresh_live_rooms_button")
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("hub_open_history_dialog_btn")
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            if (isSyncing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Filled.Refresh,
-                                    contentDescription = "تحديث جلسات البث",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.History,
+                                contentDescription = "سجل البثوث السابقة",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(19.dp)
+                            )
+                            Spacer(modifier = Modifier.width(7.dp))
+                            Text(
+                                text = "سجل البثوث السابقة (${pastEndedRooms.size})",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                if (canLaunchNewBroadcast) {
+                    Surface(
+                        onClick = { showPastHistoryDialog = true },
+                        shape = RoundedCornerShape(15.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .height(48.dp)
+                            .testTag("hub_open_history_dialog_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.History,
+                                contentDescription = "سجل البثوث",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "السجل",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    onClick = {
+                        scope.launch {
+                            LiveAudioBroadcastCloudStore.refreshRoomsFromCloud(context, cleanSchoolId)
+                        }
+                    },
+                    shape = RoundedCornerShape(15.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("refresh_live_rooms_button")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "تحديث جلسات البث",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 }
@@ -269,7 +357,7 @@ fun LiveAudioBroadcastHubScreen(
                     room = room,
                     currentUser = currentUser,
                     schoolConfig = schoolConfig,
-                    onEnterClick = { onEnterRoom(room) }
+                    onEnterClick = { attemptEnterRoom(room) }
                 )
             }
         } else {
@@ -286,27 +374,44 @@ fun LiveAudioBroadcastHubScreen(
                         .fillMaxWidth()
                         .padding(top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.History,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "سجل الجلسات السابقة",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "سجل الجلسات السابقة",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+
+                    TextButton(
+                        onClick = { showPastHistoryDialog = true },
+                        modifier = Modifier.testTag("hub_manage_past_sessions_btn")
+                    ) {
+                        Text(
+                            text = if (isPrincipal) "إدارة السجل" else "عرض الكل",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
             items(pastEndedRooms, key = { "ended_${it.id}" }) { pastRoom ->
                 PastBroadcastSessionCard(
                     room = pastRoom,
-                    schoolConfig = schoolConfig
+                    schoolConfig = schoolConfig,
+                    isPrincipal = isPrincipal,
+                    onRequestDelete = { pendingDeletePastRoom = pastRoom }
                 )
             }
         }
@@ -314,6 +419,93 @@ fun LiveAudioBroadcastHubScreen(
         item(key = "hub_bottom_spacer") {
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+
+    if (showPastHistoryDialog) {
+        PastBroadcastsHistoryDialog(
+            endedRooms = pastEndedRooms,
+            isPrincipal = isPrincipal,
+            isProcessingDelete = isDeletingHistory,
+            onDeleteSingle = { roomToDelete ->
+                isDeletingHistory = true
+                scope.launch {
+                    LiveAudioBroadcastCloudStore.deleteRoomFromHistory(context, cleanSchoolId, roomToDelete.id)
+                    isDeletingHistory = false
+                    viewModel.showToastAlert("تم حذف البث من السجل بنجاح", isSuccess = true)
+                }
+            },
+            onClearAll = {
+                isDeletingHistory = true
+                scope.launch {
+                    val count = LiveAudioBroadcastCloudStore.clearAllEndedHistory(context, cleanSchoolId)
+                    isDeletingHistory = false
+                    viewModel.showToastAlert("تم مسح $count من سجل البثوث السابقة بنجاح", isSuccess = true)
+                }
+            },
+            onDismiss = { showPastHistoryDialog = false }
+        )
+    }
+
+    pendingDeletePastRoom?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingDeletePastRoom = null },
+            title = { Text("تأكيد حذف البث من السجل", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Text(
+                    text = "هل تريد حذف جلسة «${target.title}» نهائياً من سجل البثوث السابقة؟",
+                    lineHeight = 22.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toDel = target
+                        pendingDeletePastRoom = null
+                        scope.launch {
+                            LiveAudioBroadcastCloudStore.deleteRoomFromHistory(context, cleanSchoolId, toDel.id)
+                            viewModel.showToastAlert("تم حذف البث من السجل", isSuccess = true)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BroadcastCoralEnd),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("حذف نهائي", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeletePastRoom = null }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    bannedEntryRoomTitle?.let { title ->
+        AlertDialog(
+            onDismissRequest = { bannedEntryRoomTitle = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Block,
+                    contentDescription = null,
+                    tint = BroadcastCoralEnd
+                )
+            },
+            title = { Text("تعذّر الدخول لهذا البث", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Text(
+                    text = "تم حظرك من الدخول إلى جلسة «$title» من قِبل إدارة المدرسة. يرجى مراجعة الإدارة لفك الحظر.",
+                    lineHeight = 22.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { bannedEntryRoomTitle = null },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("حسناً", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 
     if (showCreateSheet && currentUser != null) {
@@ -544,7 +736,9 @@ private fun ActiveLiveRoomHubCard(
 @Composable
 private fun PastBroadcastSessionCard(
     room: LiveAudioRoom,
-    schoolConfig: SchoolConfig
+    schoolConfig: SchoolConfig,
+    isPrincipal: Boolean = false,
+    onRequestDelete: () -> Unit = {}
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val isDark = isSystemInDarkTheme()
@@ -597,7 +791,7 @@ private fun PastBroadcastSessionCard(
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = room.title,
@@ -610,25 +804,55 @@ private fun PastBroadcastSessionCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = colorScheme.onSurfaceVariant
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "المدة: ${room.formattedDurationArabic()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "• ${formatParticipantsCountArabic(room.totalParticipantsCount)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isDark) BroadcastGoldLight else Color(0xFF92600A),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 Text(
                     text = formatCleanDate(room.resolvedCreatedDateForDisplay()),
                     style = MaterialTheme.typography.labelSmall,
-                    color = colorScheme.primary,
-                    fontWeight = FontWeight.Medium
+                    color = colorScheme.onSurfaceVariant
                 )
             }
 
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = colorScheme.surfaceVariant
-            ) {
-                Text(
-                    text = "جلسة منتهية",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                )
+            if (isPrincipal) {
+                IconButton(
+                    onClick = onRequestDelete,
+                    modifier = Modifier.testTag("hub_delete_past_room_${room.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = "حذف الجلسة من السجل",
+                        tint = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = "منتهية",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }
@@ -1017,15 +1241,32 @@ private fun StaffCoHostSelectRow(
 }
 
 /**
- * Interactive Live Audio Broadcast Room Screen.
- * - Requests RECORD_AUDIO runtime permission with a refined Arabic rationale if denied.
- * - Top Native Compose Bar (emerald gradient + gold bottom border) with:
- *   * Right: Pulsing Canvas "مباشر" badge + room title + audience pill (NO raw roomId!).
- *   * Left: Principal/Host gets uniform 36.dp (12.dp corners) "تخويل مشرف" + soft coral-red "إنهاء البث".
- *           Listener/Co-host gets calm 36.dp "مغادرة".
- * - Body: AndroidView WebView running ZEGOCLOUD UIKit Prebuilt Live Audio Room via HTTPS origin,
- *   client-side generateKitTokenForTest, auto Host vs Audience role, custom RTL emerald CSS,
- *   and guaranteed zp.destroy() + WebView cleanup on exit OR real-time status == "ended".
+ * Safe JavaScript bridge exposed inside the Live Audio Broadcast WebView so web-layer events
+ * can dispatch deduplicated Android native system notifications in addition to browser Notification API.
+ */
+private class MadrasatiBroadcastJsBridge(private val appContext: android.content.Context) {
+    @JavascriptInterface
+    fun notifyExternal(title: String?, body: String?, dedupKey: String?) {
+        SystemNotificationHelper.showLiveBroadcastNotificationOnce(
+            context = appContext,
+            dedupKey = dedupKey.orEmpty().trim(),
+            title = title.orEmpty().ifBlank { "بث صوتي مباشر" },
+            body = body.orEmpty(),
+            isUrgentInvite = false
+        )
+    }
+}
+
+private val detachedPresenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+/**
+ * Interactive Live Audio Broadcast Room Screen with Real-Time Moderation & Urgent Invites.
+ * - Tracks participant presence in Firebase on join & exit for real participant counts and live roster.
+ * - Enforces Principal Mute/Unmute (real mic track mute + UI lock in WebView + Compose banner),
+ *   Kick (immediate disconnect + clear message, allowed to join future broadcasts),
+ *   and Ban (immediate disconnect + blocked from re-entering this broadcast until unbanned).
+ * - Provides Principal controls inside the room: Participants & Moderation, Urgent Member Invite,
+ *   Co-Host Delegation, and End Broadcast.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("SetJavaScriptEnabled")
@@ -1040,6 +1281,7 @@ fun LiveAudioBroadcastRoomScreen(
     val currentUser by viewModel.currentUser.collectAsState()
     val schoolConfig by viewModel.schoolConfig.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
+    val students by viewModel.students.collectAsState()
     val allRooms by LiveAudioBroadcastCloudStore.rooms.collectAsState()
     val zegoConfig by LiveAudioBroadcastCloudStore.zegoConfig.collectAsState()
 
@@ -1047,6 +1289,7 @@ fun LiveAudioBroadcastRoomScreen(
     val liveRoom = remember(allRooms, initialRoom) {
         allRooms.firstOrNull { it.id == initialRoom.id } ?: initialRoom
     }
+    val roomSessionEnteredAt = remember(initialRoom.id) { System.currentTimeMillis() }
 
     val isHostRole = remember(liveRoom, currentUser) {
         isUserHostOrCoHost(liveRoom, currentUser)
@@ -1054,6 +1297,16 @@ fun LiveAudioBroadcastRoomScreen(
     val isPrincipalOrCreator = remember(liveRoom, currentUser) {
         val user = currentUser ?: return@remember false
         user.id == liveRoom.hostId || user.role == UserRole.ADMIN
+    }
+    val currentUserId = currentUser?.id.orEmpty()
+    val isMutedByAdmin = remember(liveRoom.mutedUserIds, currentUserId, isPrincipalOrCreator) {
+        !isPrincipalOrCreator && currentUserId.isNotBlank() && liveRoom.isUserMuted(currentUserId)
+    }
+    val isBannedByAdmin = remember(liveRoom.bannedUserIds, currentUserId, isPrincipalOrCreator) {
+        !isPrincipalOrCreator && currentUserId.isNotBlank() && liveRoom.isUserBanned(currentUserId)
+    }
+    val isKickedByAdmin = remember(liveRoom.kickedUsers, currentUserId, isPrincipalOrCreator, roomSessionEnteredAt) {
+        !isPrincipalOrCreator && currentUserId.isNotBlank() && liveRoom.kickedAtForUser(currentUserId) > roomSessionEnteredAt
     }
 
     var hasAudioPermission by remember {
@@ -1072,18 +1325,15 @@ fun LiveAudioBroadcastRoomScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        LiveAudioBroadcastCloudStore.fetchZegoConfig(context)
-        if (!hasAudioPermission) {
-            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
-    }
-
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var isWebViewDestroyed by remember { mutableStateOf(false) }
     var showEndBroadcastConfirm by remember { mutableStateOf(false) }
     var showCoHostManagerSheet by remember { mutableStateOf(false) }
+    var showModerationSheet by remember { mutableStateOf(false) }
+    var showUrgentInviteSheet by remember { mutableStateOf(false) }
+    var isSendingUrgentInvites by remember { mutableStateOf(false) }
     var hasAutoClosedForEnded by remember { mutableStateOf(false) }
+    var removalReasonDialog by remember { mutableStateOf<Pair<String, String>?>(null) } // title to message
 
     fun teardownWebViewSafely() {
         if (isWebViewDestroyed) return
@@ -1104,9 +1354,67 @@ fun LiveAudioBroadcastRoomScreen(
         }
     }
 
+    fun leaveRoomCleanly() {
+        teardownWebViewSafely()
+        if (currentUserId.isNotBlank()) {
+            val appCtx = context.applicationContext
+            val rid = liveRoom.id
+            detachedPresenceScope.launch {
+                LiveAudioBroadcastCloudStore.recordParticipantLeft(appCtx, cleanSchoolId, rid, currentUserId)
+            }
+        }
+        onExitRoom()
+    }
+
+    LaunchedEffect(Unit) {
+        LiveAudioBroadcastCloudStore.fetchZegoConfig(context)
+        if (!hasAudioPermission) {
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // Register participant presence in DB on join (and refresh if room reloads while live)
+    LaunchedEffect(liveRoom.id, currentUser?.id, isBannedByAdmin, isKickedByAdmin) {
+        val user = currentUser
+        if (user != null && liveRoom.isLive && !isBannedByAdmin && !isKickedByAdmin) {
+            LiveAudioBroadcastCloudStore.recordParticipantJoined(context, cleanSchoolId, liveRoom.id, user)
+        }
+    }
+
+    // Real-time Admin Mute Enforcement inside WebView
+    LaunchedEffect(isMutedByAdmin, webViewRef, isWebViewDestroyed) {
+        val wv = webViewRef
+        if (wv != null && !isWebViewDestroyed) {
+            runCatching {
+                wv.evaluateJavascript(
+                    "window.setAdminForceMute && window.setAdminForceMute(${if (isMutedByAdmin) "true" else "false"});",
+                    null
+                )
+            }
+        }
+    }
+
+    // Real-time Admin Ban Enforcement
+    LaunchedEffect(isBannedByAdmin) {
+        if (isBannedByAdmin && removalReasonDialog == null) {
+            teardownWebViewSafely()
+            removalReasonDialog = "تم حظرك من هذا البث" to
+                "قامت إدارة المدرسة بحظرك من دخول غرفة البث الحالية. لا يمكنك إعادة الدخول لهذا البث إلا في حال فك الحظر من قِبل الإدارة."
+        }
+    }
+
+    // Real-time Admin Kick Enforcement
+    LaunchedEffect(isKickedByAdmin) {
+        if (isKickedByAdmin && removalReasonDialog == null) {
+            teardownWebViewSafely()
+            removalReasonDialog = "تم إخراجك من غرفة البث" to
+                "قامت إدارة المدرسة بإخراجك من هذه الجلسة الصوتية. يمكنك الانضمام إلى البثوث الصوتية القادمة لاحقاً."
+        }
+    }
+
     // Real-time termination watcher: immediately close room when status becomes "ended"
     LaunchedEffect(liveRoom.status) {
-        if (!liveRoom.isLive && !hasAutoClosedForEnded) {
+        if (!liveRoom.isLive && !hasAutoClosedForEnded && removalReasonDialog == null) {
             hasAutoClosedForEnded = true
             teardownWebViewSafely()
             viewModel.showToastAlert("انتهى البث الصوتي المباشر", isSuccess = true)
@@ -1114,24 +1422,56 @@ fun LiveAudioBroadcastRoomScreen(
         }
     }
 
-    // Guaranteed cleanup when leaving composable
-    DisposableEffect(Unit) {
+    // Guaranteed cleanup + presence unregister when leaving composable
+    DisposableEffect(liveRoom.id, currentUserId) {
         onDispose {
             teardownWebViewSafely()
+            if (currentUserId.isNotBlank()) {
+                val appCtx = context.applicationContext
+                val rid = liveRoom.id
+                detachedPresenceScope.launch {
+                    LiveAudioBroadcastCloudStore.recordParticipantLeft(appCtx, cleanSchoolId, rid, currentUserId)
+                }
+            }
         }
     }
 
     BackHandler {
-        if (isPrincipalOrCreator) {
+        if (removalReasonDialog != null) {
+            removalReasonDialog = null
+            leaveRoomCleanly()
+        } else if (isPrincipalOrCreator) {
             showEndBroadcastConfirm = true
         } else {
-            teardownWebViewSafely()
-            onExitRoom()
+            leaveRoomCleanly()
         }
     }
 
     val teachingStaff = remember(accounts) {
         accounts.filter { it.role == UserRole.TEACHER && it.isActive && !it.isEffectiveBusDriver }
+    }
+
+    // Eligible school members NOT currently present in the broadcast (for "تنبيه عضو للدخول")
+    val eligibleAbsentUsers = remember(accounts, students, liveRoom.activeParticipants, liveRoom.bannedUserIds, currentUserId, liveRoom.targetAudience, liveRoom.targetGrade, liveRoom.targetSection) {
+        accounts.filter { user ->
+            if (!user.isActive || user.id.isBlank() || user.id == currentUserId) return@filter false
+            if (liveRoom.activeParticipants.containsKey(user.id)) return@filter false
+            if (liveRoom.isUserBanned(user.id)) return@filter false
+            val linked = user.linkedStudentId.takeIf { it.isNotBlank() }?.let { lid ->
+                students.firstOrNull { it.id == lid }
+            }
+            val children = if (user.role == UserRole.PARENT) viewModel.getChildrenForParent(user) else emptyList()
+            isUserIncludedInRoom(liveRoom, user, linked, children)
+        }.sortedWith(
+            compareBy<UserAccount> {
+                when (it.role) {
+                    UserRole.ADMIN -> 0
+                    UserRole.TEACHER -> 1
+                    UserRole.PARENT -> 2
+                    UserRole.STUDENT -> 3
+                }
+            }.thenBy { it.fullName }
+        )
     }
 
     Column(
@@ -1140,7 +1480,7 @@ fun LiveAudioBroadcastRoomScreen(
             .background(MaterialTheme.colorScheme.background)
             .testTag("live_audio_broadcast_room_screen")
     ) {
-        // Native Compose Emerald Top Bar with thin warm gold bottom border
+        // Native Compose Emerald Top Bar with Principal Moderation & Invite Toolbar
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1210,78 +1550,40 @@ fun LiveAudioBroadcastRoomScreen(
                     )
                 }
 
-                // Left (RTL end): Uniform 36.dp (12.dp corners) control buttons
+                // Left (RTL end): End Broadcast (Principal/Creator) OR Leave (Listener)
                 if (isPrincipalOrCreator) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        onClick = { showEndBroadcastConfirm = true },
+                        shape = RoundedCornerShape(12.dp),
+                        color = BroadcastCoralEnd,
+                        border = BorderStroke(0.9.dp, Color.White.copy(alpha = 0.28f)),
+                        modifier = Modifier
+                            .height(36.dp)
+                            .testTag("room_end_broadcast_button")
                     ) {
-                        Surface(
-                            onClick = { showCoHostManagerSheet = true },
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color.White.copy(alpha = 0.18f),
-                            border = BorderStroke(0.9.dp, BroadcastGoldLight.copy(alpha = 0.65f)),
-                            modifier = Modifier
-                                .height(36.dp)
-                                .testTag("room_delegate_cohost_button")
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.PersonAddAlt1,
-                                    contentDescription = "تخويل مشرف",
-                                    tint = BroadcastGoldLight,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "تخويل مشرف",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    softWrap = false
-                                )
-                            }
-                        }
-
-                        Surface(
-                            onClick = { showEndBroadcastConfirm = true },
-                            shape = RoundedCornerShape(12.dp),
-                            color = BroadcastCoralEnd,
-                            border = BorderStroke(0.9.dp, Color.White.copy(alpha = 0.28f)),
-                            modifier = Modifier
-                                .height(36.dp)
-                                .testTag("room_end_broadcast_button")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.CallEnd,
-                                    contentDescription = "إنهاء البث",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = "إنهاء البث",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    softWrap = false
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.CallEnd,
+                                contentDescription = "إنهاء البث",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "إنهاء البث",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                softWrap = false
+                            )
                         }
                     }
                 } else {
                     Surface(
-                        onClick = {
-                            teardownWebViewSafely()
-                            onExitRoom()
-                        },
+                        onClick = { leaveRoomCleanly() },
                         shape = RoundedCornerShape(12.dp),
                         color = Color.White.copy(alpha = 0.18f),
                         border = BorderStroke(0.9.dp, Color.White.copy(alpha = 0.35f)),
@@ -1312,6 +1614,111 @@ fun LiveAudioBroadcastRoomScreen(
                 }
             }
 
+            // Compact Principal Moderation & Urgent Invite Action Bar inside Room Header
+            if (isPrincipalOrCreator) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 12.dp, end = 12.dp, bottom = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 1) Participants & Moderation ("المشاركون والرقابة")
+                    Surface(
+                        onClick = { showModerationSheet = true },
+                        shape = RoundedCornerShape(11.dp),
+                        color = Color.White.copy(alpha = 0.16f),
+                        border = BorderStroke(0.85.dp, BroadcastGoldLight.copy(alpha = 0.65f)),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("room_participants_moderation_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Shield,
+                                contentDescription = "المشاركون والرقابة",
+                                tint = BroadcastGoldLight,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "المشاركون والرقابة (${liveRoom.activeParticipants.size})",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    // 2) Urgent Member Invite ("تنبيه عضو للدخول")
+                    Surface(
+                        onClick = { showUrgentInviteSheet = true },
+                        shape = RoundedCornerShape(11.dp),
+                        color = BroadcastGoldAccent.copy(alpha = 0.28f),
+                        border = BorderStroke(0.85.dp, BroadcastGoldLight.copy(alpha = 0.78f)),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("room_urgent_invite_member_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.NotificationsActive,
+                                contentDescription = "تنبيه عضو للدخول",
+                                tint = BroadcastGoldLight,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "تنبيه عضو للدخول",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                softWrap = false
+                            )
+                        }
+                    }
+
+                    // 3) Delegate Co-Host ("تخويل مشرف")
+                    Surface(
+                        onClick = { showCoHostManagerSheet = true },
+                        shape = RoundedCornerShape(11.dp),
+                        color = Color.White.copy(alpha = 0.14f),
+                        border = BorderStroke(0.85.dp, Color.White.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("room_delegate_cohost_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.PersonAddAlt1,
+                                contentDescription = "تخويل مشرف",
+                                tint = BroadcastMintSoft,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = "تخويل مشرف",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+
             // Thin warm gold divider line
             HorizontalDivider(
                 thickness = 1.2.dp,
@@ -1319,8 +1726,49 @@ fun LiveAudioBroadcastRoomScreen(
             )
         }
 
+        // Recipient Admin-Mute Lock Banner
+        AnimatedVisibility(
+            visible = isMutedByAdmin,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Surface(
+                color = BroadcastCoralEnd,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_muted_lock_banner")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MicOff,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "تم كتم صوتك وقفل الميكروفون من قِبل الإدارة حتى إلغاء الكتم.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
+
         // Room Body: Either Microphone Permission Rationale OR ZEGOCLOUD WebView Engine
-        if (!hasAudioPermission) {
+        if (removalReasonDialog != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+            )
+        } else if (!hasAudioPermission) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1399,10 +1847,7 @@ fun LiveAudioBroadcastRoomScreen(
                         }
 
                         TextButton(
-                            onClick = {
-                                teardownWebViewSafely()
-                                onExitRoom()
-                            }
+                            onClick = { leaveRoomCleanly() }
                         ) {
                             Text("العودة إلى مركز البث")
                         }
@@ -1435,7 +1880,8 @@ fun LiveAudioBroadcastRoomScreen(
                     cleanUserId = cleanUserId,
                     userDisplayName = displayName,
                     isHostRole = isHostRole,
-                    isDarkMode = isDark
+                    isDarkMode = isDark,
+                    initialAdminMuted = isMutedByAdmin
                 )
             }
 
@@ -1468,7 +1914,21 @@ fun LiveAudioBroadcastRoomScreen(
                                 cacheMode = WebSettings.LOAD_DEFAULT
                                 mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
                             }
-                            webViewClient = WebViewClient()
+                            addJavascriptInterface(
+                                MadrasatiBroadcastJsBridge(ctx.applicationContext),
+                                "MadrasatiBroadcastBridge"
+                            )
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    super.onPageFinished(view, url)
+                                    if (isMutedByAdmin) {
+                                        view?.evaluateJavascript(
+                                            "window.setAdminForceMute && window.setAdminForceMute(true);",
+                                            null
+                                        )
+                                    }
+                                }
+                            }
                             webChromeClient = object : WebChromeClient() {
                                 override fun onPermissionRequest(request: PermissionRequest?) {
                                     request?.let { req ->
@@ -1515,6 +1975,38 @@ fun LiveAudioBroadcastRoomScreen(
         }
     }
 
+    // Recipient Kick / Ban Explanation Dialog (blocking until acknowledged)
+    removalReasonDialog?.let { (dialogTitle, dialogBody) ->
+        AlertDialog(
+            onDismissRequest = {
+                removalReasonDialog = null
+                leaveRoomCleanly()
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Block,
+                    contentDescription = null,
+                    tint = BroadcastCoralEnd
+                )
+            },
+            title = { Text(text = dialogTitle, fontWeight = FontWeight.ExtraBold) },
+            text = { Text(text = dialogBody, lineHeight = 22.sp) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        removalReasonDialog = null
+                        leaveRoomCleanly()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BroadcastCoralEnd),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("acknowledge_kicked_or_banned_btn")
+                ) {
+                    Text("العودة", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
     // End Broadcast Confirmation Dialog (Principal / Host)
     if (showEndBroadcastConfirm) {
         AlertDialog(
@@ -1527,7 +2019,7 @@ fun LiveAudioBroadcastRoomScreen(
             },
             text = {
                 Text(
-                    text = "هل تريد إنهاء هذا البث الصوتي للجميع الآن؟ سيتم إغلاق الغرفة تلقائياً لدى جميع المستمعين والمشرفين وحفظ الجلسة في السجل.",
+                    text = "هل تريد إنهاء هذا البث الصوتي للجميع الآن؟ سيتم إغلاق الغرفة تلقائياً لدى جميع المستمعين والمشرفين وحفظ الجلسة مع مدتها في السجل.",
                     lineHeight = 22.sp
                 )
             },
@@ -1539,7 +2031,7 @@ fun LiveAudioBroadcastRoomScreen(
                         teardownWebViewSafely()
                         scope.launch {
                             LiveAudioBroadcastCloudStore.endLiveRoom(context, cleanSchoolId, liveRoom.id)
-                            viewModel.showToastAlert("انتهى البث الصوتي المباشر", isSuccess = true)
+                            viewModel.showToastAlert("انتهى البث الصوتي المباشر وتم حفظه في السجل", isSuccess = true)
                             onExitRoom()
                         }
                     },
@@ -1555,8 +2047,7 @@ fun LiveAudioBroadcastRoomScreen(
                     TextButton(
                         onClick = {
                             showEndBroadcastConfirm = false
-                            teardownWebViewSafely()
-                            onExitRoom()
+                            leaveRoomCleanly()
                         }
                     ) {
                         Text("مغادرة فقط")
@@ -1566,6 +2057,107 @@ fun LiveAudioBroadcastRoomScreen(
                     }
                 }
             }
+        )
+    }
+
+    // Participants & Moderation Sheet (Principal / Creator)
+    if (showModerationSheet && isPrincipalOrCreator) {
+        RoomParticipantsModerationSheet(
+            room = liveRoom,
+            currentUserId = currentUserId,
+            allAccounts = accounts,
+            schoolConfig = schoolConfig,
+            onToggleMute = { participant ->
+                scope.launch {
+                    val wasMuted = liveRoom.isUserMuted(participant.userId)
+                    LiveAudioBroadcastCloudStore.toggleMuteParticipant(
+                        context = context,
+                        rawSchoolId = cleanSchoolId,
+                        roomId = liveRoom.id,
+                        targetUserId = participant.userId
+                    )
+                    viewModel.showToastAlert(
+                        if (wasMuted) "تم إلغاء كتم صوت ${participant.fullName}"
+                        else "تم كتم صوت ${participant.fullName} فوراً",
+                        isSuccess = true
+                    )
+                }
+            },
+            onKick = { participant ->
+                scope.launch {
+                    LiveAudioBroadcastCloudStore.kickParticipant(
+                        context = context,
+                        rawSchoolId = cleanSchoolId,
+                        roomId = liveRoom.id,
+                        targetUserId = participant.userId
+                    )
+                    viewModel.showToastAlert("تم إخراج ${participant.fullName} من غرفة البث", isSuccess = true)
+                }
+            },
+            onBan = { participant ->
+                scope.launch {
+                    LiveAudioBroadcastCloudStore.banParticipant(
+                        context = context,
+                        rawSchoolId = cleanSchoolId,
+                        roomId = liveRoom.id,
+                        targetUserId = participant.userId,
+                        targetFullName = participant.fullName
+                    )
+                    viewModel.showToastAlert("تم حظر ${participant.fullName} من هذا البث", isSuccess = true)
+                }
+            },
+            onUnban = { uid, displayName ->
+                scope.launch {
+                    LiveAudioBroadcastCloudStore.unbanParticipant(
+                        context = context,
+                        rawSchoolId = cleanSchoolId,
+                        roomId = liveRoom.id,
+                        targetUserId = uid
+                    )
+                    viewModel.showToastAlert("تم فك الحظر عن $displayName بنجاح", isSuccess = true)
+                }
+            },
+            onDismiss = { showModerationSheet = false }
+        )
+    }
+
+    // Urgent Member Invite Sheet ("تنبيه عضو للدخول")
+    if (showUrgentInviteSheet && isPrincipalOrCreator) {
+        UrgentMemberInviteSheet(
+            eligibleAbsentUsers = eligibleAbsentUsers,
+            schoolConfig = schoolConfig,
+            isSending = isSendingUrgentInvites,
+            onSendInvites = { chosenUsers ->
+                isSendingUrgentInvites = true
+                scope.launch {
+                    val senderDisplay = currentUser?.fullName?.ifBlank { "إدارة المدرسة" } ?: "إدارة المدرسة"
+                    val sent = LiveAudioBroadcastCloudStore.sendUrgentInvites(
+                        context = context,
+                        rawSchoolId = cleanSchoolId,
+                        roomId = liveRoom.id,
+                        targets = chosenUsers,
+                        senderName = senderDisplay
+                    )
+                    chosenUsers.forEach { target ->
+                        viewModel.pushNotification(
+                            title = "تنبيه عاجل: مطلوب حضورك في البث المباشر",
+                            body = "تدعوك $senderDisplay للانضمام فوراً إلى بث «${liveRoom.title}»",
+                            type = NotificationType.REPORT,
+                            targetUserId = target.id,
+                            targetSection = AppSection.LIVE_AUDIO_BROADCAST.name,
+                            isUrgent = true,
+                            priority = "high"
+                        )
+                    }
+                    isSendingUrgentInvites = false
+                    showUrgentInviteSheet = false
+                    viewModel.showToastAlert(
+                        "تم إرسال تنبيه عاجل للدخول إلى ${sent.size} من الأعضاء",
+                        isSuccess = true
+                    )
+                }
+            },
+            onDismiss = { showUrgentInviteSheet = false }
         )
     }
 
@@ -1718,7 +2310,8 @@ private fun buildZegoLiveAudioRoomHtml(
     cleanUserId: String,
     userDisplayName: String,
     isHostRole: Boolean,
-    isDarkMode: Boolean
+    isDarkMode: Boolean,
+    initialAdminMuted: Boolean = false
 ): String {
     val jsSecret = JSONObject.quote(serverSecret)
     val jsRoomId = JSONObject.quote(roomId)
@@ -1812,9 +2405,19 @@ private fun buildZegoLiveAudioRoomHtml(
     #zego-root [class*="Zego"] {
       direction: rtl;
     }
+    /* When locked by Principal mute, disable mic toggle affordances visually & interactively */
+    body.admin-mic-locked [class*="Mic"],
+    body.admin-mic-locked [class*="mic"],
+    body.admin-mic-locked [class*="Audio"],
+    body.admin-mic-locked [aria-label*="mic" i],
+    body.admin-mic-locked [title*="mic" i] {
+      pointer-events: none !important;
+      opacity: 0.42 !important;
+      filter: grayscale(0.8);
+    }
   </style>
 </head>
-<body>
+<body class="${if (initialAdminMuted) "admin-mic-locked" else ""}">
   <div id="loading-overlay">
     <div class="loader-ring"></div>
     <div class="loader-title">جارٍ تهيئة الاستوديو الصوتي المباشر...</div>
@@ -1823,6 +2426,81 @@ private fun buildZegoLiveAudioRoomHtml(
   </div>
   <div id="zego-root"></div>
 
+  <script>
+    (function () {
+      window.__madrasatiAudioTracks = [];
+      window.__madrasatiAdminMuted = ${if (initialAdminMuted) "true" else "false"};
+
+      // Wrap getUserMedia early so every captured microphone MediaStreamTrack can be strictly muted/unmuted by Principal
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+        var origGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = function (constraints) {
+          return origGetUserMedia(constraints).then(function (stream) {
+            try {
+              var tracks = stream.getAudioTracks ? stream.getAudioTracks() : [];
+              tracks.forEach(function (t) {
+                window.__madrasatiAudioTracks.push(t);
+                if (window.__madrasatiAdminMuted) {
+                  t.enabled = false;
+                }
+              });
+            } catch (e) {}
+            return stream;
+          });
+        };
+      }
+
+      function enforceAudioTracksMuteState() {
+        try {
+          var muted = !!window.__madrasatiAdminMuted;
+          window.__madrasatiAudioTracks = window.__madrasatiAudioTracks.filter(function (t) {
+            return t && t.readyState !== "ended";
+          });
+          window.__madrasatiAudioTracks.forEach(function (t) {
+            t.enabled = !muted;
+          });
+        } catch (e) {}
+      }
+
+      window.setAdminForceMute = function (isMuted) {
+        window.__madrasatiAdminMuted = !!isMuted;
+        if (window.__madrasatiAdminMuted) {
+          document.body.classList.add("admin-mic-locked");
+        } else {
+          document.body.classList.remove("admin-mic-locked");
+        }
+        enforceAudioTracksMuteState();
+      };
+
+      // Dual-path external notification helper: Android native bridge first, Browser Notification API fallback
+      window.madrasatiNotifyExternal = function (title, body, dedupKey) {
+        try {
+          if (window.MadrasatiBroadcastBridge && typeof window.MadrasatiBroadcastBridge.notifyExternal === "function") {
+            window.MadrasatiBroadcastBridge.notifyExternal(String(title || ""), String(body || ""), String(dedupKey || ""));
+            return;
+          }
+          if ("Notification" in window) {
+            if (Notification.permission === "granted") {
+              new Notification(String(title || "بث صوتي مباشر"), { body: String(body || ""), tag: String(dedupKey || "") });
+            } else if (Notification.permission === "default") {
+              Notification.requestPermission().then(function (perm) {
+                if (perm === "granted") {
+                  new Notification(String(title || "بث صوتي مباشر"), { body: String(body || ""), tag: String(dedupKey || "") });
+                }
+              });
+            }
+          }
+        } catch (e) {}
+      };
+
+      setInterval(function () {
+        if (window.__madrasatiAdminMuted) {
+          enforceAudioTracksMuteState();
+        }
+      }, 900);
+    })();
+  </script>
+
   <script src="https://unpkg.com/@zegocloud/zego-uikit-prebuilt/zego-uikit-prebuilt.js"></script>
   <script>
     (function () {
@@ -1830,6 +2508,12 @@ private fun buildZegoLiveAudioRoomHtml(
 
       window.destroyZegoRoom = function () {
         try {
+          if (window.__madrasatiAudioTracks) {
+            window.__madrasatiAudioTracks.forEach(function (t) {
+              try { t.stop(); } catch (e) {}
+            });
+            window.__madrasatiAudioTracks = [];
+          }
           if (zpInstance && typeof zpInstance.destroy === "function") {
             zpInstance.destroy();
           }
@@ -1894,7 +2578,7 @@ private fun buildZegoLiveAudioRoomHtml(
             showUserList: true,
             showAudioVideoSettingsButton: false,
             showTextChat: true,
-            turnOnMicrophoneWhenJoining: isHost,
+            turnOnMicrophoneWhenJoining: isHost && !window.__madrasatiAdminMuted,
             turnOnCameraWhenJoining: false,
             showMyCameraToggleButton: false,
             showScreenSharingButton: false,
@@ -1904,6 +2588,9 @@ private fun buildZegoLiveAudioRoomHtml(
             },
             onJoinRoom: function () {
               hideLoader();
+              if (window.__madrasatiAdminMuted) {
+                window.setAdminForceMute(true);
+              }
             },
             onLeaveRoom: function () {
               window.destroyZegoRoom();
