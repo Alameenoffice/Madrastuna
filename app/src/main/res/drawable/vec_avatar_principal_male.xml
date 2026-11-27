@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="160"
+    android:viewportHeight="160">
+
+    <!-- Editorial Soft Mint-Ivory Backdrop -->
+    <path android:pathData="M0,0 H160 V160 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="20"
+                android:startY="10"
+                android:endX="140"
+                android:endY="155"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFF4FBF7" />
+                <item android:offset="0.6" android:color="#FFDDF5EA" />
+                <item android:offset="1" android:color="#FFC2EAD9" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Architectural Gold Halo Arc -->
+    <path
+        android:pathData="M80,14 A66,66 0 1,1 79.9,14 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#38D9A441"
+        android:strokeWidth="1.6" />
+    <path
+        android:pathData="M24,132 Q80,96 136,132 L160,160 L0,160 Z"
+        android:fillColor="#16064E3B" />
+
+    <!-- Executive Deep Emerald Suit Shoulders -->
+    <path android:pathData="M18,160 C21,126 42,110 80,110 C118,110 139,126 142,160 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="80"
+                android:startY="108"
+                android:endX="80"
+                android:endY="160"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF065F46" />
+                <item android:offset="1" android:color="#FF022C22" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Crisp Ivory Shirt V-Cut -->
+    <path
+        android:pathData="M62,111 L80,150 L98,111 Z"
+        android:fillColor="#FFFDFBF7" />
+
+    <!-- Tailored Suit Lapels -->
+    <path
+        android:pathData="M62,111 L52,126 L64,132 L58,144 L80,156 L72,124 Z"
+        android:fillColor="#FF044635" />
+    <path
+        android:pathData="M98,111 L108,126 L96,132 L102,144 L80,156 L88,124 Z"
+        android:fillColor="#FF044635" />
+
+    <!-- Warm Gold-Emerald Silk Tie -->
+    <path android:pathData="M75,117 L85,117 L82,125 L86,154 L80,160 L74,154 L78,125 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="80"
+                android:startY="117"
+                android:endX="80"
+                android:endY="160"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFD9A441" />
+                <item android:offset="1" android:color="#FFA6741D" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M76,117 L84,117 L82,124 L78,124 Z"
+        android:fillColor="#FFE7C16F" />
+
+    <!-- Subtle Gold Executive Lapel Pin -->
+    <path
+        android:pathData="M104,132 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+        android:fillColor="#FFE7C16F" />
+
+    <!-- Neck & Warm Chin Shadow -->
+    <path
+        android:pathData="M68,94 L92,94 L94,115 C88,121 72,121 66,115 Z"
+        android:fillColor="#FFE3B391" />
+    <path
+        android:pathData="M69,96 C75,107 85,107 91,96 L91,103 C84,111 76,111 69,103 Z"
+        android:fillColor="#FFCCA07E" />
+
+    <!-- Shirt Collar Tips -->
+    <path
+        android:pathData="M66,109 L78,121 L63,121 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M94,109 L82,121 L97,121 Z"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- Ears -->
+    <path
+        android:pathData="M48,68 C44,68 43,78 48,82 C50,83 52,81 52,78 L52,71 C52,69 50,68 48,68 Z"
+        android:fillColor="#FFE0AE8A" />
+    <path
+        android:pathData="M112,68 C116,68 117,78 112,82 C110,83 108,81 108,78 L108,71 C108,69 110,68 112,68 Z"
+        android:fillColor="#FFE0AE8A" />
+
+    <!-- Sculpted Face -->
+    <path android:pathData="M51,64 C51,42 64,33 80,33 C96,33 109,42 109,64 C109,83 98,103 80,104 C62,103 51,83 51,64 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="80"
+                android:startY="34"
+                android:endX="80"
+                android:endY="104"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFF5D0B5" />
+                <item android:offset="1" android:color="#FFE8BA99" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Neat Structured Executive Hair -->
+    <path android:pathData="M49,66 C47,44 57,26 81,25 C103,24 114,41 111,66 C109,54 103,45 94,43 C84,41 72,44 63,46 C55,48 52,56 49,66 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="52"
+                android:startY="24"
+                android:endX="110"
+                android:endY="66"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF2D3748" />
+                <item android:offset="1" android:color="#FF1A202C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- Hair Part Highlight -->
+    <path
+        android:pathData="M64,34 Q82,29 99,36"
+        android:fillColor="#00000000"
+        android:strokeColor="#38FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+
+    <!-- Lightly Trimmed Dignified Beard & Moustache -->
+    <path
+        android:pathData="M53,78 C55,95 66,105 80,105 C94,105 105,95 107,78 C104,88 94,97 80,97 C66,97 56,88 53,78 Z"
+        android:fillColor="#CC263140" />
+    <path
+        android:pathData="M71,84 Q80,81 89,84 Q85,87 80,86 Q75,87 71,84 Z"
+        android:fillColor="#DD263140" />
+
+    <!-- Expressive Eyebrows -->
+    <path
+        android:pathData="M60,61 Q67,58 74,60"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF252F3D"
+        android:strokeWidth="2.3"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M86,60 Q93,58 100,61"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF252F3D"
+        android:strokeWidth="2.3"
+        android:strokeLineCap="round" />
+
+    <!-- Refined Editorial Almond Eyes (NOT primitive dots) -->
+    <path
+        android:pathData="M61,68 Q67,64 73,68 Q67,72 61,68 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M67,68 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0"
+        android:fillColor="#FF1F2937" />
+    <path
+        android:pathData="M68,67 m-0.8,0 a0.8,0.8 0 1,0 1.6,0 a0.8,0.8 0 1,0 -1.6,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M60.5,67.5 Q67,63.5 73.5,67.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF1F2937"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+
+    <path
+        android:pathData="M87,68 Q93,64 99,68 Q93,72 87,68 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M93,68 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0"
+        android:fillColor="#FF1F2937" />
+    <path
+        android:pathData="M94,67 m-0.8,0 a0.8,0.8 0 1,0 1.6,0 a0.8,0.8 0 1,0 -1.6,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M86.5,67.5 Q93,63.5 99.5,67.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF1F2937"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+
+    <!-- Subtle Editorial Nose Contour -->
+    <path
+        android:pathData="M80,68 L78.5,77 Q80,79 82,77.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD29E79"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round" />
+
+    <!-- Calm Confident Smile -->
+    <path
+        android:pathData="M73,88 Q80,92.5 87,88"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF8C4A3B"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+</vector>

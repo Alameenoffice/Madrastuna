@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="160"
+    android:viewportHeight="160">
+
+    <!-- Warm Academic Sage-Ivory Backdrop -->
+    <path android:pathData="M0,0 H160 V160 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="15"
+                android:startY="12"
+                android:endX="145"
+                android:endY="155"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFF3FAF8" />
+                <item android:offset="0.55" android:color="#FFD8F1EB" />
+                <item android:offset="1" android:color="#FFB8E4DA" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Geometric Academic Ring -->
+    <path
+        android:pathData="M80,15 A65,65 0 1,1 79.9,15 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#300F766E"
+        android:strokeWidth="1.4" />
+
+    <!-- Modern Academic Teal-Slate Jacket (distinct from Principal) -->
+    <path android:pathData="M20,160 C23,127 44,111 80,111 C116,111 137,127 140,160 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="80"
+                android:startY="110"
+                android:endX="80"
+                android:endY="160"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF0F766E" />
+                <item android:offset="1" android:color="#FF115E59" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Smart Open-Collar Soft Mint Shirt -->
+    <path
+        android:pathData="M62,111 L80,148 L98,111 Z"
+        android:fillColor="#FFEBFBF5" />
+    <path
+        android:pathData="M63,111 L54,132 L69,144 L80,153 L71,123 Z"
+        android:fillColor="#FF0D625C" />
+    <path
+        android:pathData="M97,111 L106,132 L91,144 L80,153 L89,123 Z"
+        android:fillColor="#FF0D625C" />
+
+    <!-- Neck & Shadow -->
+    <path
+        android:pathData="M69,94 L91,94 L93,115 C87,121 73,121 67,115 Z"
+        android:fillColor="#FFE6B896" />
+    <path
+        android:pathData="M70,96 C75,105 85,105 90,96 L90,102 C84,109 76,109 70,102 Z"
+        android:fillColor="#FFD0A180" />
+
+    <!-- Open Shirt Collar -->
+    <path
+        android:pathData="M66,108 L78,124 L61,122 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M94,108 L82,124 L99,122 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M80,126 L80,146"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFBCE3D6"
+        android:strokeWidth="1.2" />
+
+    <!-- Ears -->
+    <path
+        android:pathData="M49,68 C45,68 44,78 49,82 C51,83 53,81 53,78 L53,71 C53,69 51,68 49,68 Z"
+        android:fillColor="#FFE3B491" />
+    <path
+        android:pathData="M111,68 C115,68 116,78 111,82 C109,83 107,81 107,78 L107,71 C107,69 109,68 111,68 Z"
+        android:fillColor="#FFE3B491" />
+
+    <!-- Sculpted Face -->
+    <path android:pathData="M52,65 C52,43 64,34 80,34 C96,34 108,43 108,65 C108,84 97,102 80,103 C63,102 52,84 52,65 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="80"
+                android:startY="35"
+                android:endX="80"
+                android:endY="103"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFF7D5BC" />
+                <item android:offset="1" android:color="#FFEBC0A0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Modern Side-Swept Educator Hair -->
+    <path android:pathData="M49,66 C48,43 59,26 83,26 C105,26 113,43 111,66 C108,52 101,45 92,44 C82,43 70,47 61,44 C55,47 52,55 49,66 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="52"
+                android:startY="25"
+                android:endX="110"
+                android:endY="64"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF3B2F2F" />
+                <item android:offset="1" android:color="#FF241C1C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Eyebrows -->
+    <path
+        android:pathData="M60,60 Q67,57.5 74,59.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF332727"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M86,59.5 Q93,57.5 100,60"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF332727"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round" />
+
+    <!-- Expressive Eyes -->
+    <path
+        android:pathData="M61,68 Q67,64.5 73,68 Q67,71.5 61,68 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M67,68 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0"
+        android:fillColor="#FF251E1D" />
+    <path
+        android:pathData="M68,67.2 m-0.7,0 a0.7,0.7 0 1,0 1.4,0 a0.7,0.7 0 1,0 -1.4,0"
+        android:fillColor="#FFFFFFFF" />
+
+    <path
+        android:pathData="M87,68 Q93,64.5 99,68 Q93,71.5 87,68 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M93,68 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0"
+        android:fillColor="#FF251E1D" />
+    <path
+        android:pathData="M94,67.2 m-0.7,0 a0.7,0.7 0 1,0 1.4,0 a0.7,0.7 0 1,0 -1.4,0"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- Modern Slim Academic Eyeglasses -->
+    <path
+        android:pathData="M58,64 H75 A3,3 0 0,1 78,67 V71 A4,4 0 0,1 74,75 H61 A4,4 0 0,1 57,71 V67 A3,3 0 0,1 58,64 Z"
+        android:fillColor="#16FFFFFF"
+        android:strokeColor="#FF2E3A46"
+        android:strokeWidth="1.6" />
+    <path
+        android:pathData="M85,64 H102 A3,3 0 0,1 103,67 V71 A4,4 0 0,1 99,75 H86 A4,4 0 0,1 82,71 V67 A3,3 0 0,1 85,64 Z"
+        android:fillColor="#16FFFFFF"
+        android:strokeColor="#FF2E3A46"
+        android:strokeWidth="1.6" />
+    <path
+        android:pathData="M78,68 Q80,66.5 82,68"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF2E3A46"
+        android:strokeWidth="1.5" />
+
+    <!-- Nose & Warm Friendly Smile -->
+    <path
+        android:pathData="M80,69 L78.8,77.5 Q80,79 81.8,77.8"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD5A380"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M72.5,86.5 Q80,92 87.5,86.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF9A5041"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round" />
+</vector>

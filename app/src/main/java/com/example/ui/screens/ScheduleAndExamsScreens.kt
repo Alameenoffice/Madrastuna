@@ -1,0 +1,8897 @@
+package com.example.ui.screens
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.model.*
+import com.example.ui.components.*
+import com.example.ui.theme.*
+import com.example.util.DocumentAndIdExporter
+import com.example.util.ImageCompressor
+import com.example.viewmodel.SchoolViewModel
+
+/**
+ * Section 3: Weekly Schedule & Daily Preparation / Homework Screen
+ * Dynamically scoped to registered classes/sections (and locked to the student's own class/section for Parent/Student).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScheduleAndHomeworkScreen(
+    viewModel: SchoolViewModel
+) {
+    val context = LocalContext.current
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val featureSettings by viewModel.featureSettings.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val students by viewModel.students.collectAsState()
+    val schedules by viewModel.schedules.collectAsState()
+    val homeworks by viewModel.homeworks.collectAsState()
+    val homeworkSubmissions by viewModel.homeworkSubmissions.collectAsState()
+    val quickQuizzes by viewModel.quickQuizzes.collectAsState()
+    val quickQuizAnswers by viewModel.quickQuizAnswers.collectAsState()
+    val studyMaterials by viewModel.studyMaterials.collectAsState()
+    val accounts by viewModel.accounts.collectAsState()
+    val staffTitleSingular = schoolConfig.schoolStage.staffTitleSingular
+
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
+    val canPublish = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
+    val activeStudent = remember(currentUser, students, selectedParentChildId) {
+        viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
+    }
+
+    val allowedClasses = remember(schoolConfig, currentUser, students, selectedParentChildId) {
+        viewModel.getAllowedClassesForUser(currentUser)
+    }
+    var selectedClass by remember(currentUser?.id, allowedClasses) {
+        mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
+    }
+    val allowedSections = remember(schoolConfig, currentUser, students, selectedClass, selectedParentChildId) {
+        viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
+    }
+    var selectedSection by remember(currentUser?.id, selectedClass, allowedSections) {
+        mutableStateOf(allowedSections.firstOrNull() ?: "أ")
+    }
+    val allowedSubjects = remember(schoolConfig, selectedClass, currentUser) {
+        viewModel.getSubjectsForClass(selectedClass, currentUser)
+    }
+
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = التحضير والواجبات, 1 = جدول الحصص الأسبوعي, 2 = المكتبة والملخصات
+    var selectedDay by remember { mutableStateOf("الأحد") }
+
+    var showPublishHomeworkDialog by remember { mutableStateOf(false) }
+    var editingHomework by remember { mutableStateOf<HomeworkItem?>(null) }
+    var deletingHomework by remember { mutableStateOf<HomeworkItem?>(null) }
+    var showPublishQuickQuizDialog by remember { mutableStateOf(false) }
+    var editingQuiz by remember { mutableStateOf<QuickQuizItem?>(null) }
+    var showAddPeriodDialog by remember { mutableStateOf(false) }
+    var showPublishStudyMaterialDialog by remember { mutableStateOf(false) }
+
+    val deepLinkTarget by viewModel.deepLinkTarget.collectAsState()
+    LaunchedEffect(deepLinkTarget) {
+        val target = deepLinkTarget
+        if (target != null && target.section == AppSection.SCHEDULE_HOMEWORK) {
+            selectedTab = target.tabIndex.coerceIn(0, 2)
+            viewModel.clearDeepLinkTarget()
+        }
+    }
+
+    LaunchedEffect(featureSettings.studyLibraryEnabled, featureSettings.quickQuizzesEnabled) {
+        if (!featureSettings.studyLibraryEnabled) {
+            if (selectedTab == 2) selectedTab = 0
+            showPublishStudyMaterialDialog = false
+        }
+        if (!featureSettings.quickQuizzesEnabled) {
+            showPublishQuickQuizDialog = false
+        }
+    }
+
+    val filteredHomeworks = remember(homeworks, selectedClass, selectedSection, currentUser) {
+        homeworks.filter { hw ->
+            val clsMatch = ArabicTextNormalizer.matchesClass(hw.gradeClass, selectedClass) &&
+                ArabicTextNormalizer.matchesSection(hw.sectionName, selectedSection)
+            val subjMatch = if (currentUser?.role == UserRole.TEACHER) {
+                currentUser?.canTeacherAccessSubject(hw.subjectName) == true
+            } else true
+            clsMatch && subjMatch
+        }.sortedByDescending { it.createdAt.ifBlank { it.dueDate } }
+    }
+    var selectedHomeworkDateFilter by remember(selectedClass, selectedSection) {
+        mutableStateOf("الكل")
+    }
+    val homeworkDatesIndex = remember(filteredHomeworks) {
+        filteredHomeworks
+            .groupBy { hw -> hw.createdAt.trim().ifBlank { hw.dueDate.trim() } }
+            .entries
+            .filter { it.key.isNotBlank() }
+            .sortedByDescending { it.key }
+            .map { it.key to it.value.size }
+    }
+    val dateScopedHomeworks = remember(filteredHomeworks, selectedHomeworkDateFilter) {
+        if (selectedHomeworkDateFilter == "الكل") {
+            filteredHomeworks
+        } else {
+            filteredHomeworks.filter { hw ->
+                val dateKey = hw.createdAt.trim().ifBlank { hw.dueDate.trim() }
+                dateKey == selectedHomeworkDateFilter
+            }
+        }
+    }
+    var homeworksVisibleCount by remember(selectedClass, selectedSection, selectedHomeworkDateFilter, dateScopedHomeworks.size) {
+        mutableStateOf(8)
+    }
+    val displayedHomeworks = remember(dateScopedHomeworks, homeworksVisibleCount) {
+        dateScopedHomeworks.take(homeworksVisibleCount)
+    }
+
+    val classScopedQuickQuizzes = remember(quickQuizzes, selectedClass, selectedSection, currentUser) {
+        quickQuizzes.filter { q ->
+            val clsMatch = ArabicTextNormalizer.matchesClass(q.gradeClass, selectedClass) &&
+                (q.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(q.sectionName, selectedSection))
+            val subjMatch = if (currentUser?.role == UserRole.TEACHER) {
+                currentUser?.canTeacherAccessSubject(q.subjectName) == true
+            } else true
+            clsMatch && subjMatch
+        }
+    }
+
+    var quizStatusFilter by remember { mutableIntStateOf(0) } // 0 = الاختبارات النشطة (الجارية), 1 = الاختبارات المنتهية (الأرشيف), 2 = الكل
+    var selectedQuizSubject by remember { mutableStateOf("الكل") }
+    var selectedQuizDateFilter by remember { mutableStateOf("الكل") }
+    var quizSortDescending by remember { mutableStateOf(true) }
+    var inspectingQuizParticipants by remember { mutableStateOf<QuickQuizItem?>(null) }
+
+    val availableQuizSubjects = remember(classScopedQuickQuizzes, allowedSubjects) {
+        (listOf("الكل") + classScopedQuickQuizzes.map { it.subjectName.trim() } + allowedSubjects.map { it.trim() })
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+    val availableQuizDates = remember(classScopedQuickQuizzes) {
+        listOf("الكل") + classScopedQuickQuizzes.map { it.createdAt.trim() }.filter { it.isNotEmpty() }.distinct().sortedDescending()
+    }
+
+    val activeQuizzesCount = remember(classScopedQuickQuizzes) {
+        classScopedQuickQuizzes.count { !it.isClosed }
+    }
+    val closedQuizzesCount = remember(classScopedQuickQuizzes) {
+        classScopedQuickQuizzes.count { it.isClosed }
+    }
+
+    val filteredQuickQuizzes = remember(
+        classScopedQuickQuizzes,
+        quizStatusFilter,
+        selectedQuizSubject,
+        selectedQuizDateFilter,
+        quizSortDescending
+    ) {
+        val filtered = classScopedQuickQuizzes.filter { q ->
+            val statusMatches = when (quizStatusFilter) {
+                0 -> !q.isClosed
+                1 -> q.isClosed
+                else -> true
+            }
+            val subjectMatches = selectedQuizSubject == "الكل" ||
+                ArabicTextNormalizer.normalizeText(q.subjectName) == ArabicTextNormalizer.normalizeText(selectedQuizSubject)
+            val dateMatches = selectedQuizDateFilter == "الكل" || q.createdAt.trim() == selectedQuizDateFilter
+            statusMatches && subjectMatches && dateMatches
+        }
+        if (quizSortDescending) {
+            filtered.sortedByDescending { it.createdAt }
+        } else {
+            filtered.sortedBy { it.createdAt }
+        }
+    }
+
+    val classSectionStudents = remember(students, selectedClass, selectedSection, schoolConfig.schoolId) {
+        students.filter { stu ->
+            (stu.schoolId.isEmpty() || stu.schoolId == schoolConfig.schoolId) &&
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
+                ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection)
+        }
+    }
+    var selectedSummaryStudentId by remember(activeStudent?.id, classSectionStudents) {
+        mutableStateOf(activeStudent?.id ?: classSectionStudents.firstOrNull()?.id.orEmpty())
+    }
+    val summaryTargetStudent = remember(activeStudent, classSectionStudents, selectedSummaryStudentId, isParentOrStudent) {
+        if (isParentOrStudent) activeStudent
+        else classSectionStudents.firstOrNull { it.id == selectedSummaryStudentId } ?: classSectionStudents.firstOrNull()
+    }
+
+    val filteredPeriods = remember(schedules, selectedClass, selectedSection, selectedDay) {
+        schedules.filter {
+            ArabicTextNormalizer.matchesClass(it.gradeClass, selectedClass) &&
+                ArabicTextNormalizer.matchesSection(it.sectionName, selectedSection) &&
+                it.dayOfWeek == selectedDay
+        }.sortedBy { it.periodNumber }
+    }
+
+    val filteredStudyMaterials = remember(studyMaterials, selectedClass, selectedSection) {
+        studyMaterials.filter { mat ->
+            ArabicTextNormalizer.matchesClass(mat.gradeClass, selectedClass) &&
+                (mat.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(mat.sectionName, selectedSection))
+        }
+    }
+
+    // Single unified LazyColumn so the 3D Hero Card, 3-Tab Switcher, Class/Section Filters, and Action Buttons scroll smoothly with the content
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(top = 10.dp, bottom = 110.dp)
+    ) {
+        item {
+            // 3D Wave Hero Header with Layered Task Deck Glass Animation
+            ThreeDHeroHeaderCard(
+                title = "الجدول والواجبات والمكتبة",
+                subtitle = "تنظيم جدول الحصص الأسبوعي والواجبات اليومية والملخصات الدراسية",
+                rightPillText = "$selectedClass • شعبة $selectedSection",
+                rightPillIcon = Icons.Filled.MenuBook,
+                leftPillText = "الواجبات: ${filteredHomeworks.size}",
+                leftPillIcon = Icons.Filled.CalendarMonth,
+                illustrationType = ThreeDIllustrationType.SCHEDULE_BOOKS_3D,
+                customTrailingContent = {
+                    LayeredTaskDeckHeaderWidget()
+                }
+            )
+        }
+
+        item {
+            // Compact 3D Wave Header & Unclipped 3-Tab Pill Switcher (الواجبات | جدول الحصص | المكتبة والملخصات)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val isHwTab = selectedTab == 0
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isHwTab) Color(0xFF059669) else Color.White,
+                    border = BorderStroke(1.2.dp, if (isHwTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                    shadowElevation = if (isHwTab) 5.dp else 2.dp,
+                    modifier = Modifier
+                        .weight(0.85f)
+                        .heightIn(min = 44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedTab = 0 }
+                        .testTag("tab_daily_homework")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.MenuBook,
+                            contentDescription = null,
+                            tint = if (isHwTab) Color.White else Color(0xFF047857),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "الواجبات",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isHwTab) Color.White else Color(0xFF0F172A),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                val isSchedTab = selectedTab == 1
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (isSchedTab) Color(0xFF059669) else Color.White,
+                    border = BorderStroke(1.2.dp, if (isSchedTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                    shadowElevation = if (isSchedTab) 5.dp else 2.dp,
+                    modifier = Modifier
+                        .weight(1.0f)
+                        .heightIn(min = 44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { selectedTab = 1 }
+                        .testTag("tab_weekly_schedule")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CalendarMonth,
+                            contentDescription = null,
+                            tint = if (isSchedTab) Color.White else Color(0xFF047857),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "جدول الحصص",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isSchedTab) Color.White else Color(0xFF0F172A),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                if (featureSettings.studyLibraryEnabled) {
+                    val isLibTab = selectedTab == 2
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (isLibTab) Color(0xFF059669) else Color.White,
+                        border = BorderStroke(1.2.dp, if (isLibTab) Color(0xFFA7F3D0) else Color(0xFFE2E8F0)),
+                        shadowElevation = if (isLibTab) 5.dp else 2.dp,
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .heightIn(min = 44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { selectedTab = 2 }
+                            .testTag("tab_study_materials")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 6.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.LocalLibrary,
+                                contentDescription = null,
+                                tint = if (isLibTab) Color.White else Color(0xFF047857),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "المكتبة والملخصات",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isLibTab) Color.White else Color(0xFF0F172A),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!isParentOrStudent) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Class & Section Selector from Registered/Allowed lists
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(allowedClasses) { cls ->
+                            FilterChip(
+                                selected = selectedClass == cls,
+                                onClick = {
+                                    selectedClass = cls
+                                    val secs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                    if (selectedSection !in secs) selectedSection = secs.firstOrNull() ?: "أ"
+                                },
+                                label = { Text(cls, maxLines = 1, softWrap = false) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (selectedClass == cls) Icons.Filled.Check else Icons.Filled.School,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("الشعبة:", style = MaterialTheme.typography.labelLarge)
+                        allowedSections.forEach { sec ->
+                            FilterChip(
+                                selected = selectedSection == sec,
+                                onClick = { selectedSection = sec },
+                                label = { Text("شعبة $sec", maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        if (selectedTab == 0) {
+            if (canPublish) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        VectorActionButton(
+                            text = "نشر تحضير وواجب",
+                            icon = Icons.Filled.PostAdd,
+                            onClick = { showPublishHomeworkDialog = true },
+                            modifier = Modifier.weight(1f),
+                            testTag = "publish_homework_button"
+                        )
+                        if (featureSettings.quickQuizzesEnabled) {
+                            VectorActionButton(
+                                text = "نشر اختبار سريع",
+                                icon = Icons.Filled.Quiz,
+                                containerColor = DeepEmerald,
+                                onClick = { showPublishQuickQuizDialog = true },
+                                modifier = Modifier.weight(1f),
+                                testTag = "publish_quick_quiz_button"
+                            )
+                        }
+                    }
+                }
+            }
+                // Quick Quizzes Section (الاختبارات السريعة والتصحيح التلقائي والفرز الاحترافي)
+                if (featureSettings.quickQuizzesEnabled && classScopedQuickQuizzes.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface
+                            ),
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Quiz,
+                                            contentDescription = null,
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "مركز الاختبارات السريعة والأرشيف (${classScopedQuickQuizzes.size})",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                    }
+                                    Surface(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable { quizSortDescending = !quizSortDescending },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = DeepEmerald.copy(alpha = 0.10f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.FilterList,
+                                                contentDescription = null,
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(
+                                                text = if (quizSortDescending) "الأحدث أولاً" else "الأقدم أولاً",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 1. تبويبات الفرز حسب الحالة: النشطة (الجارية) / المنتهية (الأرشيف) / الكل
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = { quizStatusFilter = 0 },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 40.dp)
+                                            .testTag("quiz_tab_active"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (quizStatusFilter == 0) DeepEmerald else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (quizStatusFilter == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    ) {
+                                        Icon(Icons.Filled.PlayCircle, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "الاختبارات النشطة ($activeQuizzesCount)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { quizStatusFilter = 1 },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 40.dp)
+                                            .testTag("quiz_tab_archived"),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (quizStatusFilter == 1) DeepForestGreen else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (quizStatusFilter == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    ) {
+                                        Icon(Icons.Filled.Inventory2, contentDescription = null, modifier = Modifier.size(15.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "المنتهية والأرشيف ($closedQuizzesCount)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                // 2. الفرز والعزل حسب المادة الدراسية
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "فرز وعزل حسب المادة الدراسية:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextMutedGreen
+                                    )
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(availableQuizSubjects) { subj ->
+                                            FilterChip(
+                                                selected = selectedQuizSubject == subj,
+                                                onClick = { selectedQuizSubject = subj },
+                                                label = { Text(subj, maxLines = 1) },
+                                                leadingIcon = if (selectedQuizSubject == subj) {
+                                                    {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Check,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                    }
+                                                } else null
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // الفرز حسب التاريخ
+                                if (availableQuizDates.size > 2) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "فلترة حسب تاريخ الاختبار:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TextMutedGreen
+                                        )
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            items(availableQuizDates) { dt ->
+                                                FilterChip(
+                                                    selected = selectedQuizDateFilter == dt,
+                                                    onClick = { selectedQuizDateFilter = dt },
+                                                    label = { Text(if (dt == "الكل") "كل التواريخ" else dt, maxLines = 1) }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 3. ملخص درجات الطالب حسب المادة والتاريخ (عند اختيار مادة معينة أو للطالب المحدد)
+                                if (selectedQuizSubject != "الكل" && summaryTargetStudent != null) {
+                                    val subjectQuizzes = classScopedQuickQuizzes
+                                        .filter { ArabicTextNormalizer.normalizeText(it.subjectName) == ArabicTextNormalizer.normalizeText(selectedQuizSubject) }
+                                        .sortedByDescending { it.createdAt }
+
+                                    if (subjectQuizzes.isNotEmpty()) {
+                                        val totalPossible = subjectQuizzes.sumOf { it.points }
+                                        val totalEarned = subjectQuizzes.sumOf { q ->
+                                            val ans = q.studentAnswers[summaryTargetStudent.id]
+                                            if (ans != null && ans == q.correctOptionIndex) q.points else 0
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = "ملخص درجات الاختبارات السريعة • مادة $selectedQuizSubject",
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepForestGreen
+                                                        )
+                                                        Text(
+                                                            text = "الطالب: ${summaryTargetStudent.fullNameWithFather} (${subjectQuizzes.size} اختبار)",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = TextMutedGreen
+                                                        )
+                                                    }
+                                                    Surface(
+                                                        shape = RoundedCornerShape(50),
+                                                        color = DeepEmerald
+                                                    ) {
+                                                        Text(
+                                                            text = "المجموع: $totalEarned من $totalPossible",
+                                                            style = MaterialTheme.typography.labelMedium,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color.White,
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                if (!isParentOrStudent && classSectionStudents.size > 1) {
+                                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        items(classSectionStudents, key = { it.id }) { stu ->
+                                                            FilterChip(
+                                                                selected = stu.id == summaryTargetStudent.id,
+                                                                onClick = { selectedSummaryStudentId = stu.id },
+                                                                label = { Text(stu.studentName, maxLines = 1) }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                subjectQuizzes.forEach { sq ->
+                                                    val ansIdx = sq.studentAnswers[summaryTargetStudent.id]
+                                                    val participated = ansIdx != null
+                                                    val isCorrect = ansIdx == sq.correctOptionIndex
+                                                    val earned = if (participated && isCorrect) sq.points else 0
+                                                    Surface(
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        color = Color.White,
+                                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = sq.questionText,
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = DeepForestGreen,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                                Text(
+                                                                    text = "التاريخ: ${sq.createdAt} • الحالة: ${if (sq.isClosed) "منتهي" else "نشط"}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = TextMutedGreen
+                                                                )
+                                                            }
+                                                            Surface(
+                                                                shape = RoundedCornerShape(8.dp),
+                                                                color = when {
+                                                                    !participated -> WarningAmber.copy(alpha = 0.14f)
+                                                                    isCorrect -> SuccessGreen.copy(alpha = 0.15f)
+                                                                    else -> DangerRed.copy(alpha = 0.15f)
+                                                                }
+                                                            ) {
+                                                                Text(
+                                                                    text = if (!participated) {
+                                                                        "لم يشارك (0 من ${sq.points})"
+                                                                    } else {
+                                                                        "$earned من ${sq.points}"
+                                                                    },
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = when {
+                                                                        !participated -> WarningAmber
+                                                                        isCorrect -> SuccessGreen
+                                                                        else -> DangerRed
+                                                                    },
+                                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (filteredQuickQuizzes.isEmpty()) {
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.2f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = if (quizStatusFilter == 0) {
+                                        "لا توجد اختبارات نشطة مطابقة للفلتر المحدد حالياً. يمكنك تصفح تبويب (المنتهية والأرشيف)."
+                                    } else {
+                                        "لا توجد اختبارات منتهية في الأرشيف مطابقة للفلتر المحدد."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMutedGreen,
+                                    modifier = Modifier.padding(16.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+
+                    items(filteredQuickQuizzes, key = { "quiz_${it.id}" }) { quiz ->
+                        val quizAnsForStudent = remember(quickQuizAnswers, quiz.id, activeStudent?.id, quiz.studentAnswers) {
+                            quickQuizAnswers.firstOrNull { it.quizId == quiz.id && it.studentId == activeStudent?.id }
+                        }
+                        val allQuizAnswers = remember(quickQuizAnswers, quiz.id, quiz.studentAnswers) {
+                            quickQuizAnswers.filter { it.quizId == quiz.id }
+                        }
+                        var selectedOptIndex by remember(quiz.id) { mutableIntStateOf(-1) }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (quiz.isClosed) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f) else Color(0xFFECFDF5)
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (quiz.isClosed) MaterialTheme.colorScheme.outlineVariant else EmeraldAccent.copy(alpha = 0.45f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        NoWrapBadge(
+                                            text = "اختبار سريع • ${quiz.subjectName}",
+                                            icon = Icons.Filled.Quiz,
+                                            containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                            contentColor = DeepEmerald
+                                        )
+                                        NoWrapBadge(
+                                            text = if (quiz.isClosed) "منتهي (مؤرشف)" else "نشط (جاري)",
+                                            icon = if (quiz.isClosed) Icons.Filled.Lock else Icons.Filled.PlayCircle,
+                                            containerColor = if (quiz.isClosed) DangerRed.copy(alpha = 0.14f) else SuccessGreen.copy(alpha = 0.16f),
+                                            contentColor = if (quiz.isClosed) DangerRed else SuccessGreen
+                                        )
+                                    }
+                                    NoWrapBadge(
+                                        text = "الدرجة: ${quiz.points}",
+                                        icon = Icons.Filled.Star,
+                                        containerColor = DeepEmerald.copy(alpha = 0.14f),
+                                        contentColor = DeepEmerald
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "الأستاذ: ${quiz.teacherName} • الصف: ${quiz.gradeClass} (${quiz.sectionName})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextMutedGreen
+                                    )
+                                    Text(
+                                        text = "التاريخ: ${quiz.createdAt}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = DeepForestGreen
+                                    )
+                                }
+
+                                Text(
+                                    text = quiz.questionText,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+
+                                quiz.options.forEachIndexed { idx, optText ->
+                                    val isAnswered = quizAnsForStudent != null
+                                    val revealCorrect = isAnswered || quiz.isClosed || !isParentOrStudent
+                                    val isCorrectOption = idx == quiz.correctOptionIndex
+                                    val isChosenOption = (quizAnsForStudent?.selectedOptionIndex ?: selectedOptIndex) == idx
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable(enabled = isParentOrStudent && !isAnswered && !quiz.isClosed) {
+                                                selectedOptIndex = idx
+                                            },
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = when {
+                                            revealCorrect && isCorrectOption -> SuccessGreen.copy(alpha = 0.18f)
+                                            isAnswered && isChosenOption && !isCorrectOption -> DangerRed.copy(alpha = 0.18f)
+                                            isChosenOption -> DeepEmerald.copy(alpha = 0.15f)
+                                            else -> MaterialTheme.colorScheme.surface
+                                        },
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            when {
+                                                revealCorrect && isCorrectOption -> SuccessGreen
+                                                isAnswered && isChosenOption && !isCorrectOption -> DangerRed
+                                                isChosenOption -> DeepEmerald
+                                                else -> MaterialTheme.colorScheme.outlineVariant
+                                            }
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "${idx + 1}. $optText",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (isChosenOption || (revealCorrect && isCorrectOption)) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                            if (revealCorrect && isCorrectOption) {
+                                                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
+                                            } else if (isAnswered && isChosenOption && !isCorrectOption) {
+                                                Icon(Icons.Filled.Cancel, contentDescription = null, tint = DangerRed, modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (isParentOrStudent) {
+                                    if (quizAnsForStudent != null) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (quizAnsForStudent.isCorrect) SuccessGreen.copy(alpha = 0.15f) else DangerRed.copy(alpha = 0.15f),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = if (quizAnsForStudent.isCorrect) {
+                                                    "إجابة صحيحة ممتازة! احتُسبت لك الدرجة: (${quizAnsForStudent.earnedPoints} من ${quiz.points})"
+                                                } else {
+                                                    "إجابة خاطئة (احتُسبت لك: 0 من ${quiz.points}) • الإجابة الصحيحة هي: ${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""}"
+                                                },
+                                                modifier = Modifier.padding(10.dp),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (quizAnsForStudent.isCorrect) DeepEmerald else DangerRed
+                                            )
+                                        }
+                                    } else if (quiz.isClosed) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = WarningAmber.copy(alpha = 0.14f),
+                                            border = BorderStroke(1.dp, WarningAmber.copy(alpha = 0.45f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Lock, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(18.dp))
+                                                Text(
+                                                    text = "هذا الاختبار منتهي ومغلق من قِبل الأستاذ • لم يتم تسجيل مشاركة سابقة (الدرجة: 0 من ${quiz.points}) • الإجابة الصحيحة: ${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""}",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepForestGreen
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Button(
+                                            onClick = {
+                                                if (selectedOptIndex >= 0) {
+                                                    viewModel.submitQuickQuizAnswer(quiz, selectedOptIndex)
+                                                }
+                                            },
+                                            enabled = selectedOptIndex >= 0,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("submit_quick_quiz_btn_${quiz.id}"),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+                                        ) {
+                                            Icon(Icons.Filled.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("تأكيد الإجابة والتصحيح التلقائي الفوري", fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                } else if (canPublish) {
+                                    val targetQuizStudents = remember(students, quiz.gradeClass, quiz.sectionName, schoolConfig.schoolId) {
+                                        students.filter { stu ->
+                                            (stu.schoolId.isEmpty() || stu.schoolId == schoolConfig.schoolId) &&
+                                                ArabicTextNormalizer.matchesClass(stu.gradeClass, quiz.gradeClass) &&
+                                                (quiz.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(stu.sectionName, quiz.sectionName))
+                                        }
+                                    }
+                                    val participantsCount = quiz.studentAnswers.size
+                                    val nonParticipantsCount = (targetQuizStudents.size - participantsCount).coerceAtLeast(0)
+                                    val correctCount = allQuizAnswers.count { it.isCorrect }
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable { inspectingQuizParticipants = quiz }
+                                            .testTag("open_quiz_participants_btn_${quiz.id}"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DeepEmerald.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.2.dp, DeepEmerald.copy(alpha = 0.45f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Groups,
+                                                        contentDescription = null,
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Text(
+                                                        text = "كشف المشاركين وإجابات الطلبة التفصيلية",
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepForestGreen
+                                                    )
+                                                }
+                                                Text(
+                                                    text = "المشاركون: $participantsCount طالب (صحيحة: $correctCount) • غير المشاركين: $nonParticipantsCount طالب",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = DeepEmerald
+                                                )
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Filled.Visibility,
+                                                contentDescription = "عرض الكشف التفصيلي",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // زر تحكم الأستاذ بحالة الاختبار (إنهاء الاختبار وإغلاق الإجابات / إعادة تفعيل الاختبار)
+                                    Button(
+                                        onClick = { viewModel.toggleQuickQuizClosedStatus(quiz.id) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 40.dp)
+                                            .testTag("toggle_quiz_status_btn_${quiz.id}"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (quiz.isClosed) DeepEmerald else WarningAmber,
+                                            contentColor = Color.White
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = if (quiz.isClosed) Icons.Filled.PlayCircle else Icons.Filled.Lock,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (quiz.isClosed) {
+                                                "إعادة تفعيل الاختبار وفتح استقبال الإجابات"
+                                            } else {
+                                                "إنهاء الاختبار وإغلاق الإجابات"
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { editingQuiz = quiz },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("edit_quick_quiz_${quiz.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Edit,
+                                                contentDescription = "تعديل الاختبار",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "تعديل الاختبار",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { viewModel.deleteQuickQuiz(quiz.id) },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("delete_quick_quiz_${quiz.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Delete,
+                                                contentDescription = "حذف الاختبار",
+                                                tint = DangerRed,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "حذف الاختبار",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DangerRed
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // فهرس الواجبات الذكي حسب التاريخ مع شارة تنبيه نابضة بالواجبات الجديدة (Interactive 3D Homework Date Index)
+                if (filteredHomeworks.isNotEmpty()) {
+                    item(key = "homework_smart_date_index_bar") {
+                        val pulseTransition = rememberInfiniteTransition(label = "hw_date_badge_pulse")
+                        val badgePulseScale by pulseTransition.animateFloat(
+                            initialValue = 1.0f,
+                            targetValue = 1.18f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "hw_badge_scale"
+                        )
+                        val badgePulseAlpha by pulseTransition.animateFloat(
+                            initialValue = 0.72f,
+                            targetValue = 1.0f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "hw_badge_alpha"
+                        )
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.28f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.EventNote,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "فهرس الواجبات الذكي حسب التاريخ",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = DeepForestGreen
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f))
+                                    ) {
+                                        Text(
+                                            text = "إجمالي الواجبات: ${filteredHomeworks.size}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF047857),
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    item(key = "hw_date_all") {
+                                        val isAllSelected = selectedHomeworkDateFilter == "الكل"
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = if (isAllSelected) Color(0xFF059669) else Color(0xFFF8FAFC),
+                                            border = BorderStroke(
+                                                1.2.dp,
+                                                if (isAllSelected) Color(0xFFA7F3D0) else Color(0xFFCBD5E1)
+                                            ),
+                                            shadowElevation = if (isAllSelected) 4.dp else 1.dp,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .clickable { selectedHomeworkDateFilter = "الكل" }
+                                                .testTag("hw_date_filter_all")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.CalendarMonth,
+                                                    contentDescription = null,
+                                                    tint = if (isAllSelected) Color.White else Color(0xFF059669),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Text(
+                                                    text = "كل التواريخ (${filteredHomeworks.size})",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (isAllSelected) Color.White else Color(0xFF0F172A),
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    items(homeworkDatesIndex, key = { "hw_date_${it.first}" }) { (dateKey, count) ->
+                                        val isDateSelected = selectedHomeworkDateFilter == dateKey
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = if (isDateSelected) Color(0xFF059669) else Color.White,
+                                            border = BorderStroke(
+                                                1.2.dp,
+                                                if (isDateSelected) Color(0xFFFEF08A) else Color(0xFF10B981).copy(alpha = 0.45f)
+                                            ),
+                                            shadowElevation = if (isDateSelected) 5.dp else 2.dp,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(14.dp))
+                                                .clickable { selectedHomeworkDateFilter = dateKey }
+                                                .testTag("hw_date_filter_$dateKey")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                // شارة إشعار نابضة وملفتة بلطف تدل على وجود واجبات في هذا التاريخ
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(9.dp)
+                                                        .graphicsLayer {
+                                                            scaleX = badgePulseScale
+                                                            scaleY = badgePulseScale
+                                                            alpha = badgePulseAlpha
+                                                        }
+                                                        .clip(CircleShape)
+                                                        .background(
+                                                            if (isDateSelected) Color(0xFFFEF08A) else Color(0xFFF59E0B)
+                                                        )
+                                                )
+                                                Text(
+                                                    text = formatCleanDate(dateKey),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (isDateSelected) Color.White else DeepForestGreen,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = if (isDateSelected) {
+                                                        Color(0xFFFEF08A).copy(alpha = 0.24f)
+                                                    } else {
+                                                        Color(0xFFECFDF5)
+                                                    }
+                                                ) {
+                                                    Text(
+                                                        text = "($count واجب جديد)",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (isDateSelected) Color(0xFFFEF08A) else Color(0xFF047857),
+                                                        maxLines = 1,
+                                                        softWrap = false,
+                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (dateScopedHomeworks.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AssignmentTurnedIn,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("لا توجد واجبات منشورة لـ $selectedClass ($selectedSection) حالياً", style = MaterialTheme.typography.titleMedium)
+                            }
+                        }
+                    }
+                } else {
+                    items(displayedHomeworks, key = { it.id }) { hw ->
+                        val hwSubs = remember(homeworkSubmissions, hw.id) {
+                            homeworkSubmissions.filter { it.homeworkId == hw.id }
+                        }
+                        val mySubmission = remember(hwSubs, activeStudent?.id) {
+                            hwSubs.firstOrNull { it.studentId == activeStudent?.id }
+                        }
+                        var pendingPhotoBase64 by remember(hw.id) { mutableStateOf("") }
+                        var pendingStudentNote by remember(hw.id) { mutableStateOf("") }
+                        val hwAttachmentBitmap = remember(hw.attachmentImageBase64) {
+                            ImageCompressor.decodeBase64ToImageBitmap(hw.attachmentImageBase64)
+                        }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // 1) Clear Header: Subject, Teacher & Single Publish/Due Date Row (No Duplication)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.25f)),
+                                            modifier = Modifier.size(40.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AutoStories,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = "مادة ${hw.subjectName}",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "$staffTitleSingular: ${hw.teacherName} • ${hw.gradeClass} (${hw.sectionName})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextMutedGreen,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Single Clean Dates Strip (Publish Date + Due Date once only)
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFF3FBF7),
+                                    border = BorderStroke(0.9.dp, Color(0xFF10B981).copy(alpha = 0.28f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.CalendarToday,
+                                                contentDescription = null,
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = "النشر: ${formatCleanDate(hw.createdAt.ifBlank { hw.dueDate })}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepForestGreen
+                                            )
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Event,
+                                                contentDescription = null,
+                                                tint = Color(0xFFB45309),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = "التسليم: ${formatCleanDate(hw.dueDate)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF92400E)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 2) Two Cleanly Separated Boxes: Daily Preparation & Homework Details
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF4FBF8),
+                                        border = BorderStroke(0.9.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.MenuBook,
+                                                    contentDescription = null,
+                                                    tint = DeepEmerald,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Text(
+                                                    text = "التحضير اليومي",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepEmerald
+                                                )
+                                            }
+                                            Text(
+                                                text = hw.dailyPreparation.ifBlank { "لا يوجد تحضير إضافي" },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = DeepForestGreen,
+                                                lineHeight = 21.sp
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = BorderStroke(0.9.dp, Color(0xFFCBD5E1).copy(alpha = 0.70f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.EditNote,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFB45309),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "الواجب البيتي",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF92400E)
+                                                )
+                                            }
+                                            Text(
+                                                text = hw.homeworkDetails.ifBlank { "لا يوجد واجب بيتي محدد" },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = DeepForestGreen,
+                                                lineHeight = 21.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 3) Attached Image Preview with Soft 14.dp Frame & Frosted-Glass Zoom Button
+                                if (hwAttachmentBitmap != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(Color(0xFFF0FDF4))
+                                            .clickable {
+                                                GlobalImageLightboxController.open(
+                                                    hw.attachmentImageBase64,
+                                                    "صورة توضيحية للواجب • مادة ${hw.subjectName}"
+                                                )
+                                            }
+                                            .testTag("hw_attachment_preview_${hw.id}")
+                                    ) {
+                                        Image(
+                                            bitmap = hwAttachmentBitmap,
+                                            contentDescription = "صورة توضيحية للواجب",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxSize(),
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = Color.Transparent,
+                                            border = BorderStroke(1.1.dp, DeepEmerald.copy(alpha = 0.30f))
+                                        ) {}
+                                        // Frosted-Glass Zoom Pill Overlay
+                                        Surface(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .padding(10.dp),
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFF064E3B).copy(alpha = 0.78f),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.ZoomIn,
+                                                    contentDescription = "تكبير الصورة",
+                                                    tint = Color(0xFFFEF08A),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "تكبير الصورة",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Photo Homework Submission & Teacher Review (تسليم الواجب بالصورة وتصحيح المعلم)
+                                if (featureSettings.homeworkSubmissionEnabled) {
+                                    if (isParentOrStudent) {
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = DeepEmerald.copy(alpha = 0.06f),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                if (mySubmission != null) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                            modifier = Modifier.weight(1f)
+                                                        ) {
+                                                            Base64AvatarImage(
+                                                                base64Data = mySubmission.solutionImageBase64,
+                                                                size = 44.dp,
+                                                                fallbackIcon = Icons.Filled.CameraAlt,
+                                                                contentDescription = "صورة حل الواجب"
+                                                            )
+                                                            Column(
+                                                                modifier = Modifier.weight(1f),
+                                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    Surface(
+                                                                        shape = RoundedCornerShape(50),
+                                                                        color = if (mySubmission.isReviewed) {
+                                                                            SuccessGreen.copy(alpha = 0.14f)
+                                                                        } else {
+                                                                            DeepEmerald.copy(alpha = 0.12f)
+                                                                        }
+                                                                    ) {
+                                                                        Row(
+                                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                                            verticalAlignment = Alignment.CenterVertically,
+                                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                        ) {
+                                                            Icon(
+                                                                imageVector = if (mySubmission.isReviewed) Icons.Filled.CheckCircle else Icons.Filled.TaskAlt,
+                                                                contentDescription = null,
+                                                                tint = if (mySubmission.isReviewed) SuccessGreen else DeepEmerald,
+                                                                modifier = Modifier.size(13.dp)
+                                                            )
+                                                            Text(
+                                                                text = if (mySubmission.isReviewed) "تم تسليم الواجب ومراجعته" else "تم تسليم الواجب",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = if (mySubmission.isReviewed) SuccessGreen else DeepEmerald,
+                                                                maxLines = 1,
+                                                                softWrap = false
+                                                            )
+                                                        }
+                                                    }
+
+                                                    if (mySubmission.homeworkScore.isNotBlank()) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = Color(0xFFECFDF5),
+                                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.WorkspacePremium,
+                                                                    contentDescription = null,
+                                                                    tint = DeepEmerald,
+                                                                    modifier = Modifier.size(13.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "درجة الواجب: ${mySubmission.homeworkScore}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = DeepForestGreen,
+                                                                    maxLines = 1,
+                                                                    softWrap = false
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                Text(
+                                                    text = "تاريخ التسليم: ${formatCleanDate(mySubmission.submittedAt)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (mySubmission.teacherFeedback.isNotBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.RateReview,
+                                                        contentDescription = null,
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Text(
+                                                        text = if (mySubmission.reviewedByTeacher.isNotBlank()) {
+                                                            "ملاحظة المعلم (${mySubmission.reviewedByTeacher}):"
+                                                        } else {
+                                                            "ملاحظة المعلم:"
+                                                        },
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = DeepEmerald
+                                                    )
+                                                }
+                                                Text(
+                                                    text = mySubmission.teacherFeedback,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // يظهر زر إرفاق الحل مرة واحدة فقط قبل التسليم ويختفي نهائياً بعد إرسال الواجب أو مراجعته
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CompressedPhotoPickerButton(
+                                            label = if (pendingPhotoBase64.isEmpty()) "تصوير/إرفاق دفتر الحل" else "جاهز للإرسال",
+                                            hasImage = pendingPhotoBase64.isNotEmpty(),
+                                            onPhotoSelected = { pendingPhotoBase64 = it },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        if (pendingPhotoBase64.isNotEmpty()) {
+                                            Button(
+                                                onClick = {
+                                                    viewModel.submitHomeworkPhotoSolution(
+                                                        homework = hw,
+                                                        solutionImageBase64 = pendingPhotoBase64,
+                                                        studentNote = pendingStudentNote
+                                                    )
+                                                    pendingPhotoBase64 = ""
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                                                modifier = Modifier.testTag("send_hw_photo_btn_${hw.id}")
+                                            ) {
+                                                Icon(Icons.Filled.Send, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("إرسال للمعلم", fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                                    } else if (canPublish && hwSubs.isNotEmpty()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = DeepEmerald.copy(alpha = 0.06f),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.16f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Text(
+                                                    text = "حلول الواجب المرسلة بالصورة من الطلاب (${hwSubs.size}):",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepEmerald
+                                                )
+                                                hwSubs.forEach { sub ->
+                                                    var isGradingExpanded by remember(sub.id, sub.isReviewed) {
+                                                        mutableStateOf(!sub.isReviewed)
+                                                    }
+                                                    var customFeedbackInput by remember(sub.id, sub.teacherFeedback) {
+                                                        mutableStateOf(
+                                                            sub.teacherFeedback.ifBlank {
+                                                                "أحسنت بارك الله بك، تمت مراجعة وتصحيح الواجب"
+                                                            }
+                                                        )
+                                                    }
+                                                    var customScoreInput by remember(sub.id, sub.homeworkScore) {
+                                                        mutableStateOf(sub.homeworkScore)
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = MaterialTheme.colorScheme.surface,
+                                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier.padding(10.dp),
+                                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.fillMaxWidth(),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                                    modifier = Modifier.weight(1f)
+                                                                ) {
+                                                                    Base64AvatarImage(
+                                                                        base64Data = sub.solutionImageBase64,
+                                                                        size = 44.dp,
+                                                                        fallbackIcon = Icons.Filled.Image,
+                                                                        contentDescription = "حل الطالب ${sub.studentName}"
+                                                                    )
+                                                                    Column(modifier = Modifier.weight(1f)) {
+                                                                        Text(
+                                                                            text = "${sub.studentName} (اضغط على الصورة للتكبير)",
+                                                                            style = MaterialTheme.typography.labelMedium,
+                                                                            fontWeight = FontWeight.Bold
+                                                                        )
+                                                                        Row(
+                                                                            verticalAlignment = Alignment.CenterVertically,
+                                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                                        ) {
+                                                                            Text(
+                                                                                text = if (sub.isReviewed) "تم التصحيح" else "بانتظار التصحيح • ${sub.submittedAt}",
+                                                                                style = MaterialTheme.typography.labelSmall,
+                                                                                color = if (sub.isReviewed) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                                fontWeight = if (sub.isReviewed) FontWeight.Bold else FontWeight.Normal
+                                                                            )
+                                                                            if (sub.homeworkScore.isNotBlank()) {
+                                                                                Surface(
+                                                                                    shape = RoundedCornerShape(50),
+                                                                                    color = Color(0xFFECFDF5),
+                                                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.4f))
+                                                                                ) {
+                                                                                    Text(
+                                                                                        text = "درجة الواجب: ${sub.homeworkScore}",
+                                                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                                        fontWeight = FontWeight.ExtraBold,
+                                                                                        color = DeepEmerald
+                                                                                    )
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                TextButton(
+                                                                    onClick = { isGradingExpanded = !isGradingExpanded }
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = if (sub.isReviewed) Icons.Filled.Edit else Icons.Filled.RateReview,
+                                                                        contentDescription = null,
+                                                                        tint = DeepEmerald,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                                    Text(
+                                                                        text = if (sub.isReviewed) "تعديل الرد" else "تصحيح",
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = DeepEmerald
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            if (sub.isReviewed && !isGradingExpanded && sub.teacherFeedback.isNotBlank()) {
+                                                                Text(
+                                                                    text = "ملاحظة المعلم: ${sub.teacherFeedback}",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = DeepEmerald,
+                                                                    fontWeight = FontWeight.SemiBold
+                                                                )
+                                                            }
+
+                                                            if (isGradingExpanded) {
+                                                                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.12f))
+
+                                                                val quickReplies = listOf(
+                                                                    "أحسنت بارك الله بك، حل نموذجي ومرتب",
+                                                                    "ممتاز جداً، إجابات صحيحة وخط واضح",
+                                                                    "جيد، يرجى مراجعة الخطوات وتصحيح الأخطاء البسيطة",
+                                                                    "يرجى إكمال حل جميع فقرات الواجب"
+                                                                )
+                                                                LazyRow(
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    items(quickReplies) { preset ->
+                                                                        SuggestionChip(
+                                                                            onClick = { customFeedbackInput = preset },
+                                                                            label = {
+                                                                                Text(
+                                                                                    text = preset,
+                                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                                    maxLines = 1
+                                                                                )
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                }
+
+                                                                OutlinedTextField(
+                                                                    value = customFeedbackInput,
+                                                                    onValueChange = { customFeedbackInput = it },
+                                                                    label = { Text("رد وملاحظة المعلم المخصصة للطالب") },
+                                                                    placeholder = { Text("اكتب ملاحظتك التربوية أو توجيهاتك للطالب...") },
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .testTag("hw_feedback_input_${sub.id}"),
+                                                                    shape = RoundedCornerShape(12.dp),
+                                                                    maxLines = 3
+                                                                )
+
+                                                                val quickScores = listOf("10 / 10", "9 / 10", "ممتاز 100%", "جيد جداً")
+                                                                Row(
+                                                                    modifier = Modifier.fillMaxWidth(),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                                ) {
+                                                                    OutlinedTextField(
+                                                                        value = customScoreInput,
+                                                                        onValueChange = { customScoreInput = it },
+                                                                        label = { Text("درجة الواجب (اختياري — مثل: 10 / 10)") },
+                                                                        singleLine = true,
+                                                                        modifier = Modifier
+                                                                            .weight(1f)
+                                                                            .testTag("hw_score_input_${sub.id}"),
+                                                                        shape = RoundedCornerShape(12.dp)
+                                                                    )
+                                                                }
+
+                                                                LazyRow(
+                                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                                    modifier = Modifier.fillMaxWidth()
+                                                                ) {
+                                                                    items(quickScores) { sc ->
+                                                                        FilterChip(
+                                                                            selected = customScoreInput == sc,
+                                                                            onClick = {
+                                                                                customScoreInput = if (customScoreInput == sc) "" else sc
+                                                                            },
+                                                                            label = {
+                                                                                Text(
+                                                                                    text = sc,
+                                                                                    style = MaterialTheme.typography.labelSmall
+                                                                                )
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                }
+
+                                                                Button(
+                                                                    onClick = {
+                                                                        viewModel.reviewHomeworkSubmission(
+                                                                            submissionId = sub.id,
+                                                                            feedback = customFeedbackInput,
+                                                                            score = customScoreInput
+                                                                        )
+                                                                        isGradingExpanded = false
+                                                                    },
+                                                                    modifier = Modifier
+                                                                        .fillMaxWidth()
+                                                                        .testTag("review_hw_sub_btn_${sub.id}"),
+                                                                    shape = RoundedCornerShape(12.dp),
+                                                                    colors = ButtonDefaults.buttonColors(
+                                                                        containerColor = DeepEmerald,
+                                                                        contentColor = Color.White
+                                                                    )
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Filled.CheckCircle,
+                                                                        contentDescription = null,
+                                                                        tint = Color(0xFFA7F3D0),
+                                                                        modifier = Modifier.size(17.dp)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                                    Text(
+                                                                        text = "اعتماد التصحيح وإرسال الرد",
+                                                                        fontWeight = FontWeight.ExtraBold
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (canPublish) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { editingHomework = hw },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("edit_homework_${hw.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Edit,
+                                                contentDescription = "تعديل الواجب",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "تعديل",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DeepEmerald
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { deletingHomework = hw },
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f)),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(36.dp)
+                                                .testTag("delete_homework_${hw.id}")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.DeleteOutline,
+                                                contentDescription = "حذف الواجب",
+                                                tint = DangerRed,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "حذف",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = DangerRed
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (displayedHomeworks.size < dateScopedHomeworks.size) {
+                        item {
+                            ProgressiveInfiniteScrollFooter(
+                                visibleCount = displayedHomeworks.size,
+                                totalCount = dateScopedHomeworks.size,
+                                step = 6,
+                                itemLabel = "واجب",
+                                onLoadMore = {
+                                    homeworksVisibleCount = (homeworksVisibleCount + 6).coerceAtMost(dateScopedHomeworks.size)
+                                }
+                            )
+                        }
+                    }
+                }
+        } else if (selectedTab == 1) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(viewModel.weekDays) { day ->
+                            FilterChip(
+                                selected = selectedDay == day,
+                                onClick = { selectedDay = day },
+                                label = { Text("يوم $day", maxLines = 1, softWrap = false) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.Today, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+                    }
+
+                    if (canPublish) {
+                        VectorActionButton(
+                            text = "إضافة أو تعديل حصة في الجدول الأسبوعي",
+                            icon = Icons.Filled.AddAlarm,
+                            onClick = { showAddPeriodDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
+            items(filteredPeriods, key = { it.id }) { period ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary
+                            ) {
+                                Text(
+                                    text = "الحصة ${period.periodNumber}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = period.subjectName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "$staffTitleSingular: ${period.teacherName}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        NoWrapBadge(
+                            text = period.timeSlot,
+                            icon = Icons.Filled.AccessTime,
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+        } else {
+            // =========================================================================
+            // TAB 2: المكتبة الرقمية والملخصات الدراسية (study_materials)
+            // =========================================================================
+            if (canPublish) {
+                item {
+                    VectorActionButton(
+                        text = "نشر ملخص دراسي / ملزمة / ورقة عمل لـ ($selectedClass - $selectedSection)",
+                        icon = Icons.Filled.LibraryAdd,
+                        onClick = { showPublishStudyMaterialDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        testTag = "publish_study_material_button"
+                    )
+                }
+            }
+
+            if (filteredStudyMaterials.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.LocalLibrary,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "لا توجد ملخصات أو ملازم منشورة لـ $selectedClass ($selectedSection) حالياً",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(filteredStudyMaterials, key = { it.id }) { mat ->
+                        val bitmap = remember(mat.imageBase64) {
+                            ImageCompressor.decodeBase64ToImageBitmap(mat.imageBase64)
+                        }
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    NoWrapBadge(
+                                        text = "مادة ${mat.subjectName}",
+                                        icon = Icons.Filled.MenuBook,
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        NoWrapBadge(
+                                            text = mat.createdAt,
+                                            icon = Icons.Filled.CalendarToday,
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                        if (canPublish) {
+                                            IconButton(
+                                                onClick = { viewModel.deleteStudyMaterial(mat.id) },
+                                                modifier = Modifier.size(30.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.DeleteOutline,
+                                                    contentDescription = "حذف الملخص",
+                                                    tint = DangerRed
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text(
+                                    text = mat.title,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                Text(
+                                    text = "الصف: ${mat.gradeClass} (${mat.sectionName}) • الناشر: ${mat.teacherName}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Text(
+                                    text = mat.description,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = mat.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(190.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .clickable {
+                                                GlobalImageLightboxController.open(mat.imageBase64, mat.title)
+                                            }
+                                    )
+                                }
+
+                                if (mat.fileUrl.isNotBlank()) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            try {
+                                                val url = if (mat.fileUrl.startsWith("http")) mat.fileUrl else "https://${mat.fileUrl}"
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                            } catch (_: Exception) {}
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(Icons.Filled.PictureAsPdf, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("فتح / تحميل ملف الملزمة أو الملخص (PDF)")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+    }
+
+    if (inspectingQuizParticipants != null) {
+        val liveQuiz = quickQuizzes.firstOrNull { it.id == inspectingQuizParticipants?.id } ?: inspectingQuizParticipants!!
+        val targetStudents = students.filter { stu ->
+            (stu.schoolId.isEmpty() || stu.schoolId == schoolConfig.schoolId) &&
+                ArabicTextNormalizer.matchesClass(stu.gradeClass, liveQuiz.gradeClass) &&
+                (liveQuiz.sectionName == "الكل" || ArabicTextNormalizer.matchesSection(stu.sectionName, liveQuiz.sectionName))
+        }
+        QuickQuizParticipantsModal(
+            quiz = liveQuiz,
+            targetStudents = targetStudents,
+            onDismiss = { inspectingQuizParticipants = null }
+        )
+    }
+
+    // Publish Quick Quiz Modal
+    if (showPublishQuickQuizDialog) {
+        var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
+        var questionText by remember { mutableStateOf("") }
+        var opt1 by remember { mutableStateOf("") }
+        var opt2 by remember { mutableStateOf("") }
+        var opt3 by remember { mutableStateOf("") }
+        var correctIdx by remember { mutableIntStateOf(0) }
+        var pointsStr by remember { mutableStateOf("5") }
+
+        AlertDialog(
+            onDismissRequest = { showPublishQuickQuizDialog = false },
+            title = { Text("نشر اختبار سريع مؤقت لـ ($selectedClass - $selectedSection)", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = subject == sOpt,
+                                onClick = { subject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = questionText,
+                        onValueChange = { questionText = it },
+                        label = { Text("نص السؤال التفاعلي") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = opt1,
+                        onValueChange = { opt1 = it },
+                        label = { Text("الخيار الأول (1)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = opt2,
+                        onValueChange = { opt2 = it },
+                        label = { Text("الخيار الثاني (2)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = opt3,
+                        onValueChange = { opt3 = it },
+                        label = { Text("الخيار الثالث (3 - اختياري)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("الإجابة الصحيحة:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        listOf(0 to "خيار 1", 1 to "خيار 2", 2 to "خيار 3").forEach { (idx, lbl) ->
+                            FilterChip(
+                                selected = correctIdx == idx,
+                                onClick = { correctIdx = idx },
+                                label = { Text(lbl) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = pointsStr,
+                        onValueChange = { pointsStr = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("درجة السؤال") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val optionsList = listOfNotNull(
+                            opt1.trim().takeIf { it.isNotEmpty() },
+                            opt2.trim().takeIf { it.isNotEmpty() },
+                            opt3.trim().takeIf { it.isNotEmpty() }
+                        )
+                        if (questionText.isNotBlank() && optionsList.size >= 2) {
+                            viewModel.publishQuickQuiz(
+                                gradeClass = selectedClass,
+                                sectionName = selectedSection,
+                                subjectName = subject,
+                                questionText = questionText,
+                                options = optionsList,
+                                correctOptionIndex = correctIdx.coerceIn(0, optionsList.lastIndex),
+                                points = pointsStr.toIntOrNull()?.coerceIn(1, 100) ?: 5
+                            )
+                            showPublishQuickQuizDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                    modifier = Modifier.testTag("confirm_publish_quick_quiz_btn")
+                ) {
+                    Text("نشر الاختبار للطلاب", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishQuickQuizDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    editingQuiz?.let { quizTarget ->
+        var editSubject by remember(quizTarget.id) { mutableStateOf(quizTarget.subjectName) }
+        var editQuestion by remember(quizTarget.id) { mutableStateOf(quizTarget.questionText) }
+        var editOpt1 by remember(quizTarget.id) { mutableStateOf(quizTarget.options.getOrElse(0) { "" }) }
+        var editOpt2 by remember(quizTarget.id) { mutableStateOf(quizTarget.options.getOrElse(1) { "" }) }
+        var editOpt3 by remember(quizTarget.id) { mutableStateOf(quizTarget.options.getOrElse(2) { "" }) }
+        var editCorrectIdx by remember(quizTarget.id) { mutableIntStateOf(quizTarget.correctOptionIndex) }
+        var editPointsStr by remember(quizTarget.id) { mutableStateOf(quizTarget.points.toString()) }
+
+        AlertDialog(
+            onDismissRequest = { editingQuiz = null },
+            title = {
+                Text(
+                    text = "تعديل الاختبار السريع (${quizTarget.subjectName})",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepEmerald
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = editSubject == sOpt,
+                                onClick = { editSubject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editQuestion,
+                        onValueChange = { editQuestion = it },
+                        label = { Text("نص السؤال التفاعلي") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editOpt1,
+                        onValueChange = { editOpt1 = it },
+                        label = { Text("الخيار الأول (1)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editOpt2,
+                        onValueChange = { editOpt2 = it },
+                        label = { Text("الخيار الثاني (2)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editOpt3,
+                        onValueChange = { editOpt3 = it },
+                        label = { Text("الخيار الثالث (3 - اختياري)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("الإجابة الصحيحة:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        listOf(0 to "خيار 1", 1 to "خيار 2", 2 to "خيار 3").forEach { (idx, lbl) ->
+                            FilterChip(
+                                selected = editCorrectIdx == idx,
+                                onClick = { editCorrectIdx = idx },
+                                label = { Text(lbl) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editPointsStr,
+                        onValueChange = { editPointsStr = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("درجة السؤال") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val optionsList = listOfNotNull(
+                            editOpt1.trim().takeIf { it.isNotEmpty() },
+                            editOpt2.trim().takeIf { it.isNotEmpty() },
+                            editOpt3.trim().takeIf { it.isNotEmpty() }
+                        )
+                        if (editQuestion.isNotBlank() && optionsList.size >= 2) {
+                            viewModel.updateQuickQuiz(
+                                quizId = quizTarget.id,
+                                subjectName = editSubject,
+                                questionText = editQuestion,
+                                options = optionsList,
+                                correctOptionIndex = editCorrectIdx.coerceIn(0, optionsList.lastIndex),
+                                points = editPointsStr.toIntOrNull()?.coerceIn(1, 100) ?: quizTarget.points
+                            )
+                            editingQuiz = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White),
+                    modifier = Modifier.testTag("confirm_edit_quick_quiz_btn")
+                ) {
+                    Text("حفظ التعديل", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editingQuiz = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    // Publish Homework Modal with Dynamic Registered Subject Selector & Camera/Gallery Illustrative Photo Picker
+    if (showPublishHomeworkDialog) {
+        var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
+        var subjExpanded by remember { mutableStateOf(false) }
+        var prep by remember { mutableStateOf("") }
+        var hwDetails by remember { mutableStateOf("") }
+        var dueDate by remember { mutableStateOf("2026-11-06") }
+        var attachmentImageBase64 by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showPublishHomeworkDialog = false },
+            title = {
+                Text(
+                    text = "نشر التحضير والواجب لـ ($selectedClass - $selectedSection)",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepForestGreen
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ExposedDropdownMenuBox(
+                        expanded = subjExpanded,
+                        onExpandedChange = { subjExpanded = !subjExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = subject,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("اختر المادة الدراسية") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = subjExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = subjExpanded,
+                            onDismissRequest = { subjExpanded = false }
+                        ) {
+                            allowedSubjects.forEach { sOption ->
+                                DropdownMenuItem(
+                                    text = { Text(sOption) },
+                                    onClick = {
+                                        subject = sOption
+                                        subjExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = prep,
+                        onValueChange = { prep = it },
+                        label = { Text("التحضير اليومي للدرس القادم") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = hwDetails,
+                        onValueChange = { hwDetails = it },
+                        label = { Text("تفاصيل الواجب البيتي المطلوب") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = dueDate,
+                        label = "تاريخ التسليم",
+                        onDateSelected = { selectedIso, _ -> dueDate = selectedIso }
+                    )
+
+                    HomeworkIllustrativePhotoPickerSection(
+                        attachmentBase64 = attachmentImageBase64,
+                        onAttachmentChanged = { attachmentImageBase64 = it }
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "نشر وإشعار الطلاب وأولياء الأمور",
+                    icon = Icons.Filled.Send,
+                    onClick = {
+                        if (prep.isNotBlank()) {
+                            viewModel.publishHomework(
+                                gradeClass = selectedClass,
+                                sectionName = selectedSection,
+                                subjectName = subject,
+                                teacherName = currentUser?.fullName ?: "معلم المادة",
+                                dailyPreparation = prep,
+                                homeworkDetails = hwDetails.ifBlank { "مراجعة الدرس وحل أسئلة الفصل" },
+                                dueDate = dueDate,
+                                attachmentImageBase64 = attachmentImageBase64
+                            )
+                            showPublishHomeworkDialog = false
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishHomeworkDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    // Edit Homework Modal
+    editingHomework?.let { hwTarget ->
+        var editSubject by remember(hwTarget.id) { mutableStateOf(hwTarget.subjectName) }
+        var editSubjExpanded by remember { mutableStateOf(false) }
+        var editPrep by remember(hwTarget.id) { mutableStateOf(hwTarget.dailyPreparation) }
+        var editHwDetails by remember(hwTarget.id) { mutableStateOf(hwTarget.homeworkDetails) }
+        var editDueDate by remember(hwTarget.id) { mutableStateOf(hwTarget.dueDate) }
+        var editAttachmentBase64 by remember(hwTarget.id) { mutableStateOf(hwTarget.attachmentImageBase64) }
+
+        AlertDialog(
+            onDismissRequest = { editingHomework = null },
+            title = {
+                Text(
+                    text = "تعديل التحضير والواجب (${hwTarget.subjectName})",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepEmerald
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ExposedDropdownMenuBox(
+                        expanded = editSubjExpanded,
+                        onExpandedChange = { editSubjExpanded = !editSubjExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = editSubject,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("المادة الدراسية") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = editSubjExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = editSubjExpanded,
+                            onDismissRequest = { editSubjExpanded = false }
+                        ) {
+                            allowedSubjects.forEach { sOption ->
+                                DropdownMenuItem(
+                                    text = { Text(sOption) },
+                                    onClick = {
+                                        editSubject = sOption
+                                        editSubjExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = editPrep,
+                        onValueChange = { editPrep = it },
+                        label = { Text("التحضير اليومي للدرس القادم") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = editHwDetails,
+                        onValueChange = { editHwDetails = it },
+                        label = { Text("تفاصيل الواجب البيتي المطلوب") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = editDueDate,
+                        label = "تاريخ التسليم",
+                        onDateSelected = { selectedIso, _ -> editDueDate = selectedIso }
+                    )
+
+                    HomeworkIllustrativePhotoPickerSection(
+                        attachmentBase64 = editAttachmentBase64,
+                        onAttachmentChanged = { editAttachmentBase64 = it }
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "حفظ التعديلات",
+                    icon = Icons.Filled.CheckCircle,
+                    onClick = {
+                        if (editPrep.isNotBlank()) {
+                            viewModel.updateHomework(
+                                homeworkId = hwTarget.id,
+                                gradeClass = hwTarget.gradeClass,
+                                sectionName = hwTarget.sectionName,
+                                subjectName = editSubject,
+                                teacherName = hwTarget.teacherName,
+                                dailyPreparation = editPrep,
+                                homeworkDetails = editHwDetails.ifBlank { "مراجعة الدرس وحل أسئلة الفصل" },
+                                dueDate = editDueDate,
+                                attachmentImageBase64 = editAttachmentBase64
+                            )
+                            editingHomework = null
+                        }
+                    },
+                    testTag = "confirm_edit_homework_btn"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { editingHomework = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    // Delete Homework Confirmation Modal
+    deletingHomework?.let { hwTarget ->
+        AlertDialog(
+            onDismissRequest = { deletingHomework = null },
+            title = {
+                Text(
+                    text = "تأكيد حذف الواجب الدراسي",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DangerRed
+                )
+            },
+            text = {
+                Text(
+                    text = "هل أنت متأكد من حذف واجب مادة (${hwTarget.subjectName}) للصف (${hwTarget.gradeClass} - شعبة ${hwTarget.sectionName})؟ سيتم حذفه فوراً من السحابة وجميع الأجهزة.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "تأكيد الحذف",
+                    icon = Icons.Filled.DeleteOutline,
+                    containerColor = DangerRed,
+                    onClick = {
+                        viewModel.deleteHomework(hwTarget.id)
+                        deletingHomework = null
+                    },
+                    testTag = "confirm_delete_homework_btn"
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingHomework = null }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    if (showAddPeriodDialog) {
+        val registeredTeachers = remember(accounts) {
+            accounts.filter { it.role == UserRole.TEACHER && !it.isEffectiveBusDriver }
+        }
+        var periodNo by remember { mutableStateOf("1") }
+        var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
+        var teacher by remember(currentUser, registeredTeachers) {
+            val defaultTeacher = if (currentUser?.role == UserRole.TEACHER) {
+                currentUser?.fullName
+            } else {
+                registeredTeachers.firstOrNull()?.fullName
+            }
+            mutableStateOf(defaultTeacher ?: "")
+        }
+        var teacherSearchQuery by remember { mutableStateOf("") }
+        var teacherDropdownExpanded by remember { mutableStateOf(false) }
+
+        val timeOptions = remember {
+            listOf(
+                "08:00 ص",
+                "08:45 ص",
+                "09:30 ص",
+                "10:15 ص",
+                "11:00 ص",
+                "11:45 ص",
+                "12:30 م",
+                "01:15 م",
+                "02:00 م"
+            )
+        }
+        var startTime by remember { mutableStateOf("08:00 ص") }
+        var endTime by remember { mutableStateOf("08:45 ص") }
+        var startExpanded by remember { mutableStateOf(false) }
+        var endExpanded by remember { mutableStateOf(false) }
+
+        val filteredTeachers = remember(registeredTeachers, teacherSearchQuery) {
+            if (teacherSearchQuery.isBlank()) {
+                registeredTeachers
+            } else {
+                val q = teacherSearchQuery.trim()
+                registeredTeachers.filter { tAcc ->
+                    tAcc.fullName.contains(q, ignoreCase = true) ||
+                        tAcc.specialty.contains(q, ignoreCase = true) ||
+                        tAcc.teacherSubjectsList.any { it.contains(q, ignoreCase = true) }
+                }
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { showAddPeriodDialog = false },
+            title = { Text("إضافة حصة ليوم $selectedDay ($selectedClass - $selectedSection)") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = periodNo,
+                        onValueChange = { periodNo = it.filter { c -> c.isDigit() } },
+                        label = { Text("رقم الحصة (1 - 7)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text("المادة الدراسية:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = subject == sOpt,
+                                onClick = { subject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+
+                    // Searchable Select Dropdown for Teacher Name
+                    Text(
+                        text = "اختيار $staffTitleSingular من الكادر المسجل:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
+                    )
+                    ExposedDropdownMenuBox(
+                        expanded = teacherDropdownExpanded,
+                        onExpandedChange = { teacherDropdownExpanded = !teacherDropdownExpanded }
+                    ) {
+                        OutlinedTextField(
+                            value = teacherSearchQuery.ifBlank { teacher },
+                            onValueChange = {
+                                teacherSearchQuery = it
+                                teacher = it
+                                teacherDropdownExpanded = true
+                            },
+                            label = { Text("ابحث أو اختر اسم $staffTitleSingular...") },
+                            leadingIcon = { Icon(Icons.Filled.PersonSearch, contentDescription = null, tint = DeepEmerald) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = teacherDropdownExpanded) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = teacherDropdownExpanded,
+                            onDismissRequest = { teacherDropdownExpanded = false }
+                        ) {
+                            if (filteredTeachers.isEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("لا يوجد مطابق في الكادر المسجل") },
+                                    onClick = { teacherDropdownExpanded = false }
+                                )
+                            } else {
+                                filteredTeachers.forEach { tAcc ->
+                                    val subjInfo = tAcc.teacherSubjectsList.joinToString("، ").ifBlank { tAcc.specialty }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(tAcc.fullName, fontWeight = FontWeight.Bold)
+                                                if (subjInfo.isNotBlank()) {
+                                                    Text(
+                                                        text = "الاختصاص: $subjInfo",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        onClick = {
+                                            teacher = tAcc.fullName
+                                            teacherSearchQuery = ""
+                                            teacherDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Structured Start & End Time Selectors
+                    Text(
+                        text = "توقيت الحصة الدراسية (من الساعة — إلى الساعة):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = DeepEmerald
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ExposedDropdownMenuBox(
+                            expanded = startExpanded,
+                            onExpandedChange = { startExpanded = !startExpanded },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            OutlinedTextField(
+                                value = startTime,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("من الساعة") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = startExpanded) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = startExpanded,
+                                onDismissRequest = { startExpanded = false }
+                            ) {
+                                timeOptions.forEach { tOpt ->
+                                    DropdownMenuItem(
+                                        text = { Text(tOpt) },
+                                        onClick = {
+                                            startTime = tOpt
+                                            startExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        ExposedDropdownMenuBox(
+                            expanded = endExpanded,
+                            onExpandedChange = { endExpanded = !endExpanded },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            OutlinedTextField(
+                                value = endTime,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("إلى الساعة") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = endExpanded) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = endExpanded,
+                                onDismissRequest = { endExpanded = false }
+                            ) {
+                                timeOptions.forEach { tOpt ->
+                                    DropdownMenuItem(
+                                        text = { Text(tOpt) },
+                                        onClick = {
+                                            endTime = tOpt
+                                            endExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "حفظ في الجدول",
+                    icon = Icons.Filled.Save,
+                    onClick = {
+                        val finalTeacher = teacher.trim().ifBlank { currentUser?.fullName ?: staffTitleSingular }
+                        val formattedSlot = "$startTime - $endTime"
+                        viewModel.addSchedulePeriod(
+                            gradeClass = selectedClass,
+                            sectionName = selectedSection,
+                            dayOfWeek = selectedDay,
+                            periodNumber = periodNo.toIntOrNull() ?: 1,
+                            subjectName = subject,
+                            teacherName = finalTeacher,
+                            timeSlot = formattedSlot
+                        )
+                        showAddPeriodDialog = false
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddPeriodDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+
+    if (showPublishStudyMaterialDialog) {
+        var subject by remember(allowedSubjects) { mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات") }
+        var title by remember { mutableStateOf("") }
+        var description by remember { mutableStateOf("") }
+        var docLink by remember { mutableStateOf("") }
+        var imageBase64 by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showPublishStudyMaterialDialog = false },
+            title = { Text("نشر ملخص أو ملزمة لـ ($selectedClass - $selectedSection)") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("المادة الدراسية:", style = MaterialTheme.typography.labelMedium)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = subject == sOpt,
+                                onClick = { subject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("عنوان الملخص / الملزمة / ورقة العمل") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("شرح ومحتوى الملخص الدراسي") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = docLink,
+                        onValueChange = { docLink = it },
+                        label = { Text("رابط ملف PDF أو الملزمة (اختياري)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    CompressedPhotoPickerButton(
+                        label = "إرفاق صورة توضيحية أو ورقة عمل",
+                        currentBase64 = imageBase64,
+                        onImageCompressed = { imageBase64 = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = "نشر في المكتبة الرقمية",
+                    icon = Icons.Filled.CloudUpload,
+                    onClick = {
+                        if (title.isNotBlank()) {
+                            viewModel.publishStudyMaterial(
+                                gradeClass = selectedClass,
+                                sectionName = selectedSection,
+                                subjectName = subject,
+                                title = title,
+                                description = description.ifBlank { "ملخص دراسي شامل للمراجعة" },
+                                fileUrl = docLink,
+                                imageBase64 = imageBase64
+                            )
+                            showPublishStudyMaterialDialog = false
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showPublishStudyMaterialDialog = false }) { Text("إلغاء") }
+            }
+        )
+    }
+}
+
+/**
+ * Section 4: Restructured Exams & Detailed Gradebook Screen
+ * - For Admin & Teacher:
+ *   Step A: Choose Registered Class -> Choose Registered Section -> Choose Subject
+ *   Step B: Displays ONLY students in that Class & Section + Instant Search by Name bar
+ *   Step C: Inline editable grade fields (يومي، الشهر الأول، الشهر الثاني، نصف السنة، السعي، النهائي) for each student in that selected subject with instant Save!
+ * - For Student & Parent:
+ *   Step D: Displays a clean, organized Student Report Card Table showing ONLY that student's subjects and detailed grades.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ExamsAndGradesScreen(
+    viewModel: SchoolViewModel
+) {
+    val context = LocalContext.current
+    val schoolConfig by viewModel.schoolConfig.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+    val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
+    val students by viewModel.students.collectAsState()
+    val grades by viewModel.grades.collectAsState()
+    val examSchedules by viewModel.examSchedules.collectAsState()
+
+    val isParentOrStudent = currentUser?.role == UserRole.PARENT || currentUser?.role == UserRole.STUDENT
+    val canEdit = currentUser?.role == UserRole.ADMIN || currentUser?.role == UserRole.TEACHER
+
+    val allowedClasses = remember(schoolConfig, currentUser, students, selectedParentChildId) {
+        viewModel.getAllowedClassesForUser(currentUser)
+    }
+    var selectedClass by remember(currentUser?.id, allowedClasses) {
+        mutableStateOf(allowedClasses.firstOrNull() ?: "الأول المتوسط")
+    }
+    val allowedSections = remember(schoolConfig, currentUser, students, selectedClass, selectedParentChildId) {
+        viewModel.getAllowedSectionsForClass(selectedClass, currentUser)
+    }
+    var selectedSection by remember(currentUser?.id, selectedClass, allowedSections) {
+        mutableStateOf(allowedSections.firstOrNull() ?: "أ")
+    }
+    val allowedSubjects = remember(schoolConfig, selectedClass, currentUser) {
+        viewModel.getSubjectsForClass(selectedClass, currentUser)
+    }
+    var selectedSubject by remember(currentUser?.id, selectedClass, allowedSubjects) {
+        mutableStateOf(allowedSubjects.firstOrNull() ?: "الرياضيات")
+    }
+    var selectedMaxScale by remember(selectedClass, selectedSubject, schoolConfig, grades) {
+        mutableIntStateOf(viewModel.getDefaultMaxScoreForClassAndSubject(selectedClass, selectedSubject))
+    }
+
+    var searchStudentName by remember { mutableStateOf("") }
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = رصد/كشف الدرجات, 1 = مواعيد الامتحانات, 2 = إصدار الكارتات والنتائج
+    var selectedReportCardPeriod by remember { mutableStateOf(ReportCardPeriodType.COMPREHENSIVE_ALL) }
+    var selectedApprovalPeriod by remember { mutableStateOf(GradeAssessmentPeriod.MONTH_1) }
+    var pendingOverrideApprovalSummary by remember { mutableStateOf<PeriodCompletionSummary?>(null) }
+    var showAddExamDialog by remember { mutableStateOf(false) }
+    var editingExamSchedule by remember { mutableStateOf<ExamScheduleItem?>(null) }
+
+    val issuedReportCards by viewModel.issuedReportCards.collectAsState()
+    val activeCelebrationCard by viewModel.activeCelebrationReportCard.collectAsState()
+
+    val deepLinkTarget by viewModel.deepLinkTarget.collectAsState()
+    LaunchedEffect(deepLinkTarget, isParentOrStudent) {
+        val target = deepLinkTarget
+        if (target != null && target.section == AppSection.EXAMS_GRADES) {
+            selectedTab = if (isParentOrStudent) {
+                target.tabIndex.coerceIn(0, 1)
+            } else {
+                target.tabIndex.coerceIn(0, 2)
+            }
+            if (target.itemId.startsWith("rc_")) {
+                issuedReportCards.firstOrNull { it.id == target.itemId }?.let { card ->
+                    viewModel.openCelebrationReportCardModal(card)
+                }
+            }
+            viewModel.clearDeepLinkTarget()
+        }
+    }
+
+    // Principal Override Warning Modal when some students do not have recorded grades for the selected period
+    pendingOverrideApprovalSummary?.let { summary ->
+        AlertDialog(
+            onDismissRequest = { pendingOverrideApprovalSummary = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.WarningAmber,
+                    contentDescription = null,
+                    tint = Color(0xFFD97706),
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "تنبيه عدم اكتمال رصد درجات (${summary.period.arabicTitle})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF92400E),
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFFFBEB),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "اكتمال الرصد الحالي: ${summary.recordedStudentsCount} من ${summary.totalStudentsCount} طالب",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = Color(0xFF78350F)
+                            )
+                            Text(
+                                text = "يوجد (${summary.unrecordedCount}) من الطلبة في ($selectedClass - شعبة $selectedSection) لم يقم المعلم برصد درجاتهم في مادة ($selectedSubject) لفترة (${summary.period.arabicTitle}):",
+                                fontSize = 12.sp,
+                                color = Color(0xFF92400E)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFEF2F2),
+                        border = BorderStroke(1.dp, Color(0xFFFECACA)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "الطلبة غير المرصودة درجاتهم:",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 12.sp,
+                                color = Color(0xFF991B1B)
+                            )
+                            summary.unrecordedStudentNames.forEachIndexed { idx, stuName ->
+                                Text(
+                                    text = "${idx + 1}. $stuName",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFB91C1C)
+                                )
+                            }
+                        }
+                    }
+
+                    // Two explicit options for the Principal (Pure-Text Capsules)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { pendingOverrideApprovalSummary = null },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF047857),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("btn_cancel_approval_wait_teacher")
+                        ) {
+                            Text(
+                                text = "إلغاء والعودة لحين استكمال المعلم لرصد جميع الطلبة",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.setClassSubjectPeriodApproval(
+                                    gradeClass = selectedClass,
+                                    sectionName = selectedSection,
+                                    subjectName = selectedSubject,
+                                    period = summary.period,
+                                    approved = true
+                                )
+                                pendingOverrideApprovalSummary = null
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.4.dp, Color(0xFFD97706)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFB45309)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("btn_override_approval_by_principal")
+                        ) {
+                            Text(
+                                text = "تجاوز التحذير والمصادقة الاستثنائية بأمر المدير",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {}
+        )
+    }
+
+    // Active Celebration / Report Card Preview Modal
+    activeCelebrationCard?.let { cardToView ->
+        val matchedStu = students.firstOrNull { it.id == cardToView.studentId }
+        val stuGrades = grades.filter { it.studentId == cardToView.studentId }
+        LuxuryInteractiveReportCardModal(
+            reportCard = cardToView,
+            schoolConfig = schoolConfig,
+            onDismiss = { viewModel.closeCelebrationReportCardModal() },
+            onPrintPdf = {
+                if (matchedStu != null) {
+                    val res = DocumentAndIdExporter.exportStudentReportCardPdf(
+                        context = context,
+                        student = matchedStu,
+                        grades = stuGrades,
+                        schoolConfig = schoolConfig,
+                        principalName = cardToView.principalName,
+                        periodLabel = cardToView.periodType.arabicTitle
+                    )
+                    viewModel.showBannerMessage(res)
+                }
+            }
+        )
+    }
+
+    // Unified Scrollable Top Banner + 3-Tab Switcher Header rendered inside each LazyColumn so nothing gets cut off or squeezed
+    val renderTopTabsHeader: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (isParentOrStudent) {
+                val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
+                val myLatestCard = remember(issuedReportCards, myStu?.id) {
+                    myStu?.id?.let { viewModel.getLatestIssuedReportCardForStudent(it) }
+                }
+                if (myLatestCard != null) {
+                    ParentIssuedReportCardArrivalBanner(
+                        reportCard = myLatestCard,
+                        onClick = { viewModel.openCelebrationReportCardModal(myLatestCard) }
+                    )
+                }
+            }
+
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.1.dp, DeepEmerald.copy(alpha = 0.18f)),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val isGradesTab = selectedTab == 0
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isGradesTab) Color(0xFF059669) else Color(0xFFF0FDF4),
+                            border = BorderStroke(
+                                1.2.dp,
+                                if (isGradesTab) Color(0xFFA7F3D0) else Color(0xFF059669).copy(alpha = 0.24f)
+                            ),
+                            shadowElevation = if (isGradesTab) 4.dp else 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedTab = 0 }
+                                .testTag("tab_detailed_grades")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Grading,
+                                    contentDescription = null,
+                                    tint = if (isGradesTab) Color.White else Color(0xFF065F46),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (isParentOrStudent) "جدول كشف الدرجات" else "الدرجات حسب المادة",
+                                    fontSize = 12.2.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isGradesTab) Color.White else Color(0xFF064E3B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        val isScheduleTab = selectedTab == 1
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isScheduleTab) Color(0xFF059669) else Color(0xFFF0FDF4),
+                            border = BorderStroke(
+                                1.2.dp,
+                                if (isScheduleTab) Color(0xFFA7F3D0) else Color(0xFF059669).copy(alpha = 0.24f)
+                            ),
+                            shadowElevation = if (isScheduleTab) 4.dp else 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedTab = 1 }
+                                .testTag("tab_exam_schedule")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.EventNote,
+                                    contentDescription = null,
+                                    tint = if (isScheduleTab) Color.White else Color(0xFF065F46),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "مواعيد الامتحانات",
+                                    fontSize = 12.2.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isScheduleTab) Color.White else Color(0xFF064E3B),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    // 3rd Main Tab: إصدار الكارتات والنتائج (Administrative tab — hidden for Student and Parent accounts)
+                    if (!isParentOrStudent) {
+                        val isReportCardsTab = selectedTab == 2
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (isReportCardsTab) Color(0xFF065F46) else Color(0xFFFFFBEB),
+                            border = BorderStroke(
+                                1.3.dp,
+                                if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFD97706).copy(alpha = 0.42f)
+                            ),
+                            shadowElevation = if (isReportCardsTab) 4.dp else 0.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { selectedTab = 2 }
+                                .testTag("tab_smart_report_cards_hub")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.WorkspacePremium,
+                                    contentDescription = null,
+                                    tint = if (isReportCardsTab) Color(0xFFFDE68A) else Color(0xFFB45309),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(7.dp))
+                                Text(
+                                    text = "إصدار الكارتات والنتائج",
+                                    fontSize = 12.8.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isReportCardsTab) Color.White else Color(0xFF78350F),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        if (selectedTab == 0) {
+            if (isParentOrStudent) {
+                // =============================================================
+                // STEP D: STUDENT & PARENT ORGANIZED REPORT CARD TABLE
+                // =============================================================
+                val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
+                if (myStu != null) {
+                    val myGrades = grades.filter { it.studentId == myStu.id }
+                    val myBadges = viewModel.getStudentAutoBadges(myStu.id)
+                    val studentSubjects = viewModel.getSubjectsForClass(myStu.gradeClass, null)
+                    val allSubjectsReport = studentSubjects.map { subjName ->
+                        val dynamicScale = viewModel.getDefaultMaxScoreForClassAndSubject(myStu.gradeClass, subjName)
+                        myGrades.firstOrNull { it.subjectName == subjName } ?: SubjectGrade(
+                            id = "temp_$subjName",
+                            schoolId = schoolConfig.schoolId,
+                            studentId = myStu.id,
+                            studentName = myStu.studentName,
+                            gradeClass = myStu.gradeClass,
+                            subjectName = subjName,
+                            maxScoreScale = dynamicScale,
+                            dailyScore = 0,
+                            month1Score = 0,
+                            month2Score = 0,
+                            midYearScore = 0,
+                            finalExamScore = 0
+                        )
+                    }
+                    val allSubjectsCompleted = allSubjectsReport.isNotEmpty() && allSubjectsReport.all { it.isAllExamsCompleted }
+                    val completedSubjects = allSubjectsReport.filter { it.isAllExamsCompleted }
+                    val overallAvg = when {
+                        allSubjectsCompleted -> allSubjectsReport.map { it.normalizedPercentage }.average().toInt()
+                        completedSubjects.isNotEmpty() -> completedSubjects.map { it.normalizedPercentage }.average().toInt()
+                        allSubjectsReport.isNotEmpty() -> allSubjectsReport.map {
+                            if (it.maxScoreScale == 10) (it.annualEffortScore * 10).coerceIn(0, 100) else it.annualEffortScore.coerceIn(0, 100)
+                        }.average().toInt()
+                        else -> 0
+                    }
+                    val overallRating = when {
+                        !allSubjectsCompleted -> "مستمر / متابع"
+                        overallAvg >= 90 -> "ممتاز"
+                        overallAvg >= 80 -> "جيد جداً"
+                        overallAvg >= 70 -> "جيد"
+                        overallAvg >= 60 -> "متوسط"
+                        overallAvg >= 50 -> "ناجح (مقبول)"
+                        else -> "راسب"
+                    }
+
+                    val myIssuedCards = remember(issuedReportCards, myStu.id) {
+                        issuedReportCards.filter { it.studentId == myStu.id }
+                    }
+                    val isFinalReportApprovedByPrincipal = remember(myIssuedCards, myGrades, allSubjectsReport) {
+                        myIssuedCards.isNotEmpty() ||
+                            (myGrades.isNotEmpty() &&
+                                allSubjectsReport.isNotEmpty() &&
+                                allSubjectsReport.all { it.isApprovedByPrincipal })
+                    }
+
+                    val seenGradesPrefs = remember(context) {
+                        context.getSharedPreferences("madrasati_seen_grades_v1", android.content.Context.MODE_PRIVATE)
+                    }
+                    val seenSubjectSignatures = remember(myStu.id) {
+                        androidx.compose.runtime.mutableStateMapOf<String, String>().apply {
+                            allSubjectsReport.forEach { g ->
+                                val key = "${myStu.id}_${g.subjectName}"
+                                val saved = seenGradesPrefs.getString(key, null)
+                                if (saved != null) {
+                                    put(g.subjectName, saved)
+                                }
+                            }
+                        }
+                    }
+
+                    fun buildSubjectScoreSignature(g: SubjectGrade): String {
+                        return "${g.dailyScore}_${g.month1Score}_${g.month2Score}_${g.midYearScore}_${g.finalExamScore}_${g.annualEffortScore}_${g.extraDailyScores.joinToString(",")}_${g.extraMonthlyScores.joinToString(",")}"
+                    }
+
+                    fun hasAnyRecordedGrade(g: SubjectGrade): Boolean {
+                        return g.dailyScore > 0 ||
+                            g.month1Score > 0 ||
+                            g.month2Score > 0 ||
+                            g.midYearScore > 0 ||
+                            g.finalExamScore > 0 ||
+                            g.annualEffortScore > 0 ||
+                            g.extraDailyScores.any { it > 0 } ||
+                            g.extraMonthlyScores.any { it > 0 }
+                    }
+
+                    var selectedInteractiveSubjectName by remember(myStu.id, allSubjectsReport.size) {
+                        mutableStateOf(allSubjectsReport.firstOrNull()?.subjectName.orEmpty())
+                    }
+
+                    val selectedSubjectRecord = remember(allSubjectsReport, selectedInteractiveSubjectName) {
+                        allSubjectsReport.firstOrNull { it.subjectName == selectedInteractiveSubjectName }
+                            ?: allSubjectsReport.firstOrNull()
+                    }
+
+                    val pulseInfiniteTransition = rememberInfiniteTransition(label = "new_grade_pulse_transition")
+                    val newGradePulseScale by pulseInfiniteTransition.animateFloat(
+                        initialValue = 0.88f,
+                        targetValue = 1.24f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "new_grade_pulse_scale"
+                    )
+                    val newGradePulseAlpha by pulseInfiniteTransition.animateFloat(
+                        initialValue = 0.45f,
+                        targetValue = 1.0f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "new_grade_pulse_alpha"
+                    )
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(bottom = 110.dp)
+                    ) {
+                        item(key = "exams_top_tabs_parent_0") {
+                            renderTopTabsHeader()
+                        }
+
+                        // ترويسة مصغّرة وأنيقة لتبويب كشف درجات الطالب
+                        item(key = "student_grades_compact_mini_header_${myStu.id}") {
+                            val recordedSubjectsCount = remember(allSubjectsReport) {
+                                allSubjectsReport.count { hasAnyRecordedGrade(it) }
+                            }
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("student_grades_compact_mini_header"),
+                                shape = RoundedCornerShape(18.dp),
+                                shadowElevation = 3.dp
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            Brush.linearGradient(
+                                                colors = listOf(
+                                                    Color(0xFF042F24),
+                                                    Color(0xFF065F46),
+                                                    Color(0xFF059669)
+                                                )
+                                            )
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(Color.White.copy(alpha = 0.16f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.AutoGraph,
+                                                    contentDescription = "سجل الدرجات",
+                                                    tint = Color(0xFFFDE68A),
+                                                    modifier = Modifier.size(21.dp)
+                                                )
+                                            }
+                                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Text(
+                                                    text = myStu.fullNameWithFather,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "${myStu.gradeClass} • شعبة (${myStu.sectionName})",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color(0xFFD1FAE5),
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color.White.copy(alpha = 0.16f),
+                                            border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.55f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Verified,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFFDE68A),
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                                Text(
+                                                    text = "مرصود $recordedSubjectsCount/${allSubjectsReport.size}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // لا يظهر أي ذكر لـ "كارت الدرجات الرسمي" إلا إذا اعتمدها المدير وأرسلها رسمياً
+                        if (isFinalReportApprovedByPrincipal) {
+                            item(key = "student_report_card_header_${myStu.id}") {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(18.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "كشف درجات الطالب: ${myStu.fullNameWithFather}",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "الصف: ${myStu.gradeClass} • شعبة (${myStu.sectionName})",
+                                                    style = MaterialTheme.typography.bodySmall
+                                                )
+                                            }
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                NoWrapBadge(
+                                                    text = if (allSubjectsCompleted) "المعدل النهائي: $overallAvg%" else "مؤشر المتابعة: $overallAvg%",
+                                                    icon = Icons.Filled.AutoGraph,
+                                                    containerColor = MaterialTheme.colorScheme.primary,
+                                                    contentColor = Color.White
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                NoWrapBadge(
+                                                    text = "الحالة: $overallRating",
+                                                    icon = Icons.Filled.WorkspacePremium,
+                                                    containerColor = GoldAccent,
+                                                    contentColor = Color(0xFF451A03)
+                                                )
+                                            }
+                                        }
+                                        if (myBadges.isNotEmpty()) {
+                                            StudentAutoBadgesRow(badges = myBadges)
+                                        }
+                                        myIssuedCards.firstOrNull()?.let { latestIssuedCard ->
+                                            Button(
+                                                onClick = { viewModel.openCelebrationReportCardModal(latestIssuedCard) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = Color(0xFF047857),
+                                                    contentColor = Color.White
+                                                )
+                                            ) {
+                                                Icon(Icons.Filled.WorkspacePremium, contentDescription = null)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "فتح الكارت المدرسي الرسمي المعتمد (${latestIssuedCard.periodType.arabicTitle})",
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                                    context = context,
+                                                    student = myStu,
+                                                    grades = allSubjectsReport,
+                                                    schoolConfig = schoolConfig
+                                                )
+                                                viewModel.showBannerMessage(msg)
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Filled.PictureAsPdf, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("تصدير / طباعة بطاقة الدرجات الرسمية (PDF)")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // المرحلة الأولى (أ): شبكة اختيار المادة التفاعلية المدمجة والمتوازنة مع مؤشر حالة كل مادة
+                        item(key = "interactive_subject_selector_${myStu.id}") {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("interactive_subject_selector_card"),
+                                shape = RoundedCornerShape(18.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, Color(0xFFD1FAE5)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = Color(0xFFECFDF5),
+                                                modifier = Modifier.size(34.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.MenuBook,
+                                                        contentDescription = null,
+                                                        tint = DeepEmerald,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
+                                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                                Text(
+                                                    text = "اختر المادة الدراسية",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = DeepForestGreen
+                                                )
+                                                Text(
+                                                    text = "اضغط على أي مادة لعرض سجل درجاتها المنظّم أدناه",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                        ) {
+                                            Text(
+                                                text = "${allSubjectsReport.size} مواد",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF065F46),
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // شبكة بطاقات مدمجة ومتناسقة الارتفاع مع معالجة ذكية للمادة الفردية الأخيرة دون فراغ جانبي
+                                    val chunkedSubjects = remember(allSubjectsReport) {
+                                        allSubjectsReport.chunked(2)
+                                    }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                                    ) {
+                                        chunkedSubjects.forEach { rowSubjects ->
+                                            val isSingleOddRow = rowSubjects.size == 1
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                            ) {
+                                                rowSubjects.forEach { subjRecord ->
+                                                    val isSelected = subjRecord.subjectName == selectedSubjectRecord?.subjectName
+                                                    val hasRecorded = hasAnyRecordedGrade(subjRecord)
+                                                    val sig = buildSubjectScoreSignature(subjRecord)
+                                                    val isUnseenNewGrade = hasRecorded && seenSubjectSignatures[subjRecord.subjectName] != sig
+
+                                                    Surface(
+                                                        onClick = {
+                                                            selectedInteractiveSubjectName = subjRecord.subjectName
+                                                            if (hasRecorded) {
+                                                                seenSubjectSignatures[subjRecord.subjectName] = sig
+                                                                seenGradesPrefs.edit()
+                                                                    .putString("${myStu.id}_${subjRecord.subjectName}", sig)
+                                                                    .apply()
+                                                            }
+                                                        },
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(if (isSingleOddRow) 50.dp else 56.dp)
+                                                            .testTag("subject_selector_chip_${subjRecord.subjectName}"),
+                                                        shape = RoundedCornerShape(13.dp),
+                                                        color = when {
+                                                            isSelected -> Color(0xFF065F46)
+                                                            isUnseenNewGrade -> Color(0xFFECFDF5)
+                                                            hasRecorded -> Color(0xFFF0FDF4)
+                                                            else -> Color(0xFFF8FAFC)
+                                                        },
+                                                        border = BorderStroke(
+                                                            width = if (isSelected || isUnseenNewGrade) 1.5.dp else 1.dp,
+                                                            color = when {
+                                                                isSelected -> Color(0xFFFBBF24)
+                                                                isUnseenNewGrade -> Color(0xFF10B981)
+                                                                hasRecorded -> Color(0xFFA7F3D0)
+                                                                else -> Color(0xFFE2E8F0)
+                                                            }
+                                                        ),
+                                                        shadowElevation = if (isSelected) 3.dp else 0.dp
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(28.dp)
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(
+                                                                        when {
+                                                                            isSelected -> Color.White.copy(alpha = 0.16f)
+                                                                            hasRecorded -> Color(0xFFD1FAE5)
+                                                                            else -> Color(0xFFE2E8F0).copy(alpha = 0.7f)
+                                                                        }
+                                                                    ),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = when {
+                                                                        isSelected -> Icons.Filled.AutoStories
+                                                                        hasRecorded -> Icons.Filled.CheckCircle
+                                                                        else -> Icons.Filled.Book
+                                                                    },
+                                                                    contentDescription = null,
+                                                                    tint = when {
+                                                                        isSelected -> Color(0xFFFDE68A)
+                                                                        hasRecorded -> Color(0xFF059669)
+                                                                        else -> Color(0xFF64748B)
+                                                                    },
+                                                                    modifier = Modifier.size(15.dp)
+                                                                )
+                                                            }
+
+                                                            Column(
+                                                                modifier = Modifier.weight(1f),
+                                                                verticalArrangement = Arrangement.Center
+                                                            ) {
+                                                                Text(
+                                                                    text = subjRecord.subjectName,
+                                                                    fontSize = 12.sp,
+                                                                    lineHeight = 14.5.sp,
+                                                                    fontWeight = FontWeight.ExtraBold,
+                                                                    color = if (isSelected) Color.White else Color(0xFF0F172A),
+                                                                    maxLines = if (isSingleOddRow) 1 else 2,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                                if (!isSingleOddRow && !isUnseenNewGrade) {
+                                                                    Text(
+                                                                        text = if (hasRecorded) {
+                                                                            "السعي ${subjRecord.annualEffortScore}/${subjRecord.maxScoreScale}"
+                                                                        } else {
+                                                                            "بانتظار الرصد"
+                                                                        },
+                                                                        fontSize = 9.5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = when {
+                                                                            isSelected -> Color(0xFFFDE68A)
+                                                                            hasRecorded -> Color(0xFF047857)
+                                                                            else -> Color(0xFF64748B)
+                                                                        },
+                                                                        maxLines = 1,
+                                                                        overflow = TextOverflow.Ellipsis
+                                                                    )
+                                                                }
+                                                            }
+
+                                                            if (isUnseenNewGrade) {
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(50),
+                                                                    color = if (isSelected) Color(0xFFFBBF24) else Color(0xFF059669),
+                                                                    modifier = Modifier.graphicsLayer {
+                                                                        scaleX = newGradePulseScale * 0.92f
+                                                                        scaleY = newGradePulseScale * 0.92f
+                                                                        alpha = newGradePulseAlpha
+                                                                    }
+                                                                ) {
+                                                                    Text(
+                                                                        text = "جديد",
+                                                                        fontSize = 9.5.sp,
+                                                                        fontWeight = FontWeight.ExtraBold,
+                                                                        color = if (isSelected) Color(0xFF042F24) else Color.White,
+                                                                        maxLines = 1,
+                                                                        softWrap = false,
+                                                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                                    )
+                                                                }
+                                                            } else if (isSingleOddRow) {
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(50),
+                                                                    color = when {
+                                                                        isSelected -> Color.White.copy(alpha = 0.16f)
+                                                                        hasRecorded -> Color(0xFFD1FAE5)
+                                                                        else -> Color(0xFFE2E8F0)
+                                                                    }
+                                                                ) {
+                                                                    Text(
+                                                                        text = if (hasRecorded) {
+                                                                            "السعي ${subjRecord.annualEffortScore}/${subjRecord.maxScoreScale}"
+                                                                        } else {
+                                                                            "بانتظار الرصد"
+                                                                        },
+                                                                        fontSize = 10.sp,
+                                                                        fontWeight = FontWeight.ExtraBold,
+                                                                        color = when {
+                                                                            isSelected -> Color(0xFFFDE68A)
+                                                                            hasRecorded -> Color(0xFF065F46)
+                                                                            else -> Color(0xFF475569)
+                                                                        },
+                                                                        maxLines = 1,
+                                                                        softWrap = false,
+                                                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // المرحلة الثانية (ب): بطاقة استعراض درجات المادة المختارة بشكل منظّم وواضح مباشرةً أسفل اختيار المادة
+                        selectedSubjectRecord?.let { g ->
+                            item(key = "selected_subject_grade_showcase_${myStu.id}") {
+                                androidx.compose.animation.AnimatedContent(
+                                    targetState = g,
+                                    label = "selected_subject_grade_showcase_anim"
+                                ) { activeGrade ->
+                                    val hasRecorded = hasAnyRecordedGrade(activeGrade)
+                                    val statusColor = when {
+                                        !activeGrade.isAllExamsCompleted -> DeepEmerald
+                                        activeGrade.normalizedPercentage >= 50 -> SuccessGreen
+                                        else -> DangerRed
+                                    }
+                                    val statusText = when {
+                                        !hasRecorded -> "بانتظار رصد الدرجات"
+                                        !activeGrade.isAllExamsCompleted -> "مستمر • ${activeGrade.ratingLabel}"
+                                        activeGrade.normalizedPercentage >= 50 -> "ناجح • ${activeGrade.ratingLabel}"
+                                        else -> "راسب"
+                                    }
+                                    val effortProgress = if (activeGrade.maxScoreScale > 0 && activeGrade.annualEffortScore > 0) {
+                                        (activeGrade.annualEffortScore.toFloat() / activeGrade.maxScoreScale.toFloat()).coerceIn(0f, 1f)
+                                    } else {
+                                        0f
+                                    }
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("selected_subject_grade_showcase_card"),
+                                        shape = RoundedCornerShape(20.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                        border = BorderStroke(1.3.dp, Color(0xFF059669).copy(alpha = 0.45f)),
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            // ترويسة المادة المختارة مع حلقة التقدم الدائرية
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(
+                                                        Brush.linearGradient(
+                                                            colors = listOf(
+                                                                Color(0xFF042F24),
+                                                                Color(0xFF065F46),
+                                                                Color(0xFF059669)
+                                                            )
+                                                        )
+                                                    )
+                                            ) {
+                                                Canvas(modifier = Modifier.matchParentSize()) {
+                                                    val cw = size.width
+                                                    val ch = size.height
+                                                    val wavePath = androidx.compose.ui.graphics.Path().apply {
+                                                        moveTo(0f, ch * 0.68f)
+                                                        cubicTo(
+                                                            cw * 0.34f, ch * 0.48f,
+                                                            cw * 0.68f, ch * 0.92f,
+                                                            cw, ch * 0.64f
+                                                        )
+                                                        lineTo(cw, ch)
+                                                        lineTo(0f, ch)
+                                                        close()
+                                                    }
+                                                    drawPath(
+                                                        path = wavePath,
+                                                        color = Color(0xFF10B981).copy(alpha = 0.18f)
+                                                    )
+                                                }
+
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 15.dp, vertical = 14.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.weight(1f),
+                                                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                                                    ) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = Color.White.copy(alpha = 0.16f),
+                                                            border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.6f))
+                                                        ) {
+                                                            Text(
+                                                                text = statusText,
+                                                                fontSize = 10.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color(0xFFFDE68A),
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
+                                                            )
+                                                        }
+
+                                                        Text(
+                                                            text = activeGrade.subjectName,
+                                                            style = MaterialTheme.typography.titleMedium,
+                                                            fontSize = 17.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color.White
+                                                        )
+
+                                                        Text(
+                                                            text = "الدرجة العظمى من (${activeGrade.maxScoreScale}) • التقدير: ${if (hasRecorded) activeGrade.ratingLabel else "لم يُرصد بعد"}",
+                                                            fontSize = 11.5.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = Color(0xFFA7F3D0)
+                                                        )
+                                                    }
+
+                                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                                    Box(
+                                                        modifier = Modifier.size(64.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                                            drawCircle(
+                                                                color = Color.White.copy(alpha = 0.16f),
+                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 5.5.dp.toPx(), cap = StrokeCap.Round)
+                                                            )
+                                                            drawArc(
+                                                                color = Color(0xFFFBBF24),
+                                                                startAngle = -90f,
+                                                                sweepAngle = 360f * effortProgress,
+                                                                useCenter = false,
+                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 5.5.dp.toPx(), cap = StrokeCap.Round)
+                                                            )
+                                                        }
+                                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                            Text(
+                                                                text = if (activeGrade.annualEffortScore > 0) {
+                                                                    "${activeGrade.annualEffortScore}"
+                                                                } else {
+                                                                    "—"
+                                                                },
+                                                                fontSize = 15.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color(0xFFFDE68A)
+                                                            )
+                                                            Text(
+                                                                text = "من ${activeGrade.maxScoreScale}",
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color.White.copy(alpha = 0.85f)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(14.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                // ملخص السعي الفصلي والمعدل النهائي بارتفاع موحّد
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = Color(0xFFF0FDF4),
+                                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(62.dp)
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .padding(horizontal = 8.dp),
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.Center
+                                                        ) {
+                                                            Text(
+                                                                text = "السعي الفصلي",
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFF047857)
+                                                            )
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                            Text(
+                                                                text = if (activeGrade.annualEffortScore > 0) {
+                                                                    "${activeGrade.annualEffortScore} / ${activeGrade.maxScoreScale}"
+                                                                } else {
+                                                                    "لم تُرصد بعد"
+                                                                },
+                                                                fontSize = 13.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = Color(0xFF064E3B),
+                                                                maxLines = 1,
+                                                                softWrap = false
+                                                            )
+                                                        }
+                                                    }
+
+                                                    Surface(
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        color = Color(0xFFF0FDF4),
+                                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .height(62.dp)
+                                                    ) {
+                                                        Column(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .padding(horizontal = 8.dp),
+                                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                                            verticalArrangement = Arrangement.Center
+                                                        ) {
+                                                            Text(
+                                                                text = "المعدل النهائي",
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFF047857)
+                                                            )
+                                                            Spacer(modifier = Modifier.height(2.dp))
+                                                            Text(
+                                                                text = if (activeGrade.isAllExamsCompleted && activeGrade.finalAverage > 0) {
+                                                                    "${activeGrade.finalAverage} / ${activeGrade.maxScoreScale}"
+                                                                } else {
+                                                                    "لم تُرصد بعد"
+                                                                },
+                                                                fontSize = 13.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = statusColor,
+                                                                maxLines = 1,
+                                                                softWrap = false
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                // شبكة الدرجات التفصيلية المنظّمة (3 أعمدة متوازنة: الشهر 1، الشهر 2، نصف السنة / الشهري الإضافي، اليومي، النهائي)
+                                                val gradeItems = buildList {
+                                                    add(Triple("الشهر 1", activeGrade.month1Score, false))
+                                                    add(Triple("الشهر 2", activeGrade.month2Score, false))
+                                                    add(Triple("نصف السنة", activeGrade.midYearScore, false))
+                                                    activeGrade.extraMonthlyScores.forEachIndexed { idx, sc ->
+                                                        add(Triple("الشهر ${idx + 3}", sc, false))
+                                                    }
+                                                    add(Triple("يومي 1", activeGrade.dailyScore, false))
+                                                    activeGrade.extraDailyScores.forEachIndexed { idx, sc ->
+                                                        add(Triple("يومي ${idx + 2}", sc, false))
+                                                    }
+                                                    add(Triple("النهائي", activeGrade.finalExamScore, false))
+                                                    add(Triple("السعي النهائي", activeGrade.annualEffortScore, true))
+                                                }
+
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    gradeItems.chunked(3).forEach { rowItems ->
+                                                        Row(
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            rowItems.forEach { (title, scoreVal, isHighlighted) ->
+                                                                val isRecorded = scoreVal > 0
+                                                                Surface(
+                                                                    modifier = Modifier
+                                                                        .weight(1f)
+                                                                        .height(68.dp),
+                                                                    shape = RoundedCornerShape(13.dp),
+                                                                    color = when {
+                                                                        isHighlighted && isRecorded -> Color(0xFF042F24)
+                                                                        isRecorded -> Color(0xFFECFDF5)
+                                                                        else -> Color(0xFFF8FAFC)
+                                                                    },
+                                                                    border = BorderStroke(
+                                                                        width = if (isHighlighted && isRecorded) 1.4.dp else 1.dp,
+                                                                        color = when {
+                                                                            isHighlighted && isRecorded -> Color(0xFFFBBF24)
+                                                                            isRecorded -> Color(0xFF10B981)
+                                                                            else -> Color(0xFFE2E8F0)
+                                                                        }
+                                                                    )
+                                                                ) {
+                                                                    Column(
+                                                                        modifier = Modifier
+                                                                            .fillMaxSize()
+                                                                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                                        verticalArrangement = Arrangement.Center
+                                                                    ) {
+                                                                        Text(
+                                                                            text = title,
+                                                                            fontSize = 11.sp,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            color = when {
+                                                                                isHighlighted && isRecorded -> Color(0xFFFDE68A)
+                                                                                isRecorded -> Color(0xFF065F46)
+                                                                                else -> Color(0xFF64748B)
+                                                                            },
+                                                                            maxLines = 1,
+                                                                            overflow = TextOverflow.Ellipsis,
+                                                                            textAlign = TextAlign.Center
+                                                                        )
+                                                                        Spacer(modifier = Modifier.height(4.dp))
+                                                                        Text(
+                                                                            text = if (isRecorded) {
+                                                                                "$scoreVal/${activeGrade.maxScoreScale}"
+                                                                            } else {
+                                                                                "لم تُرصد"
+                                                                            },
+                                                                            fontSize = if (isRecorded) 14.sp else 11.sp,
+                                                                            fontWeight = FontWeight.ExtraBold,
+                                                                            color = when {
+                                                                                isHighlighted && isRecorded -> Color.White
+                                                                                isRecorded -> Color(0xFF047857)
+                                                                                else -> Color(0xFF94A3B8)
+                                                                            },
+                                                                            maxLines = 1,
+                                                                            softWrap = false,
+                                                                            textAlign = TextAlign.Center
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // =============================================================
+                // STEPS A, B, C: ADMIN & TEACHER GRADE ENTRY BY
+                // (1) الصف -> (2) الشعبة -> (3) المادة الدراسية -> (4) البحث بالاسم -> رصد وحفظ
+                // =============================================================
+                val allTeacherScopedStudents = remember(students, currentUser) {
+                    viewModel.getScopedStudentsForUser(currentUser)
+                }
+                val classSectionStudents = remember(allTeacherScopedStudents, selectedClass, selectedSection, searchStudentName) {
+                    allTeacherScopedStudents.filter { stu ->
+                        ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
+                            ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection) &&
+                            (searchStudentName.isBlank() ||
+                                stu.studentName.contains(searchStudentName, ignoreCase = true) ||
+                                stu.fullNameWithFather.contains(searchStudentName, ignoreCase = true))
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 110.dp)
+                ) {
+                    item(key = "exams_top_tabs_staff_0") {
+                        renderTopTabsHeader()
+                    }
+
+                    // Hero Header with Custom Glass Accuracy Live Board Canvas Widget
+                    item {
+                        ThreeDHeroHeaderCard(
+                            title = "الامتحانات ورصد الدرجات",
+                            subtitle = "رصد الدرجات الشهرية والفصلية وحساب السعي والمعدل النهائي آلياً",
+                            rightPillText = "$selectedClass • شعبة $selectedSection",
+                            rightPillIcon = Icons.Filled.Class,
+                            leftPillText = "طلاب الصف: ${classSectionStudents.size}",
+                            leftPillIcon = Icons.Filled.Groups,
+                            customTrailingContent = {
+                                ExamsAccuracyLiveBoardHeaderWidget()
+                            }
+                        )
+                    }
+
+                    // Step A & B Filter Card — Cohesive Emerald-Mint Identity with Comfortable Spacing
+                    item {
+                        val emeraldChipColors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF059669),
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFFF8FAFC),
+                            labelColor = Color(0xFF0F172A)
+                        )
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(6.dp, RoundedCornerShape(22.dp)),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.22f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Tune,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier
+                                                .padding(7.dp)
+                                                .size(18.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "أولاً: اختر الصف والشعبة والمادة الدراسية",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
+                                // 1. Registered Class Selector
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(allowedClasses) { cls ->
+                                        FilterChip(
+                                            selected = selectedClass == cls,
+                                            onClick = {
+                                                selectedClass = cls
+                                                val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                                if (selectedSection !in nextSecs) {
+                                                    selectedSection = nextSecs.firstOrNull() ?: "أ"
+                                                }
+                                            },
+                                            colors = emeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedClass == cls,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
+                                            label = {
+                                                Text(
+                                                    text = cls,
+                                                    fontWeight = if (selectedClass == cls) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                // 2. Registered Section Selector
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "الشعبة:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF065F46),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    LazyRow(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        items(allowedSections) { sec ->
+                                            FilterChip(
+                                                selected = selectedSection == sec,
+                                                onClick = { selectedSection = sec },
+                                                colors = emeraldChipColors,
+                                                border = FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selectedSection == sec,
+                                                    borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                    selectedBorderColor = Color(0xFF047857)
+                                                ),
+                                                label = {
+                                                    Text(
+                                                        text = "شعبة $sec",
+                                                        fontWeight = if (selectedSection == sec) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 3. Subject Selector
+                                Text(
+                                    text = "المادة الدراسية المختارة للرصد (${allowedSubjects.size}):",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF065F46)
+                                )
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(allowedSubjects) { subj ->
+                                        FilterChip(
+                                            selected = selectedSubject == subj,
+                                            onClick = { selectedSubject = subj },
+                                            colors = emeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedSubject == subj,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
+                                            label = {
+                                                Text(
+                                                    text = subj,
+                                                    fontWeight = if (selectedSubject == subj) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                // 3.B Flexible Grading Scale Toggle (نظام الدرجة: من 10 / من 100) — Pure-Text Glassmorphic Capsules
+                                Surface(
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                    shape = RoundedCornerShape(14.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "نظام الدرجة:",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF065F46),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (selectedMaxScale == 10) Color(0xFF059669) else Color.White,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (selectedMaxScale == 10) Color(0xFF047857) else Color(0xFFA7F3D0)
+                                                ),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable {
+                                                        selectedMaxScale = 10
+                                                        viewModel.updateClassSubjectMaxScoreScale(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            newScale = 10
+                                                        )
+                                                    }
+                                                    .testTag("scale_toggle_10")
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = "من 10",
+                                                        fontSize = 11.8.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (selectedMaxScale == 10) Color.White else Color(0xFF065F46),
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (selectedMaxScale == 100) Color(0xFF059669) else Color.White,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (selectedMaxScale == 100) Color(0xFF047857) else Color(0xFFA7F3D0)
+                                                ),
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(50))
+                                                    .clickable {
+                                                        selectedMaxScale = 100
+                                                        viewModel.updateClassSubjectMaxScoreScale(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            newScale = 100
+                                                        )
+                                                    }
+                                                    .testTag("scale_toggle_100")
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = "من 100",
+                                                        fontSize = 11.8.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (selectedMaxScale == 100) Color.White else Color(0xFF065F46),
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 4. Search by Student Name within the selected Class & Section (Pure-Text Search Field)
+                                OutlinedTextField(
+                                    value = searchStudentName,
+                                    onValueChange = { searchStudentName = it },
+                                    label = { Text("بحث بالاسم داخل طلاب ($selectedClass - شعبة $selectedSection)...") },
+                                    trailingIcon = {
+                                        if (searchStudentName.isNotEmpty()) {
+                                            Surface(
+                                                onClick = { searchStudentName = "" },
+                                                shape = RoundedCornerShape(50),
+                                                color = Color(0xFFECFDF5),
+                                                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "مسح",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF047857),
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("grades_student_search_bar"),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                // 5. Per-Period Principal Grade Approval & Student Completion Check Card
+                                val periodSummary = remember(grades, students, selectedClass, selectedSection, selectedSubject, selectedApprovalPeriod) {
+                                    viewModel.getPeriodCompletionSummary(
+                                        gradeClass = selectedClass,
+                                        sectionName = selectedSection,
+                                        subjectName = selectedSubject,
+                                        period = selectedApprovalPeriod
+                                    )
+                                }
+                                val approvedPeriodsList = remember(grades, students, selectedClass, selectedSection, selectedSubject) {
+                                    GradeAssessmentPeriod.entries.filter { p ->
+                                        viewModel.isClassSubjectPeriodApproved(selectedClass, selectedSection, selectedSubject, p)
+                                    }
+                                }
+
+                                if (currentUser?.role == UserRole.ADMIN) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = if (periodSummary.isPeriodApproved) Color(0xFFECFDF5) else Color(0xFFFFFBEB),
+                                        border = BorderStroke(
+                                            1.3.dp,
+                                            if (periodSummary.isPeriodApproved) Color(0xFF10B981) else Color(0xFFF59E0B)
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(14.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Text(
+                                                text = "نظام مصادقة المدير الذكية حسب الفترة الامتحانية:",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = if (periodSummary.isPeriodApproved) Color(0xFF065F46) else Color(0xFF92400E)
+                                            )
+
+                                            // Horizontal Period Selector Chips (Pure-Text without classic shield/verified icons)
+                                            LazyRow(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                items(GradeAssessmentPeriod.entries) { pItem ->
+                                                    val isSelectedPeriod = selectedApprovalPeriod == pItem
+                                                    val isPApproved = pItem in approvedPeriodsList
+                                                    FilterChip(
+                                                        selected = isSelectedPeriod,
+                                                        onClick = { selectedApprovalPeriod = pItem },
+                                                        label = {
+                                                            Text(
+                                                                text = if (isPApproved) "${pItem.arabicTitle} (معتمد)" else pItem.arabicTitle,
+                                                                fontWeight = if (isSelectedPeriod || isPApproved) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                                maxLines = 1,
+                                                                softWrap = false
+                                                            )
+                                                        }
+                                                    )
+                                                }
+                                            }
+
+                                            // Completion Counter & Unrecorded Students Warning (Horizontal unclipped capsule "0 من 1 طالب")
+                                            Surface(
+                                                shape = RoundedCornerShape(12.dp),
+                                                color = Color.White,
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (periodSummary.isFullyRecorded) Color(0xFF6EE7B7) else Color(0xFFFDE68A)
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(12.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "اكتمال الرصد لفترة (${selectedApprovalPeriod.arabicTitle}):",
+                                                            fontSize = 11.8.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = Color(0xFF1E293B),
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.weight(1f, fill = false)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = if (periodSummary.isFullyRecorded) Color(0xFFDCFCE7) else Color(0xFFFEF3C7),
+                                                            border = BorderStroke(
+                                                                1.dp,
+                                                                if (periodSummary.isFullyRecorded) Color(0xFF6EE7B7) else Color(0xFFFCD34D)
+                                                            )
+                                                        ) {
+                                                            Text(
+                                                                text = "${periodSummary.recordedStudentsCount} من ${periodSummary.totalStudentsCount} طالب",
+                                                                fontSize = 11.8.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = if (periodSummary.isFullyRecorded) Color(0xFF065F46) else Color(0xFF92400E),
+                                                                maxLines = 1,
+                                                                softWrap = false,
+                                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                                            )
+                                                        }
+                                                    }
+
+                                                    if (periodSummary.unrecordedCount > 0) {
+                                                        Text(
+                                                            text = "الطلبة غير المرصودة درجاتهم (${periodSummary.unrecordedCount}): ${periodSummary.unrecordedStudentNames.joinToString("، ")}",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = Color(0xFFB91C1C)
+                                                        )
+                                                    } else if (periodSummary.totalStudentsCount > 0) {
+                                                        Text(
+                                                            text = "اكتمل رصد درجات جميع طلبة الشعبة لهذه الفترة بالكامل",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF047857)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            // Full Unclipped Single-Line Principal Approval Capsule Button (Zero Icons, Zero Truncation)
+                                            Button(
+                                                onClick = {
+                                                    if (periodSummary.isPeriodApproved) {
+                                                        viewModel.setClassSubjectPeriodApproval(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            period = selectedApprovalPeriod,
+                                                            approved = false
+                                                        )
+                                                    } else if (periodSummary.unrecordedCount > 0) {
+                                                        pendingOverrideApprovalSummary = periodSummary
+                                                    } else {
+                                                        viewModel.setClassSubjectPeriodApproval(
+                                                            gradeClass = selectedClass,
+                                                            sectionName = selectedSection,
+                                                            subjectName = selectedSubject,
+                                                            period = selectedApprovalPeriod,
+                                                            approved = true
+                                                        )
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(14.dp),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (periodSummary.isPeriodApproved) Color(0xFFB45309) else Color(0xFF047857),
+                                                    contentColor = Color.White
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .testTag("btn_principal_approve_grades")
+                                            ) {
+                                                Text(
+                                                    text = if (periodSummary.isPeriodApproved) {
+                                                        "إلغاء مصادقة درجات (${selectedApprovalPeriod.arabicTitle})"
+                                                    } else {
+                                                        "مصادقة واعتماد درجات (${selectedApprovalPeriod.arabicTitle})"
+                                                    },
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 13.sp,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else if (currentUser?.role == UserRole.TEACHER && approvedPeriodsList.isNotEmpty()) {
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFFFFFBEB),
+                                        border = BorderStroke(1.2.dp, Color(0xFFF59E0B))
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                        ) {
+                                            Text(
+                                                text = "الفترات المصادق عليها والمقفولة من الإدارة: ${approvedPeriodsList.joinToString("، ") { it.arabicTitle }} (بقية الفترات متاحة للرصد)",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF92400E)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Step C: Inline Subject Grade Entry Card for each student in the selected Class & Section
+                    if (classSectionStudents.isEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    text = "لا يوجد طلاب مطابقون في ($selectedClass - شعبة $selectedSection)",
+                                    modifier = Modifier.padding(20.dp),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    } else {
+                        items(classSectionStudents, key = { "${it.id}_${selectedSubject}_$selectedMaxScale" }) { stu ->
+                            val existingGrade = grades.firstOrNull {
+                                it.studentId == stu.id && it.subjectName == selectedSubject
+                            }
+
+                            var dailyText by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.dailyScore ?: 0).coerceAtMost(selectedMaxScale).toString())
+                            }
+                            var extraDailyTexts: List<String> by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf<List<String>>(
+                                    existingGrade?.extraDailyScores?.map { score ->
+                                        score.coerceAtMost(selectedMaxScale).toString()
+                                    } ?: emptyList()
+                                )
+                            }
+                            var m1Text by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.month1Score ?: 0).coerceAtMost(selectedMaxScale).toString())
+                            }
+                            var m2Text by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.month2Score ?: 0).coerceAtMost(selectedMaxScale).toString())
+                            }
+                            var extraMonthlyTexts: List<String> by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf<List<String>>(
+                                    existingGrade?.extraMonthlyScores?.map { score ->
+                                        score.coerceAtMost(selectedMaxScale).toString()
+                                    } ?: emptyList()
+                                )
+                            }
+                            var midText by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.midYearScore ?: 0).coerceAtMost(selectedMaxScale).toString())
+                            }
+                            var finalText by remember(existingGrade, selectedSubject, selectedMaxScale) {
+                                mutableStateOf((existingGrade?.finalExamScore ?: 0).coerceAtMost(selectedMaxScale).toString())
+                            }
+                            var savedToast by remember { mutableStateOf(false) }
+
+                            val dVal = (dailyText.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val extraDailyVals = extraDailyTexts.map {
+                                (it.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            }
+                            val m1Val = (m1Text.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val m2Val = (m2Text.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val extraMonthlyVals = extraMonthlyTexts.map {
+                                (it.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            }
+                            val midVal = (midText.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+                            val finVal = (finalText.toIntOrNull() ?: 0).coerceIn(0, selectedMaxScale)
+
+                            val previewGrade = SubjectGrade(
+                                id = "prev",
+                                schoolId = schoolConfig.schoolId,
+                                studentId = stu.id,
+                                studentName = stu.studentName,
+                                gradeClass = stu.gradeClass,
+                                subjectName = selectedSubject,
+                                maxScoreScale = selectedMaxScale,
+                                dailyScore = dVal,
+                                extraDailyScores = extraDailyVals,
+                                month1Score = m1Val,
+                                month2Score = m2Val,
+                                extraMonthlyScores = extraMonthlyVals,
+                                midYearScore = midVal,
+                                finalExamScore = finVal
+                            )
+
+                            val statusBadgeColor = when {
+                                !previewGrade.isAllExamsCompleted -> DeepEmerald
+                                previewGrade.normalizedPercentage >= 50 -> SuccessGreen
+                                else -> DangerRed
+                            }
+                            val statusBadgeLabel = when {
+                                !previewGrade.isAllExamsCompleted -> "الحالة: مستمر"
+                                previewGrade.normalizedPercentage >= 50 -> "الحالة: ناجح (${previewGrade.ratingLabel})"
+                                else -> "الحالة: راسب"
+                            }
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(18.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.22f)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    // رأس بطاقة الطالب (الاسم في سطر كامل + الصف والشعبة في سطر مستقل كامل بدون كسر (أ) + كبسولة الحالة بدون أيقونات)
+                                    val stuAutoBadges = viewModel.getStudentAutoBadges(stu.id)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        StudentAvatarWithOverlayBadge(
+                                            base64Data = stu.photoBase64,
+                                            contentDescription = stu.studentName,
+                                            badge = stuAutoBadges.firstOrNull(),
+                                            avatarSize = 54.dp,
+                                            boxWidth = 62.dp,
+                                            fallbackIcon = Icons.Filled.Person
+                                        )
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            Text(
+                                                text = stu.fullNameWithFather,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = "${stu.gradeClass} • شعبة (${stu.sectionName})",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = statusBadgeColor.copy(alpha = 0.14f),
+                                                border = BorderStroke(1.dp, statusBadgeColor.copy(alpha = 0.45f))
+                                            ) {
+                                                Text(
+                                                    text = statusBadgeLabel,
+                                                    fontSize = 11.2.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = statusBadgeColor,
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // شريط علوي زمردي هادئ يعرض ملخص الطالب (المادة، السعي الفصلي، والتقدير/الحالة) في سطرين مريحين بدون أي انكسار عمودي أو أيقونات كلاسيكية
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DeepEmerald.copy(alpha = 0.09f),
+                                        border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.24f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalArrangement = Arrangement.spacedBy(7.dp)
+                                        ) {
+                                            Text(
+                                                text = "المادة: $selectedSubject (الدرجة من $selectedMaxScale)",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color.White,
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "السعي الفصلي: ${previewGrade.annualEffortScore} / $selectedMaxScale",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepForestGreen,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                                Surface(
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = Color.White,
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.30f)),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = "التقدير/الحالة: ${if (previewGrade.isAllExamsCompleted) "${previewGrade.finalAverage} / $selectedMaxScale" else "قيد الرصد"}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = DeepEmerald,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Per-period lock checks for the current Teacher
+                                    val isTeacherRole = currentUser?.role == UserRole.TEACHER
+                                    fun isPeriodApprovedForStu(p: GradeAssessmentPeriod): Boolean {
+                                        return existingGrade?.isPeriodApproved(p) == true ||
+                                            viewModel.isClassSubjectPeriodApproved(stu.gradeClass, stu.sectionName, selectedSubject, p)
+                                    }
+                                    val isDailyLocked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.DAILY)
+                                    val isMonth1Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_1)
+                                    val isMonth2Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_2)
+                                    val isMonth3Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_3)
+                                    val isMonth4Locked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MONTH_4)
+                                    val isMidYearLocked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.MID_YEAR)
+                                    val isFinalLocked = isTeacherRole && isPeriodApprovedForStu(GradeAssessmentPeriod.FINAL_EXAM)
+                                    val areAllPeriodsLockedForTeacher = isTeacherRole &&
+                                        GradeAssessmentPeriod.entries.all { isPeriodApprovedForStu(it) }
+
+                                    // Only display "مصادق عليها رسمياً" for periods that are BOTH approved AND have a recorded score (> 0)
+                                    val studentApprovedAndRecordedPeriods = GradeAssessmentPeriod.entries.filter { p ->
+                                        isPeriodApprovedForStu(p) && previewGrade.getScoreForPeriod(p) > 0
+                                    }
+                                    val studentLockedPeriods = GradeAssessmentPeriod.entries.filter { p ->
+                                        isPeriodApprovedForStu(p)
+                                    }
+
+                                    if (studentApprovedAndRecordedPeriods.isNotEmpty()) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFECFDF5),
+                                            border = BorderStroke(1.dp, Color(0xFF6EE7B7))
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "مصادق عليها رسمياً: ${studentApprovedAndRecordedPeriods.joinToString(" • ") { it.arabicTitle }}",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color(0xFF065F46)
+                                                )
+                                            }
+                                        }
+                                    } else if (isTeacherRole && studentLockedPeriods.isNotEmpty()) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = Color(0xFFFFFBEB),
+                                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "الفترات المقفولة من الإدارة: ${studentLockedPeriods.joinToString(" • ") { it.arabicTitle }}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF92400E)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // أزرار مرنة لإضافة أو إزالة خانات درجات يومية أو شهرية إضافية حسب الحاجة (كبسولات نصية صافية بدون أيقونات)
+                                    if (!areAllPeriodsLockedForTeacher) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (!isDailyLocked) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        extraDailyTexts = extraDailyTexts + "0"
+                                                        savedToast = false
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.5f)),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text("+ يومي إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                                }
+                                            }
+
+                                            if (!isMonth3Locked || !isMonth4Locked) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        extraMonthlyTexts = extraMonthlyTexts + "0"
+                                                        savedToast = false
+                                                    },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    border = BorderStroke(1.dp, DeepEmerald.copy(alpha = 0.5f)),
+                                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Text("+ شهر إضافي", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = DeepEmerald)
+                                                }
+                                            }
+
+                                            if (extraDailyTexts.isNotEmpty() || extraMonthlyTexts.isNotEmpty()) {
+                                                TextButton(
+                                                    onClick = {
+                                                        if (extraMonthlyTexts.isNotEmpty()) {
+                                                            extraMonthlyTexts = extraMonthlyTexts.dropLast(1)
+                                                        } else if (extraDailyTexts.isNotEmpty()) {
+                                                            extraDailyTexts = extraDailyTexts.dropLast(1)
+                                                        }
+                                                        savedToast = false
+                                                    }
+                                                ) {
+                                                    Text("إزالة إضافي", style = MaterialTheme.typography.labelSmall, color = DangerRed)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // شبكة الدرجات النظيفة (Clean Grades Grid 2x3 + Extra Dynamic Fields) بعناوين مستقلة فوق كل خانة لمنع أي تداخل نصي
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            CleanGradeInputBox(
+                                                title = "يومي 1",
+                                                maxScale = selectedMaxScale,
+                                                value = dailyText,
+                                                enabled = !isDailyLocked,
+                                                onValueChange = { digits ->
+                                                    dailyText = digits
+                                                    savedToast = false
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            CleanGradeInputBox(
+                                                title = "شهر 1",
+                                                maxScale = selectedMaxScale,
+                                                value = m1Text,
+                                                enabled = !isMonth1Locked,
+                                                onValueChange = { digits ->
+                                                    m1Text = digits
+                                                    savedToast = false
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            CleanGradeInputBox(
+                                                title = "شهر 2",
+                                                maxScale = selectedMaxScale,
+                                                value = m2Text,
+                                                enabled = !isMonth2Locked,
+                                                onValueChange = { digits ->
+                                                    m2Text = digits
+                                                    savedToast = false
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+
+                                        // خانات اليومي الإضافية (يومي 2، يومي 3...)
+                                        if (extraDailyTexts.isNotEmpty()) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                extraDailyTexts.forEachIndexed { idx, txtVal ->
+                                                    CleanGradeInputBox(
+                                                        title = "يومي ${idx + 2}",
+                                                        maxScale = selectedMaxScale,
+                                                        value = txtVal,
+                                                        enabled = !isDailyLocked,
+                                                        onValueChange = { digits ->
+                                                            extraDailyTexts = extraDailyTexts.toMutableList().also {
+                                                                it[idx] = digits
+                                                            }
+                                                            savedToast = false
+                                                        },
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // خانات الأشهر الإضافية (شهر 3، شهر 4...)
+                                        if (extraMonthlyTexts.isNotEmpty()) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                extraMonthlyTexts.forEachIndexed { idx, txtVal ->
+                                                    val isThisExtraMonthLocked = when (idx) {
+                                                        0 -> isMonth3Locked
+                                                        1 -> isMonth4Locked
+                                                        else -> false
+                                                    }
+                                                    CleanGradeInputBox(
+                                                        title = "شهر ${idx + 3}",
+                                                        maxScale = selectedMaxScale,
+                                                        value = txtVal,
+                                                        enabled = !isThisExtraMonthLocked,
+                                                        onValueChange = { digits ->
+                                                            extraMonthlyTexts = extraMonthlyTexts.toMutableList().also {
+                                                                it[idx] = digits
+                                                            }
+                                                            savedToast = false
+                                                        },
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.Bottom
+                                        ) {
+                                            CleanGradeInputBox(
+                                                title = "نصف السنة",
+                                                maxScale = selectedMaxScale,
+                                                value = midText,
+                                                enabled = !isMidYearLocked,
+                                                onValueChange = { digits ->
+                                                    midText = digits
+                                                    savedToast = false
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            CleanGradeInputBox(
+                                                title = "النهائي",
+                                                maxScale = selectedMaxScale,
+                                                value = finalText,
+                                                enabled = !isFinalLocked,
+                                                onValueChange = { digits ->
+                                                    finalText = digits
+                                                    savedToast = false
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            ScoreCell(
+                                                label = "السعي النهائي",
+                                                score = previewGrade.annualEffortScore,
+                                                modifier = Modifier.weight(1f),
+                                                highlight = true,
+                                                maxScale = selectedMaxScale
+                                            )
+                                        }
+                                    }
+
+                                    if (!areAllPeriodsLockedForTeacher) {
+                                        Button(
+                                            onClick = {
+                                                val ok = viewModel.saveOrUpdateSubjectGrade(
+                                                    student = stu,
+                                                    subjectName = selectedSubject,
+                                                    dailyScore = dVal,
+                                                    month1Score = m1Val,
+                                                    month2Score = m2Val,
+                                                    midYearScore = midVal,
+                                                    finalExamScore = finVal,
+                                                    maxScoreScale = selectedMaxScale,
+                                                    extraDailyScores = extraDailyVals,
+                                                    extraMonthlyScores = extraMonthlyVals
+                                                )
+                                                if (ok) savedToast = true
+                                            },
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (savedToast) SuccessGreen else MaterialTheme.colorScheme.primary,
+                                                contentColor = Color.White
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                text = if (savedToast) "تم حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب بنجاح" else "حفظ درجات ($selectedSubject من $selectedMaxScale) للطالب",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+
+                                    if (currentUser?.role == UserRole.ADMIN) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val stuGrades = grades.filter { it.studentId == stu.id }
+                                                val msg = DocumentAndIdExporter.exportStudentReportCardPdf(
+                                                    context = context,
+                                                    student = stu,
+                                                    grades = stuGrades,
+                                                    schoolConfig = schoolConfig
+                                                )
+                                                viewModel.showBannerMessage(msg)
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("export_report_card_${stu.id}"),
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Text(
+                                                text = "تصدير بطاقة الدرجات (الشهادة المدرسية PDF)",
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (selectedTab == 1) {
+            // Exam Schedule Tab with Live Countdown Badge
+            val scopedExams = remember(examSchedules, allowedClasses) {
+                examSchedules.filter { ex ->
+                    allowedClasses.any { cls -> ArabicTextNormalizer.matchesClass(ex.gradeClass, cls) }
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 110.dp)
+            ) {
+                item(key = "exams_top_tabs_schedule_1") {
+                    renderTopTabsHeader()
+                }
+
+                item {
+                    ThreeDHeroHeaderCard(
+                        title = "مواعيد الامتحانات الرسمية",
+                        subtitle = "جدول مواعيد الامتحانات الشهرية ونصف السنة وآخر السنة مع العد التنازلي",
+                        rightPillText = "الامتحانات المجدولة: ${scopedExams.size}",
+                        rightPillIcon = Icons.Filled.EventNote,
+                        leftPillText = schoolConfig.academicYear,
+                        leftPillIcon = Icons.Filled.CalendarMonth,
+                        customTrailingContent = {
+                            OfficialExamsCountdownHeaderWidget()
+                        }
+                    )
+                }
+
+                if (canEdit) {
+                    item {
+                        VectorActionButton(
+                            text = "إضافة موعد امتحان جديد للجدول",
+                            icon = Icons.Filled.AddCard,
+                            onClick = { showAddExamDialog = true },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                if (scopedExams.isEmpty()) {
+                    item(key = "official_exams_empty_state") {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("official_exams_empty_state_card"),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(1.dp, Color(0xFFD1FAE5)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 30.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(68.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.size(62.dp),
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.2.dp, Color(0xFFA7F3D0))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.EventNote,
+                                                contentDescription = "جدول الامتحانات",
+                                                tint = DeepEmerald,
+                                                modifier = Modifier.size(30.dp)
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .size(24.dp),
+                                        shape = CircleShape,
+                                        color = Color(0xFFFFFBEB),
+                                        border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Schedule,
+                                                contentDescription = null,
+                                                tint = Color(0xFFD97706),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0xFFECFDF5),
+                                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                ) {
+                                    Text(
+                                        text = "بانتظار اعتماد الجدول الرسمي",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                                    )
+                                }
+
+                                Text(
+                                    text = "لا توجد امتحانات مجدولة حالياً • ستظهر المواعيد هنا فور اعتمادها من الإدارة",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF064E3B),
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 23.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                items(scopedExams, key = { it.id }) { ex ->
+                    val daysRemaining = ex.daysRemainingUntilExam()
+                    val cleanExamIsoDate = formatCleanDate(
+                        ArabicTextNormalizer.normalizeDateIso(ex.examDate.trim()).ifBlank { ex.examDate.trim() }
+                    )
+                    val examScale = viewModel.getDefaultMaxScoreForClassAndSubject(ex.gradeClass, ex.subjectName)
+                    val formattedExamDateLabel = listOf(ex.dayName.trim(), cleanExamIsoDate)
+                        .filter { it.isNotEmpty() }
+                        .joinToString(" • ")
+                        .ifBlank { cleanExamIsoDate }
+                    val countdownText = when {
+                        daysRemaining == null -> formattedExamDateLabel
+                        daysRemaining > 0L -> "قادم (بعد $daysRemaining يوم)"
+                        daysRemaining == 0L -> "اليوم"
+                        else -> "منتهي"
+                    }
+                    val countdownColor = when {
+                        daysRemaining == null || daysRemaining > 0L -> DeepEmerald
+                        daysRemaining == 0L -> DangerRed
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                NoWrapBadge(
+                                    text = "${ex.subjectName} • ${ex.gradeClass} (الدرجة من $examScale)",
+                                    icon = Icons.Filled.School,
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (daysRemaining != null) {
+                                        NoWrapBadge(
+                                            text = countdownText,
+                                            icon = Icons.Filled.Timer,
+                                            containerColor = countdownColor.copy(alpha = 0.16f),
+                                            contentColor = countdownColor
+                                        )
+                                    }
+                                    NoWrapBadge(
+                                        text = formattedExamDateLabel,
+                                        icon = Icons.Filled.Event,
+                                        containerColor = GoldAccent.copy(alpha = 0.2f),
+                                        contentColor = GoldDeep
+                                    )
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = ex.examType,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (ex.timeSlot.isNotBlank()) {
+                                    NoWrapBadge(
+                                        text = "الوقت: ${ex.timeSlot}",
+                                        icon = Icons.Filled.Schedule,
+                                        containerColor = DeepEmerald.copy(alpha = 0.12f),
+                                        contentColor = DeepEmerald
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "المادة الداخلة في الامتحان: ${ex.topicsIncluded}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (canEdit) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(
+                                        onClick = { editingExamSchedule = ex }
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Edit,
+                                            contentDescription = "تعديل موعد الامتحان",
+                                            tint = DeepEmerald,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("تعديل", color = DeepEmerald, fontWeight = FontWeight.Bold)
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.deleteExamSchedule(ex.id) }
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.DeleteOutline,
+                                            contentDescription = "حذف موعد الامتحان",
+                                            tint = DangerRed,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("حذف", color = DangerRed, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // =========================================================================
+            // TAB 2: SMART STUDENT REPORT CARDS & INTERACTIVE CELEBRATION HUB
+            // (إصدار الكارتات والنتائج)
+            // =========================================================================
+            if (isParentOrStudent) {
+                val myStu = viewModel.getScopedStudentsForUser(currentUser).firstOrNull()
+                val myIssuedCards = remember(issuedReportCards, myStu?.id) {
+                    issuedReportCards.filter { it.studentId == myStu?.id }
+                }
+                val livePreviewCard = remember(myStu, grades, selectedReportCardPeriod) {
+                    myStu?.let { viewModel.buildStudentReportCardPreview(it, selectedReportCardPeriod) }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 110.dp)
+                ) {
+                    item(key = "exams_top_tabs_parent_2") {
+                        renderTopTabsHeader()
+                    }
+
+                    item {
+                        ThreeDHeroHeaderCard(
+                            title = "الكارت المدرسي الذكي والنتيجة الرسمية",
+                            subtitle = "استعراض الشهادات والكارتات المدرسية المعتمدة من إدارة المدرسة مع الطباعة الفورية",
+                            rightPillText = myStu?.fullNameWithFather ?: "الطالب",
+                            rightPillIcon = Icons.Filled.School,
+                            leftPillText = "${myStu?.gradeClass.orEmpty()} (${myStu?.sectionName.orEmpty()})",
+                            leftPillIcon = Icons.Filled.WorkspacePremium,
+                            customTrailingContent = {
+                                ReportCardCertificateHeaderWidget()
+                            }
+                        )
+                    }
+
+                    if (myIssuedCards.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "الكارتات المدرسية الرسمية الصادرة من إدارة المدرسة (${myIssuedCards.size}):",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF047857)
+                            )
+                        }
+                        items(myIssuedCards, key = { it.id }) { card ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.openCelebrationReportCardModal(card) },
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (card.isOverallPassed) Color(0xFFECFDF5) else Color(0xFFFFFBEB)
+                                ),
+                                border = BorderStroke(
+                                    1.5.dp,
+                                    if (card.isOverallPassed) Color(0xFF10B981) else Color(0xFFF59E0B)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = card.periodType.arabicTitle,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF064E3B)
+                                            )
+                                            Text(
+                                                text = "تاريخ الإصدار: ${formatCleanDate(card.issuedAt).ifBlank { "—" }} • مصادقة: ${card.principalName}",
+                                                fontSize = 11.5.sp,
+                                                color = Color(0xFF475569)
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = if (card.isOverallPassed) Color(0xFF059669) else Color(0xFFD97706)
+                                        ) {
+                                            Text(
+                                                text = if (card.isOverallPassed) "ناجح (${card.averagePercent}%)" else "مكمل / متابعة (${card.averagePercent}%)",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White,
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { viewModel.openCelebrationReportCardModal(card) },
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF047857),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Filled.WorkspacePremium, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "فتح الكارت المدرسي الذكي والنتيجة الكاملة",
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (livePreviewCard != null) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                border = BorderStroke(1.2.dp, Color(0xFFE2E8F0))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = "معاينة الكارت المدرسي حسب الفصل:",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46)
+                                    )
+                                    val parentReportChipColors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF059669),
+                                        selectedLabelColor = Color.White,
+                                        containerColor = Color(0xFFF8FAFC),
+                                        labelColor = Color(0xFF0F172A)
+                                    )
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        items(ReportCardPeriodType.entries) { pType ->
+                                            FilterChip(
+                                                selected = selectedReportCardPeriod == pType,
+                                                onClick = { selectedReportCardPeriod = pType },
+                                                colors = parentReportChipColors,
+                                                border = FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selectedReportCardPeriod == pType,
+                                                    borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                    selectedBorderColor = Color(0xFF047857)
+                                                ),
+                                                label = {
+                                                    Text(
+                                                        text = pType.arabicTitle,
+                                                        fontWeight = if (selectedReportCardPeriod == pType) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                    Button(
+                                        onClick = { viewModel.openCelebrationReportCardModal(livePreviewCard) },
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF059669),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Filled.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "استعراض (${selectedReportCardPeriod.arabicTitle}) بتصميم الشهادة الفاخرة",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 12.sp,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Principal & Teacher Smart Report Card Issuance Hub
+                val allScopedStudents = remember(students, currentUser) {
+                    viewModel.getScopedStudentsForUser(currentUser)
+                }
+                val hubClassStudents = remember(allScopedStudents, selectedClass, selectedSection) {
+                    allScopedStudents.filter { stu ->
+                        ArabicTextNormalizer.matchesClass(stu.gradeClass, selectedClass) &&
+                            ArabicTextNormalizer.matchesSection(stu.sectionName, selectedSection)
+                    }
+                }
+                val studentPreviewCards = remember(hubClassStudents, grades, selectedReportCardPeriod, schoolConfig) {
+                    hubClassStudents.map { stu ->
+                        stu to viewModel.buildStudentReportCardPreview(stu, selectedReportCardPeriod)
+                    }
+                }
+                val totalClassStudentsCount = studentPreviewCards.size
+                val passedStudentsCount = studentPreviewCards.count { it.second.isOverallPassed }
+                val failedStudentsCount = (totalClassStudentsCount - passedStudentsCount).coerceAtLeast(0)
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(bottom = 110.dp)
+                ) {
+                    item(key = "exams_top_tabs_staff_2") {
+                        renderTopTabsHeader()
+                    }
+
+                    item {
+                        ThreeDHeroHeaderCard(
+                            title = "مركز إصدار وإرسال الكارتات المدرسية الذكية",
+                            subtitle = "إصدار الشهادات الفصلية والسنوية وحساب النجاح والرسوب آلياً وإرسالها لأولياء الأمور",
+                            rightPillText = "$selectedClass • شعبة $selectedSection",
+                            rightPillIcon = Icons.Filled.WorkspacePremium,
+                            leftPillText = selectedReportCardPeriod.shortLabel,
+                            leftPillIcon = Icons.Filled.Verified,
+                            customTrailingContent = {
+                                ReportCardCertificateHeaderWidget()
+                            }
+                        )
+                    }
+
+                    // Selectors: Class, Section, Report Card Type — Unified Royal Emerald Styling
+                    item {
+                        val reportHubEmeraldChipColors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF059669),
+                            selectedLabelColor = Color.White,
+                            containerColor = Color(0xFFF8FAFC),
+                            labelColor = Color(0xFF0F172A)
+                        )
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(6.dp, RoundedCornerShape(22.dp)),
+                            shape = RoundedCornerShape(22.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.22f))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Tune,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier
+                                                .padding(7.dp)
+                                                .size(18.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "1. اختر الصف والشعبة ونوع الكارت المراد إصداره:",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF065F46),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(allowedClasses) { cls ->
+                                        FilterChip(
+                                            selected = selectedClass == cls,
+                                            onClick = {
+                                                selectedClass = cls
+                                                val nextSecs = viewModel.getAllowedSectionsForClass(cls, currentUser)
+                                                if (selectedSection !in nextSecs) {
+                                                    selectedSection = nextSecs.firstOrNull() ?: "أ"
+                                                }
+                                            },
+                                            colors = reportHubEmeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedClass == cls,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
+                                            label = {
+                                                Text(
+                                                    text = cls,
+                                                    fontWeight = if (selectedClass == cls) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "الشعبة:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF065F46),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    LazyRow(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        items(allowedSections) { sec ->
+                                            FilterChip(
+                                                selected = selectedSection == sec,
+                                                onClick = { selectedSection = sec },
+                                                colors = reportHubEmeraldChipColors,
+                                                border = FilterChipDefaults.filterChipBorder(
+                                                    enabled = true,
+                                                    selected = selectedSection == sec,
+                                                    borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                    selectedBorderColor = Color(0xFF047857)
+                                                ),
+                                                label = {
+                                                    Text(
+                                                        text = "شعبة $sec",
+                                                        fontWeight = if (selectedSection == sec) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Text(
+                                    text = "نوع الكارت المدرسي الرسمي:",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF065F46)
+                                )
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    items(ReportCardPeriodType.entries) { pType ->
+                                        FilterChip(
+                                            selected = selectedReportCardPeriod == pType,
+                                            onClick = { selectedReportCardPeriod = pType },
+                                            colors = reportHubEmeraldChipColors,
+                                            border = FilterChipDefaults.filterChipBorder(
+                                                enabled = true,
+                                                selected = selectedReportCardPeriod == pType,
+                                                borderColor = Color(0xFF059669).copy(alpha = 0.24f),
+                                                selectedBorderColor = Color(0xFF047857)
+                                            ),
+                                            label = {
+                                                Text(
+                                                    text = pType.arabicTitle,
+                                                    fontWeight = if (selectedReportCardPeriod == pType) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                // 3 Top KPI Cards for Class Summary: إجمالي طلاب الصف | عدد الناجحين | الراسبين / المكملين
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFFF8FAFC),
+                                        border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "$totalClassStudentsCount",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF065F46)
+                                            )
+                                            Text(
+                                                text = "إجمالي طلاب الصف",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF334155),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFF6EE7B7))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "$passedStudentsCount",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFF047857)
+                                            )
+                                            Text(
+                                                text = "عدد الناجحين",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF065F46),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFFFEF2F2),
+                                        border = BorderStroke(1.dp, Color(0xFFFCA5A5))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = "$failedStudentsCount",
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color(0xFFB91C1C)
+                                            )
+                                            Text(
+                                                text = "الراسبين / المكملين",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF991B1B),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Bulk Issue Button for Principal
+                                if (currentUser?.role == UserRole.ADMIN) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.issueAndSendClassReportCardsBulk(
+                                                gradeClass = selectedClass,
+                                                sectionName = selectedSection,
+                                                periodType = selectedReportCardPeriod
+                                            )
+                                        },
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFF047857),
+                                            contentColor = Color.White
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .testTag("btn_bulk_issue_report_cards")
+                                    ) {
+                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "إصدار وإرسال الكارتات لجميع طلاب الصف دفعة واحدة",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Student Cards List with Pass/Fail status, Preview & Send to Parent
+                    items(studentPreviewCards, key = { "${it.first.id}_${selectedReportCardPeriod.name}" }) { (stu, previewCard) ->
+                        val alreadyIssued = issuedReportCards.any {
+                            it.studentId == stu.id && it.periodType == selectedReportCardPeriod
+                        }
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            border = BorderStroke(
+                                1.2.dp,
+                                if (previewCard.isOverallPassed) Color(0xFF6EE7B7) else Color(0xFFFCA5A5)
+                            ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = stu.fullNameWithFather,
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF0F172A)
+                                        )
+                                        Text(
+                                            text = "${stu.gradeClass} (${stu.sectionName}) • المعدل: ${previewCard.averagePercent}% • المجموع: ${previewCard.totalScore}",
+                                            fontSize = 11.5.sp,
+                                            color = Color(0xFF475569)
+                                        )
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (previewCard.isOverallPassed) Color(0xFFECFDF5) else Color(0xFFFEF2F2),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (previewCard.isOverallPassed) Color(0xFF10B981) else Color(0xFFF87171)
+                                        )
+                                    ) {
+                                        Text(
+                                            text = if (previewCard.isOverallPassed) {
+                                                "ناجح"
+                                            } else {
+                                                "مكمل / راسب (${previewCard.failedSubjectsCount} مواد)"
+                                            },
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (previewCard.isOverallPassed) Color(0xFF047857) else Color(0xFFB91C1C),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+
+                                // Subject Mini Pills (Red for failed subjects <50 or <5, Green for passed)
+                                if (previewCard.subjects.isNotEmpty()) {
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(previewCard.subjects) { subItem ->
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (subItem.isPassed) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (subItem.isPassed) Color(0xFFA7F3D0) else Color(0xFFFECACA)
+                                                )
+                                            ) {
+                                                Text(
+                                                    text = "${subItem.subjectName}: ${subItem.score} / ${subItem.maxScoreScale}",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (subItem.isPassed) Color(0xFF065F46) else Color(0xFFB91C1C),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                    maxLines = 1,
+                                                    softWrap = false
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.openCelebrationReportCardModal(previewCard) },
+                                        shape = RoundedCornerShape(12.dp),
+                                        border = BorderStroke(1.2.dp, Color(0xFF059669)),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                        modifier = Modifier.weight(0.95f)
+                                    ) {
+                                        Icon(Icons.Filled.Visibility, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "معاينة الكارت",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF047857),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+
+                                    if (currentUser?.role == UserRole.ADMIN) {
+                                        Button(
+                                            onClick = {
+                                                viewModel.issueAndSendStudentReportCard(stu, selectedReportCardPeriod)
+                                            },
+                                            shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (alreadyIssued) Color(0xFF047857) else Color(0xFFD97706),
+                                                contentColor = Color.White
+                                            ),
+                                            modifier = Modifier.weight(1.25f)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (alreadyIssued) Icons.Filled.CheckCircle else Icons.AutoMirrored.Filled.Send,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = if (alreadyIssued) "تم الإرسال (إعادة إرسال)" else "إرسال الكارت لولي الأمر",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddExamDialog || editingExamSchedule != null) {
+        val currentEditing = editingExamSchedule
+        var cls by remember(currentEditing, allowedClasses) {
+            mutableStateOf(currentEditing?.gradeClass ?: allowedClasses.firstOrNull() ?: "الأول المتوسط")
+        }
+        var subject by remember(currentEditing, allowedSubjects) {
+            mutableStateOf(currentEditing?.subjectName ?: allowedSubjects.firstOrNull() ?: "الرياضيات")
+        }
+        var examType by remember(currentEditing) {
+            mutableStateOf(currentEditing?.examType ?: "امتحان الشهر الثاني")
+        }
+        var date by remember(currentEditing) {
+            mutableStateOf(currentEditing?.examDate ?: ArabicCalendarDateHelper.todayIsoDate())
+        }
+        var dayName by remember(currentEditing, date) {
+            mutableStateOf(currentEditing?.dayName?.ifBlank { ArabicCalendarDateHelper.arabicDayOfWeek(date) } ?: ArabicCalendarDateHelper.arabicDayOfWeek(date))
+        }
+        var timeSlot by remember(currentEditing) {
+            mutableStateOf(currentEditing?.timeSlot ?: "")
+        }
+        var topics by remember(currentEditing) {
+            mutableStateOf(currentEditing?.topicsIncluded ?: "الفصل الأول والثاني")
+        }
+        val presetExamTimes = remember {
+            listOf("08:00 صباحاً", "08:30 صباحاً", "09:00 صباحاً", "10:00 صباحاً", "11:00 صباحاً")
+        }
+
+        AlertDialog(
+            onDismissRequest = {
+                showAddExamDialog = false
+                editingExamSchedule = null
+            },
+            title = {
+                Text(if (currentEditing != null) "تعديل موعد الامتحان" else "إضافة موعد امتحان جديد")
+            },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("الصف الدراسي:", style = MaterialTheme.typography.labelLarge)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedClasses) { cOpt ->
+                            FilterChip(
+                                selected = cls == cOpt,
+                                onClick = { cls = cOpt },
+                                label = { Text(cOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    Text("المادة الدراسية:", style = MaterialTheme.typography.labelLarge)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(allowedSubjects) { sOpt ->
+                            FilterChip(
+                                selected = subject == sOpt,
+                                onClick = { subject = sOpt },
+                                label = { Text(sOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = examType,
+                        onValueChange = { examType = it },
+                        label = { Text("نوع الامتحان (الشهر الأول / الشهر الثاني / نصف السنة...)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    ModernCalendarDatePickerField(
+                        selectedDateIso = date,
+                        label = "تاريخ ويوم الامتحان",
+                        onDateSelected = { selectedIso, selectedArabicDay ->
+                            date = selectedIso
+                            dayName = selectedArabicDay
+                        }
+                    )
+                    OutlinedTextField(
+                        value = timeSlot,
+                        onValueChange = { timeSlot = it },
+                        label = { Text("وقت الامتحان (اختياري — مثلاً: 08:30 صباحاً)") },
+                        leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null, tint = DeepEmerald) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(presetExamTimes) { tOpt ->
+                            val isSelected = timeSlot == tOpt
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { timeSlot = if (isSelected) "" else tOpt },
+                                label = { Text(tOpt, maxLines = 1, softWrap = false) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = topics,
+                        onValueChange = { topics = it },
+                        label = { Text("المادة الداخلة بالامتحان") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                VectorActionButton(
+                    text = if (currentEditing != null) "حفظ التعديلات" else "حفظ وإرسال إشعار",
+                    icon = Icons.Filled.NotificationsActive,
+                    onClick = {
+                        if (currentEditing != null) {
+                            viewModel.updateExamSchedule(
+                                examId = currentEditing.id,
+                                gradeClass = cls,
+                                subjectName = subject,
+                                examType = examType,
+                                examDate = date,
+                                dayName = dayName,
+                                topicsIncluded = topics,
+                                timeSlot = timeSlot
+                            )
+                        } else {
+                            viewModel.addExamSchedule(
+                                gradeClass = cls,
+                                subjectName = subject,
+                                examType = examType,
+                                examDate = date,
+                                dayName = dayName,
+                                topicsIncluded = topics,
+                                timeSlot = timeSlot
+                            )
+                        }
+                        showAddExamDialog = false
+                        editingExamSchedule = null
+                    }
+                )
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAddExamDialog = false
+                        editingExamSchedule = null
+                    }
+                ) { Text("إلغاء") }
+            }
+        )
+    }
+}
+
+@Composable
+fun ParentIssuedReportCardArrivalBanner(
+    reportCard: IssuedStudentReportCard,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onDismissFromHome: (() -> Unit)? = null
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "report_card_banner_pulse")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowAlpha"
+    )
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(10.dp, RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(20.dp))
+            .clickable { onClick() }
+            .testTag("banner_parent_issued_report_card"),
+        shape = RoundedCornerShape(20.dp),
+        color = Color(0xFF064E3B),
+        border = BorderStroke(2.dp, Color(0xFFF59E0B).copy(alpha = glowAlpha))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(Color(0xFF064E3B), Color(0xFF047857), Color(0xFF065F46))
+                    )
+                )
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color(0xFFF59E0B).copy(alpha = 0.24f),
+                    border = BorderStroke(1.2.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.WorkspacePremium,
+                            contentDescription = null,
+                            tint = Color(0xFFFDE68A),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "وصل الآن الكارت المدرسي الرسمي للطالب (${reportCard.studentName}) — اضغط لفتح النتيجة",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFFDE68A)
+                    )
+                    Text(
+                        text = "${reportCard.periodType.arabicTitle} • الصف: ${reportCard.gradeClass} (${reportCard.sectionName}) • المعدل: ${reportCard.averagePercent}%",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.92f)
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = Color(0xFFFDE68A),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            if (onDismissFromHome != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.55f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { onDismissFromHome() }
+                            .testTag("btn_dismiss_report_card_from_home")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.VisibilityOff,
+                                contentDescription = "إخفاء من الرئيسية",
+                                tint = Color(0xFFFDE68A),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "إخفاء من الرئيسية",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFFDE68A),
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LuxuryInteractiveReportCardModal(
+    reportCard: IssuedStudentReportCard,
+    schoolConfig: SchoolConfig,
+    onDismiss: () -> Unit,
+    onPrintPdf: () -> Unit
+) {
+    val resolvedSchoolName = reportCard.schoolName.ifBlank { schoolConfig.schoolName }.ifBlank { "المدرسة الذكية" }
+    val cleanIssueDate = remember(reportCard.issuedAt) {
+        formatCleanDate(reportCard.issuedAt).ifBlank { "—" }
+    }
+    val hasAnyRecordedGrade = remember(reportCard.subjects) {
+        reportCard.subjects.any { it.score > 0 }
+    }
+    val recordedFailedCount = remember(reportCard.subjects) {
+        reportCard.subjects.count { it.score > 0 && !it.isPassed }
+    }
+    val effectiveOverallPassed = hasAnyRecordedGrade && reportCard.isOverallPassed
+
+    val infiniteTransition = rememberInfiniteTransition(label = "celebration_confetti_anim")
+    val confettiProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "confettiProgress"
+    )
+    val fireworkPulse by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "fireworkPulse"
+    )
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xD9022C22))
+                .padding(horizontal = 14.dp, vertical = 18.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            // Subtle celebration canvas only when recorded grades exist and student passed all subjects
+            if (effectiveOverallPassed) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val palette = listOf(
+                        Color(0xFFF59E0B),
+                        Color(0xFFFDE68A),
+                        Color(0xFF10B981),
+                        Color(0xFF34D399),
+                        Color(0xFFD97706)
+                    )
+                    for (i in 0 until 32) {
+                        val seedX = ((i * 97 + 19) % 100) / 100f
+                        val speedFactor = 0.6f + (i % 5) * 0.16f
+                        val yNorm = ((confettiProgress * speedFactor + (i * 0.07f)) % 1f)
+                        val x = seedX * w + kotlin.math.sin((yNorm * 6.28f) + i) * 20f
+                        val y = yNorm * h
+                        val color = palette[i % palette.size]
+                        if (i % 3 == 0) {
+                            drawCircle(
+                                color = Color(0xFFFDE68A).copy(alpha = 0.85f),
+                                radius = 4.5f + (i % 3),
+                                center = Offset(x, y)
+                            )
+                        } else {
+                            drawRoundRect(
+                                color = color.copy(alpha = 0.85f),
+                                topLeft = Offset(x, y),
+                                size = Size(10f, 5.5f),
+                                cornerRadius = CornerRadius(3f, 3f)
+                            )
+                        }
+                    }
+
+                    val fireworkCenters = listOf(
+                        Offset(w * 0.22f, h * 0.13f),
+                        Offset(w * 0.78f, h * 0.14f)
+                    )
+                    fireworkCenters.forEachIndexed { fIdx, center ->
+                        val maxRadius = 48f * fireworkPulse
+                        for (ray in 0 until 10) {
+                            val angle = (ray * 36.0) * (Math.PI / 180.0)
+                            val endX = center.x + (kotlin.math.cos(angle) * maxRadius).toFloat()
+                            val endY = center.y + (kotlin.math.sin(angle) * maxRadius).toFloat()
+                            val rayColor = palette[(fIdx + ray) % palette.size]
+                            drawLine(
+                                color = rayColor.copy(alpha = 0.85f - (fireworkPulse * 0.35f)),
+                                start = center,
+                                end = Offset(endX, endY),
+                                strokeWidth = 2.2f,
+                                cap = StrokeCap.Round
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Official School Report Card Modal Container
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 540.dp)
+                    .heightIn(max = 780.dp)
+                    .shadow(24.dp, RoundedCornerShape(26.dp)),
+                shape = RoundedCornerShape(26.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFAFDFB)),
+                border = BorderStroke(
+                    1.6.dp,
+                    if (effectiveOverallPassed) Color(0xFFD97706).copy(alpha = 0.75f)
+                    else Color(0xFF065F46).copy(alpha = 0.32f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    // =========================================================================
+                    // 1. Official Certificate Top Header — Deep Royal Emerald + Gold Accent Rule
+                    // =========================================================================
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color(0xFF064E3B),
+                                        Color(0xFF047857),
+                                        Color(0xFF065F46)
+                                    )
+                                )
+                            )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Clean Geometric School Seal (Compose Canvas)
+                            CertificateGeometricSealCanvas(
+                                modifier = Modifier.size(52.dp)
+                            )
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = resolvedSchoolName,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = reportCard.periodType.arabicTitle,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFDE68A),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color.White.copy(alpha = 0.14f),
+                                        border = BorderStroke(1.dp, Color(0xFFFDE68A).copy(alpha = 0.45f))
+                                    ) {
+                                        Text(
+                                            text = "العام الدراسي ${schoolConfig.academicYear}",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Thin Gold Accent Rule Directly Beneath the Official Header
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp)
+                                .background(
+                                    Brush.horizontalGradient(
+                                        colors = listOf(
+                                            Color(0xFFB45309),
+                                            Color(0xFFFDE68A),
+                                            Color(0xFFD97706)
+                                        )
+                                    )
+                                )
+                        )
+                    }
+
+                    // Body Content Padding
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // =========================================================================
+                        // 2. Organized Student Info Card (White / Soft-Mint Surface)
+                        // =========================================================================
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFD1FAE5))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFFECFDF5),
+                                        border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Person,
+                                                contentDescription = "بيانات الطالب",
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "اسم الطالب الرباعي",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF64748B)
+                                        )
+                                        Text(
+                                            text = reportCard.studentName,
+                                            fontSize = 14.5.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color(0xFF0F172A),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                HorizontalDivider(thickness = 0.75.dp, color = Color(0xFFE2E8F0))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Class,
+                                            contentDescription = null,
+                                            tint = Color(0xFF059669),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "${reportCard.gradeClass} — شعبة ${reportCard.sectionName}",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF065F46),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.CalendarToday,
+                                            contentDescription = null,
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                        Text(
+                                            text = cleanIssueDate,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF475569),
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // =========================================================================
+                        // 3. Official Grades Table (Emerald Header, Crisp Dividers, Smart Status Pills)
+                        // =========================================================================
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFF065F46).copy(alpha = 0.28f))
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                // Emerald Table Header
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFF065F46))
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "المادة الدراسية",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        modifier = Modifier.weight(1.35f)
+                                    )
+                                    Text(
+                                        text = "الدرجة",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFFDE68A),
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.weight(0.95f)
+                                    )
+                                    Text(
+                                        text = "التقدير / الحالة",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        textAlign = TextAlign.End,
+                                        modifier = Modifier.weight(1.0f)
+                                    )
+                                }
+
+                                if (reportCard.subjects.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 18.dp, horizontal = 12.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "لا توجد مواد مضافة لهذا الصف حالياً",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                } else {
+                                    reportCard.subjects.forEachIndexed { idx, sub ->
+                                        val isUnrecorded = sub.score <= 0
+                                        val scorePercent = if (sub.maxScoreScale > 0) {
+                                            (sub.score * 100) / sub.maxScoreScale
+                                        } else {
+                                            0
+                                        }
+
+                                        val rowBg = when {
+                                            isUnrecorded -> if (idx % 2 == 0) Color.White else Color(0xFFF6FBF8)
+                                            !sub.isPassed -> Color(0xFFFFF5F5)
+                                            idx % 2 == 0 -> Color.White
+                                            else -> Color(0xFFF6FBF8)
+                                        }
+
+                                        val subjectTextColor = when {
+                                            isUnrecorded -> Color(0xFF1E293B)
+                                            sub.isPassed -> Color(0xFF0F172A)
+                                            else -> Color(0xFF991B1B)
+                                        }
+
+                                        val scoreTextColor = when {
+                                            isUnrecorded -> Color(0xFF64748B)
+                                            sub.isPassed -> Color(0xFF047857)
+                                            else -> Color(0xFFB91C1C)
+                                        }
+
+                                        val (statusLabel, badgeBg, badgeBorder, badgeTextColor) = when {
+                                            isUnrecorded -> Quadruple(
+                                                "بانتظار الرصد",
+                                                Color(0xFFF1F5F9),
+                                                Color(0xFFCBD5E1),
+                                                Color(0xFF475569)
+                                            )
+                                            !sub.isPassed -> Quadruple(
+                                                "يحتاج دعم",
+                                                Color(0xFFFEE2E2),
+                                                Color(0xFFFCA5A5),
+                                                Color(0xFF991B1B)
+                                            )
+                                            scorePercent >= 90 -> Quadruple(
+                                                "ممتاز",
+                                                Color(0xFFDCFCE7),
+                                                Color(0xFF86EFAC),
+                                                Color(0xFF065F46)
+                                            )
+                                            scorePercent >= 80 -> Quadruple(
+                                                "جيد جداً",
+                                                Color(0xFFDCFCE7),
+                                                Color(0xFFA7F3D0),
+                                                Color(0xFF166534)
+                                            )
+                                            scorePercent >= 70 -> Quadruple(
+                                                "جيد",
+                                                Color(0xFFECFDF5),
+                                                Color(0xFFA7F3D0),
+                                                Color(0xFF047857)
+                                            )
+                                            else -> Quadruple(
+                                                "ناجح",
+                                                Color(0xFFECFDF5),
+                                                Color(0xFFA7F3D0),
+                                                Color(0xFF065F46)
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(rowBg)
+                                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = sub.subjectName,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = subjectTextColor,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1.35f)
+                                            )
+                                            Text(
+                                                text = "${sub.score} من ${sub.maxScoreScale}",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = scoreTextColor,
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 1,
+                                                softWrap = false,
+                                                modifier = Modifier.weight(0.95f)
+                                            )
+                                            Box(
+                                                modifier = Modifier.weight(1.0f),
+                                                contentAlignment = Alignment.CenterEnd
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(50),
+                                                    color = badgeBg,
+                                                    border = BorderStroke(0.75.dp, badgeBorder)
+                                                ) {
+                                                    Text(
+                                                        text = statusLabel,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = badgeTextColor,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (idx < reportCard.subjects.lastIndex) {
+                                            HorizontalDivider(
+                                                thickness = 0.75.dp,
+                                                color = Color(0xFFE2E8F0)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // =========================================================================
+                        // 4. Summary & Accreditation Row — 3 Strictly Uniform Boxes (height = 82.dp)
+                        // =========================================================================
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Box 1: المجموع الكلي
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(82.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFF6EE7B7))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "المجموع الكلي",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF065F46),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = if (hasAnyRecordedGrade) "${reportCard.totalScore}" else "—",
+                                        fontSize = 17.sp,
+                                        color = Color(0xFF047857),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+
+                            // Box 2: المعدل العام
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(82.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFFFFFBEB),
+                                border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "المعدل العام",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF92400E),
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = if (hasAnyRecordedGrade) "${reportCard.averagePercent}%" else "—",
+                                        fontSize = 17.sp,
+                                        color = Color(0xFFB45309),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+
+                            // Box 3: المصادقة (No truncation, crisp vector seal icon)
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(82.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.65f))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "المصادقة",
+                                        fontSize = 10.5.sp,
+                                        color = Color(0xFF064E3B),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Verified,
+                                            contentDescription = "مصادقة إدارة المدرسة",
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "معتمد إدارياً",
+                                            fontSize = 10.5.sp,
+                                            color = Color(0xFF065F46),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = "إدارة المدرسة",
+                                        fontSize = 9.5.sp,
+                                        color = Color(0xFF64748B),
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        // =========================================================================
+                        // 5. Educational Encouragement Footer Strip (Warm Ivory + Golden Right Accent Bar)
+                        // =========================================================================
+                        val footerTitle = when {
+                            !hasAnyRecordedGrade -> "بانتظار استكمال رصد الدرجات"
+                            effectiveOverallPassed -> "تهنئة وتقدير لولي أمر الطالب (${reportCard.studentName})"
+                            else -> "رسالة تربوية تشجيعية لولي أمر الطالب (${reportCard.studentName})"
+                        }
+                        val footerBody = when {
+                            !hasAnyRecordedGrade -> "لم يتم رصد درجات هذه الفترة الدراسية بعد؛ ستظهر الدرجات والتقديرات تلقائياً فور اعتمادها من قبل الكادر التدريسي وإدارة المدرسة."
+                            effectiveOverallPassed -> "تبارك إدارة ($resolvedSchoolName) للطالب وأسرته الكريمة هذا النجاح والتفوق، متمنين له دوام التميز والارتقاء."
+                            else -> "نثق بقدرات الطالب وهمته العالية، ونأمل متابعة المواد التي تحتاج دعماً ($recordedFailedCount مواد) لتحقيق التفوق في الامتحانات القادمة بإذن الله."
+                        }
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFFFFBF0),
+                            border = BorderStroke(1.dp, Color(0xFFFDE68A))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(IntrinsicSize.Min)
+                            ) {
+                                // Thin golden accent side-bar on RTL right (start) edge
+                                Box(
+                                    modifier = Modifier
+                                        .width(4.dp)
+                                        .fillMaxHeight()
+                                        .background(Color(0xFFD97706))
+                                )
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = footerTitle,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF92400E)
+                                    )
+                                    Text(
+                                        text = footerBody,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFF78350F),
+                                        lineHeight = 17.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // =========================================================================
+                        // 6. Bottom Action Buttons Row — Uniform 48.dp Height & Royal Emerald Identity
+                        // =========================================================================
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = onPrintPdf,
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF047857),
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .height(48.dp)
+                                    .testTag("btn_report_card_print_pdf")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PictureAsPdf,
+                                    contentDescription = "طباعة أو حفظ الكارت PDF",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "طباعة / حفظ الكارت PDF",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.2.dp, Color(0xFF065F46).copy(alpha = 0.45f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFF065F46)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .weight(0.75f)
+                                    .height(48.dp)
+                                    .testTag("btn_report_card_close")
+                            ) {
+                                Text(
+                                    text = "إغلاق",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)
+
+@Composable
+private fun CleanGradeInputBox(
+    title: String,
+    maxScale: Int,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "$title (من $maxScale)",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = DeepForestGreen,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        OutlinedTextField(
+            value = value,
+            enabled = enabled,
+            readOnly = !enabled,
+            onValueChange = { raw ->
+                if (!enabled) return@OutlinedTextField
+                val digits = raw.filter { c -> c.isDigit() }.take(3)
+                val num = digits.toIntOrNull()
+                if (digits.isEmpty() || (num != null && num <= maxScale)) {
+                    onValueChange(digits)
+                }
+            },
+            singleLine = true,
+            textStyle = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            ),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = DeepEmerald,
+                unfocusedBorderColor = DeepEmerald.copy(alpha = 0.28f),
+                focusedContainerColor = DeepEmerald.copy(alpha = 0.04f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun ScoreCell(
+    label: String,
+    score: Int,
+    modifier: Modifier = Modifier,
+    highlight: Boolean = false,
+    maxScale: Int = 0
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = if (highlight) DeepEmerald else DeepForestGreen,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 52.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = if (highlight) DeepEmerald.copy(alpha = 0.12f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            border = BorderStroke(
+                width = 1.dp,
+                color = if (highlight) DeepEmerald.copy(alpha = 0.45f) else DeepEmerald.copy(alpha = 0.22f)
+            )
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
+            ) {
+                Text(
+                    text = if (maxScale > 0) "$score / $maxScale" else "$score",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (highlight) DeepEmerald else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun QuickQuizParticipantsModal(
+    quiz: QuickQuizItem,
+    targetStudents: List<StudentRecord>,
+    onDismiss: () -> Unit
+) {
+    var selectedModalTab by remember { mutableIntStateOf(0) } // 0 = الطلبة المشاركون, 1 = الطلبة غير المشاركين
+
+    data class ParticipantDetail(
+        val studentId: String,
+        val studentName: String,
+        val gradeAndSection: String,
+        val chosenOptionText: String,
+        val isCorrect: Boolean,
+        val earnedPoints: Int,
+        val answeredAt: String
+    )
+
+    val participantDetails = remember(quiz, targetStudents) {
+        val studentMap = targetStudents.associateBy { it.id }
+        quiz.studentAnswers.entries.map { (stuId, optIdx) ->
+            val stu = studentMap[stuId]
+            val chosenText = quiz.options.getOrNull(optIdx) ?: "خيار ${optIdx + 1}"
+            val isCorrect = optIdx == quiz.correctOptionIndex
+            ParticipantDetail(
+                studentId = stuId,
+                studentName = stu?.fullNameWithFather ?: "طالب ($stuId)",
+                gradeAndSection = if (stu != null) "${stu.gradeClass} - شعبة ${stu.sectionName}" else "${quiz.gradeClass} - ${quiz.sectionName}",
+                chosenOptionText = chosenText,
+                isCorrect = isCorrect,
+                earnedPoints = if (isCorrect) quiz.points else 0,
+                answeredAt = quiz.answerTimestamps[stuId] ?: quiz.createdAt
+            )
+        }
+    }
+
+    val nonParticipants = remember(quiz, targetStudents) {
+        targetStudents.filter { stu -> !quiz.studentAnswers.containsKey(stu.id) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Groups,
+                        contentDescription = null,
+                        tint = DeepEmerald
+                    )
+                    Text(
+                        text = "كشف المشاركين وإجابات الطلبة التفصيلية",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen
+                    )
+                }
+                Text(
+                    text = "مادة ${quiz.subjectName} • الصف ${quiz.gradeClass} (${quiz.sectionName}) • الدرجة: ${quiz.points}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMutedGreen
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 470.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = DeepEmerald.copy(alpha = 0.08f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "السؤال: ${quiz.questionText}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        Text(
+                            text = "الإجابة النموذجية الصحيحة: (${quiz.options.getOrNull(quiz.correctOptionIndex) ?: ""})",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen
+                        )
+                    }
+                }
+
+                // تبويبين: 1. الطلبة المشاركون (X طالب) | 2. الطلبة غير المشاركين (Y طالب)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Button(
+                        onClick = { selectedModalTab = 0 },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp)
+                            .testTag("modal_tab_participants"),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedModalTab == 0) DeepEmerald else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (selectedModalTab == 0) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text(
+                            text = "الطلبة المشاركون (${participantDetails.size} طالب)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
+                        )
+                    }
+
+                    Button(
+                        onClick = { selectedModalTab = 1 },
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp)
+                            .testTag("modal_tab_non_participants"),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selectedModalTab == 1) WarningAmber else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (selectedModalTab == 1) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    ) {
+                        Text(
+                            text = "غير المشاركين (${nonParticipants.size} طالب)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = DeepEmerald.copy(alpha = 0.15f))
+
+                if (selectedModalTab == 0) {
+                    if (participantDetails.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "لم يشارك أي طالب في هذا الاختبار حتى الآن.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMutedGreen
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(participantDetails, key = { it.studentId }) { item ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (item.isCorrect) SuccessGreen.copy(alpha = 0.10f) else DangerRed.copy(alpha = 0.10f),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (item.isCorrect) SuccessGreen.copy(alpha = 0.40f) else DangerRed.copy(alpha = 0.40f)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = item.studentName,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(50),
+                                                color = if (item.isCorrect) SuccessGreen else DangerRed
+                                            ) {
+                                                Text(
+                                                    text = if (item.isCorrect) "إجابة صحيحة" else "إجابة خاطئة",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Text(
+                                            text = "الإجابة المختارة: (${item.chosenOptionText})",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (item.isCorrect) DeepEmerald else DangerRed
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = MaterialTheme.colorScheme.surface
+                                            ) {
+                                                Text(
+                                                    text = "احتُسبت له: ${item.earnedPoints} من ${quiz.points}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = if (item.isCorrect) SuccessGreen else DangerRed,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = "وقت الإجابة: ${item.answeredAt}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if (nonParticipants.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "ممتاز! جميع طلاب الصف والشعبة شاركوا في هذا الاختبار.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = SuccessGreen
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(nonParticipants, key = { it.id }) { stu ->
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = WarningAmber.copy(alpha = 0.10f),
+                                    border = BorderStroke(1.dp, WarningAmber.copy(alpha = 0.35f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = stu.fullNameWithFather,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = DeepForestGreen
+                                            )
+                                            Text(
+                                                text = "الصف: ${stu.gradeClass} - شعبة ${stu.sectionName}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = TextMutedGreen
+                                            )
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = WarningAmber.copy(alpha = 0.20f)
+                                        ) {
+                                            Text(
+                                                text = "لم يشارك بعد",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = WarningAmber,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = DeepEmerald, contentColor = Color.White)
+            ) {
+                Text("إغلاق الكشف", fontWeight = FontWeight.Bold)
+            }
+        }
+    )
+}
+
+/**
+ * مكون إرفاق صورة توضيحية للواجب من الكاميرا أو الاستوديو مع أنيميشن اختيار المصدر ومعاينة مصغرة
+ * (Animated Camera / Gallery Illustrative Photo Picker for Homework Publishing)
+ */
+@Composable
+fun HomeworkIllustrativePhotoPickerSection(
+    attachmentBase64: String,
+    onAttachmentChanged: (String) -> Unit
+) {
+    val context = LocalContext.current
+    var showSourceOptions by remember { mutableStateOf(false) }
+
+    val cameraPreviewLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            val encoded = ImageCompressor.compressBitmapToBase64Jpeg(bitmap)
+            if (!encoded.isNullOrBlank()) {
+                onAttachmentChanged(encoded)
+                showSourceOptions = false
+            }
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            cameraPreviewLauncher.launch(null)
+        }
+    }
+
+    val galleryPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val encoded = ImageCompressor.compressUriToBase64Jpeg(context, uri)
+            if (!encoded.isNullOrBlank()) {
+                onAttachmentChanged(encoded)
+                showSourceOptions = false
+            }
+        }
+    }
+
+    val previewBitmap = remember(attachmentBase64) {
+        ImageCompressor.decodeBase64ToImageBitmap(attachmentBase64)
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = if (attachmentBase64.isNotBlank()) Color(0xFFECFDF5) else Color(0xFFF0FDF4),
+            border = BorderStroke(
+                1.3.dp,
+                if (attachmentBase64.isNotBlank()) Color(0xFF059669) else Color(0xFF10B981).copy(alpha = 0.55f)
+            ),
+            shadowElevation = 4.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(50))
+                .clickable { showSourceOptions = !showSourceOptions }
+                .testTag("toggle_hw_photo_picker_btn")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF059669),
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (attachmentBase64.isNotBlank()) Icons.Filled.CheckCircle else Icons.Filled.AddAPhoto,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = if (attachmentBase64.isNotBlank()) {
+                            "تم إرفاق صورة للواجب (اضغط لتغييرها)"
+                        } else {
+                            "+ إرفاق صورة للواجب (كاميرا / استوديو)"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DeepForestGreen,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    imageVector = if (showSourceOptions) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                    tint = Color(0xFF059669)
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showSourceOptions,
+            enter = expandVertically(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeIn(tween(220)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(150))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // خيار 1: التقاط بالكاميرا
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.2.dp, Color(0xFF059669).copy(alpha = 0.45f)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            val hasPerm = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.CAMERA
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPerm) {
+                                cameraPreviewLauncher.launch(null)
+                            } else {
+                                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                            }
+                        }
+                        .testTag("hw_pick_camera_option")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFECFDF5), Color.White)
+                                )
+                            )
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF059669),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.PhotoCamera,
+                                    contentDescription = "التقاط بالكاميرا",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "التقاط بالكاميرا",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+
+                // خيار 2: اختيار من الاستوديو
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.2.dp, Color(0xFF0284C7).copy(alpha = 0.45f)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable {
+                            galleryPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                        .testTag("hw_pick_gallery_option")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFF0F9FF), Color.White)
+                                )
+                            )
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF0284C7),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.PhotoLibrary,
+                                    contentDescription = "اختيار من الاستوديو",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = "اختيار من الاستوديو",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF0C4A6E),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+        }
+
+        if (previewBitmap != null) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "معاينة الصورة التوضيحية المرفقة:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepForestGreen
+                        )
+                        TextButton(
+                            onClick = { onAttachmentChanged("") },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.DeleteOutline,
+                                contentDescription = "حذف الصورة",
+                                tint = DangerRed,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "إزالة الصورة",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = DangerRed
+                            )
+                        }
+                    }
+                    Image(
+                        bitmap = previewBitmap,
+                        contentDescription = "معاينة مرفق الواجب",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                GlobalImageLightboxController.open(
+                                    attachmentBase64,
+                                    "معاينة الصورة التوضيحية للواجب"
+                                )
+                            }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * البصمة الخاصة بقسم "الامتحانات ورصد الدرجات":
+ * وحدة زجاجية مصقولة بـ Compose Canvas تعرض 3 أشرطة درجات متدرجة تتوازن بارتفاعات ناعمة
+ * مع نجمة اعتماد ذهبية تمر عليها لمعة بطيئة، وتبدّل عبر Crossfade بين 3 عبارات.
+ */
+@Composable
+private fun ExamsAccuracyLiveBoardHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "رصدٌ دقيق وسريع",
+            "حساب تلقائي للسعي",
+            "إصدار فوري للكارتات"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2700L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "exams_accuracy_live_board")
+    val barWave by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "exams_bars_wave"
+    )
+    val starGleam by infiniteTransition.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "exams_star_gleam"
+    )
+
+    Surface(
+        modifier = modifier.width(136.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val baseBottom = h * 0.88f
+
+                // خط مرجعي سفلي ناعم
+                drawLine(
+                    color = Color.White.copy(alpha = 0.25f),
+                    start = Offset(w * 0.08f, baseBottom),
+                    end = Offset(w * 0.64f, baseBottom),
+                    strokeWidth = 1.4.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // 3 أشرطة درجات متدرجة تتوازن بارتفاعات ناعمة
+                val barWidth = w * 0.125f
+                val barXs = listOf(w * 0.14f, w * 0.31f, w * 0.48f)
+                val barHeights = listOf(
+                    0.46f + 0.16f * kotlin.math.sin(barWave.toDouble()).toFloat(),
+                    0.66f + 0.14f * kotlin.math.sin(barWave.toDouble() + 2.1).toFloat(),
+                    0.56f + 0.18f * kotlin.math.sin(barWave.toDouble() + 4.2).toFloat()
+                )
+                barXs.forEachIndexed { i, bx ->
+                    val bh = (h * 0.70f) * barHeights[i].coerceIn(0.28f, 0.90f)
+                    val topY = baseBottom - bh
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = when (i) {
+                                1 -> listOf(Color(0xFFFDE68A), Color(0xFF34D399), Color(0xFF059669))
+                                else -> listOf(Color(0xFFA7F3D0), Color(0xFF34D399), Color(0xFF047857))
+                            },
+                            startY = topY,
+                            endY = baseBottom
+                        ),
+                        topLeft = Offset(bx, topY),
+                        size = Size(barWidth, bh),
+                        cornerRadius = CornerRadius(barWidth * 0.45f, barWidth * 0.45f)
+                    )
+                }
+
+                // نجمة اعتماد ذهبية مع لمعة بطيئة تمر عليها
+                val starCx = w * 0.80f
+                val starCy = h * 0.44f
+                val outerR = h * 0.29f
+                val innerR = outerR * 0.46f
+
+                // هالة ذهبية خفيفة خلف النجمة
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = 0.34f),
+                            Color.Transparent
+                        ),
+                        center = Offset(starCx, starCy),
+                        radius = outerR * 1.45f
+                    ),
+                    radius = outerR * 1.45f,
+                    center = Offset(starCx, starCy)
+                )
+
+                val starPath = Path()
+                for (p in 0 until 10) {
+                    val angle = (-90.0 + p * 36.0) * kotlin.math.PI / 180.0
+                    val r = if (p % 2 == 0) outerR else innerR
+                    val sx = starCx + (r * kotlin.math.cos(angle)).toFloat()
+                    val sy = starCy + (r * kotlin.math.sin(angle)).toFloat()
+                    if (p == 0) starPath.moveTo(sx, sy) else starPath.lineTo(sx, sy)
+                }
+                starPath.close()
+
+                val gleamX = (starCx - outerR) + (outerR * 2f * starGleam)
+                drawPath(
+                    path = starPath,
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFFF59E0B),
+                            Color(0xFFFDE68A),
+                            Color.White,
+                            Color(0xFFFDE68A),
+                            Color(0xFFD97706)
+                        ),
+                        start = Offset(gleamX - outerR * 0.9f, starCy - outerR),
+                        end = Offset(gleamX + outerR * 0.9f, starCy + outerR)
+                    )
+                )
+                drawPath(
+                    path = starPath,
+                    color = Color.White.copy(alpha = 0.65f),
+                    style = Stroke(width = 1.dp.toPx())
+                )
+            }
+
+            Crossfade(
+                targetState = phrases[phraseIndex],
+                animationSpec = tween(420),
+                label = "exams_live_phrase_crossfade"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * وحدة زجاجية مصقولة لتبويب «مواعيد الامتحانات الرسمية» تعرض ساعة عدّ تنازلي هندسية رشيقة
+ * بنبض ذهبي هادئ مع تبدّل عبر Crossfade:
+ * ("جدول امتحانات واضح" ← "عدّ تنازلي ذكي" ← "استعدادٌ وتفوّق").
+ */
+@Composable
+private fun OfficialExamsCountdownHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "جدول امتحانات واضح",
+            "عدّ تنازلي ذكي",
+            "استعدادٌ وتفوّق"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2800L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "official_exams_countdown_clock")
+    val pulseFactor by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "countdown_gold_pulse"
+    )
+    val sweepFraction by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.88f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "countdown_arc_sweep"
+    )
+    val handRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 9000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "countdown_hand_rotation"
+    )
+
+    Surface(
+        modifier = modifier
+            .widthIn(min = 128.dp, max = 148.dp)
+            .testTag("official_exams_countdown_header_widget"),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val cx = w * 0.50f
+                val cy = h * 0.52f
+                val dialR = (minOf(w, h) * 0.37f)
+
+                // هالة نبض ذهبية هادئة خلف ساعة العد التنازلي
+                val haloR = dialR * (1.28f + 0.18f * pulseFactor)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = 0.26f + 0.16f * pulseFactor),
+                            Color(0xFFF59E0B).copy(alpha = 0.08f),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy),
+                        radius = haloR
+                    ),
+                    radius = haloR,
+                    center = Offset(cx, cy)
+                )
+
+                // قرص الساعة الزجاجي الهندسي
+                drawCircle(
+                    color = Color(0xFF042F24).copy(alpha = 0.45f),
+                    radius = dialR,
+                    center = Offset(cx, cy)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.26f),
+                    radius = dialR,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.6.dp.toPx())
+                )
+
+                // قوس العدّ التنازلي الذهبي المتوهج
+                val arcTopLeft = Offset(cx - dialR, cy - dialR)
+                val arcSize = Size(dialR * 2f, dialR * 2f)
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A),
+                            Color(0xFFF59E0B),
+                            Color(0xFF34D399),
+                            Color(0xFFFDE68A)
+                        ),
+                        center = Offset(cx, cy)
+                    ),
+                    startAngle = -90f,
+                    sweepAngle = 360f * sweepFraction,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = 2.6.dp.toPx(), cap = StrokeCap.Round)
+                )
+
+                // التاج العلوي الصغير للساعة الهندسية
+                drawLine(
+                    color = Color(0xFFFDE68A).copy(alpha = 0.85f),
+                    start = Offset(cx - 4.dp.toPx(), cy - dialR - 3.5.dp.toPx()),
+                    end = Offset(cx + 4.dp.toPx(), cy - dialR - 3.5.dp.toPx()),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // 4 علامات ربعية دقيقة داخل المينا
+                for (i in 0 until 4) {
+                    val deg = i * 90.0
+                    val rad = deg * kotlin.math.PI / 180.0
+                    val rStart = dialR * 0.72f
+                    val rEnd = dialR * 0.88f
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.7f),
+                        start = Offset(
+                            cx + (rStart * kotlin.math.cos(rad)).toFloat(),
+                            cy + (rStart * kotlin.math.sin(rad)).toFloat()
+                        ),
+                        end = Offset(
+                            cx + (rEnd * kotlin.math.cos(rad)).toFloat(),
+                            cy + (rEnd * kotlin.math.sin(rad)).toFloat()
+                        ),
+                        strokeWidth = 1.3.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                // عقرب الساعات الثابت الرشيق
+                val hourRad = (-45.0) * kotlin.math.PI / 180.0
+                drawLine(
+                    color = Color.White.copy(alpha = 0.9f),
+                    start = Offset(cx, cy),
+                    end = Offset(
+                        cx + (dialR * 0.44f * kotlin.math.cos(hourRad)).toFloat(),
+                        cy + (dialR * 0.44f * kotlin.math.sin(hourRad)).toFloat()
+                    ),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // عقرب العدّ التنازلي الدوار الذهبي
+                val minRad = (handRotation - 90f) * kotlin.math.PI / 180.0
+                drawLine(
+                    color = Color(0xFFFDE68A),
+                    start = Offset(cx, cy),
+                    end = Offset(
+                        cx + (dialR * 0.64f * kotlin.math.cos(minRad)).toFloat(),
+                        cy + (dialR * 0.64f * kotlin.math.sin(minRad)).toFloat()
+                    ),
+                    strokeWidth = 1.6.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+
+                // نقطة المحور المركزية الذهبية
+                drawCircle(
+                    color = Color(0xFFFBBF24),
+                    radius = 2.5.dp.toPx(),
+                    center = Offset(cx, cy)
+                )
+            }
+
+            Crossfade(
+                targetState = phrases[phraseIndex],
+                animationSpec = tween(420),
+                label = "official_exams_countdown_phrase"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * وحدة زجاجية ديناميكية مصقولة لتبويب «مركز إصدار وإرسال الكارتات المدرسية الذكية»:
+ * ترسم بـ Compose Canvas وثيقة شهادة مدرسية هندسية رسمية مع ختم اعتماد ذهبي
+ * وموجة لمعان قطرية بطيئة (Shimmer Sweep)، وتبدّل عبر Crossfade بين:
+ * ("شهادات رسمية معتمدة" ← "حساب آلي للنتائج" ← "إرسال فوري لأولياء الأمور").
+ */
+@Composable
+private fun ReportCardCertificateHeaderWidget(
+    modifier: Modifier = Modifier
+) {
+    val phrases = remember {
+        listOf(
+            "شهادات رسمية معتمدة",
+            "حساب آلي للنتائج",
+            "إرسال فوري لأولياء الأمور"
+        )
+    }
+    var phraseIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(2700L)
+            phraseIndex = (phraseIndex + 1) % phrases.size
+        }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "report_card_cert_shimmer")
+    val shimmerProgress by infiniteTransition.animateFloat(
+        initialValue = -0.45f,
+        targetValue = 1.45f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3600, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "cert_diagonal_shimmer"
+    )
+    val sealGlow by infiniteTransition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 0.50f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "cert_seal_glow"
+    )
+
+    Surface(
+        modifier = modifier.width(136.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White.copy(alpha = 0.14f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.30f))
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 9.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+
+                // 1. Official Geometric Certificate Card Body
+                val docLeft = w * 0.10f
+                val docTop = h * 0.10f
+                val docW = w * 0.78f
+                val docH = h * 0.78f
+                val docRadius = CornerRadius(7.dp.toPx(), 7.dp.toPx())
+
+                // Subtle certificate card base
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.20f),
+                    topLeft = Offset(docLeft, docTop),
+                    size = Size(docW, docH),
+                    cornerRadius = docRadius
+                )
+
+                // Slow diagonal light shimmer sweep constrained strictly inside certificate bounds
+                val sweepCenterX = docLeft + docW * shimmerProgress
+                drawRoundRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.10f),
+                            Color(0xFFFDE68A).copy(alpha = 0.34f),
+                            Color.White.copy(alpha = 0.10f),
+                            Color.Transparent
+                        ),
+                        start = Offset(sweepCenterX - docW * 0.36f, docTop),
+                        end = Offset(sweepCenterX + docW * 0.36f, docTop + docH)
+                    ),
+                    topLeft = Offset(docLeft, docTop),
+                    size = Size(docW, docH),
+                    cornerRadius = docRadius
+                )
+
+                // Crisp certificate frame border
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.55f),
+                    topLeft = Offset(docLeft, docTop),
+                    size = Size(docW, docH),
+                    cornerRadius = docRadius,
+                    style = Stroke(width = 1.1.dp.toPx())
+                )
+
+                // Thin gold top header strip inside certificate
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(Color(0xFFD97706), Color(0xFFFDE68A), Color(0xFFD97706))
+                    ),
+                    topLeft = Offset(docLeft + 5.dp.toPx(), docTop + 5.dp.toPx()),
+                    size = Size(docW - 10.dp.toPx(), 3.dp.toPx()),
+                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                )
+
+                // Clean geometric document lines (representing subject grade rows)
+                val lineLeft = docLeft + docW * 0.12f
+                val lineYs = listOf(docTop + docH * 0.36f, docTop + docH * 0.54f, docTop + docH * 0.72f)
+                val lineLengths = listOf(docW * 0.52f, docW * 0.44f, docW * 0.34f)
+                lineYs.forEachIndexed { idx, ly ->
+                    drawLine(
+                        color = Color.White.copy(alpha = if (idx == 0) 0.78f else 0.50f),
+                        start = Offset(lineLeft, ly),
+                        end = Offset(lineLeft + lineLengths[idx], ly),
+                        strokeWidth = if (idx == 0) 2.2.dp.toPx() else 1.7.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+
+                // 2. Golden Accreditation Seal (Bottom-End Emblem + Ribbon Tails)
+                val sealCx = docLeft + docW * 0.84f
+                val sealCy = docTop + docH * 0.70f
+                val sealR = h * 0.21f
+
+                // Soft warm golden halo
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFDE68A).copy(alpha = sealGlow),
+                            Color.Transparent
+                        ),
+                        center = Offset(sealCx, sealCy),
+                        radius = sealR * 1.65f
+                    ),
+                    radius = sealR * 1.65f,
+                    center = Offset(sealCx, sealCy)
+                )
+
+                // Twin geometric ribbon tails beneath seal
+                val ribbonPath = Path().apply {
+                    moveTo(sealCx - sealR * 0.42f, sealCy + sealR * 0.65f)
+                    lineTo(sealCx - sealR * 0.62f, sealCy + sealR * 1.42f)
+                    lineTo(sealCx - sealR * 0.18f, sealCy + sealR * 1.18f)
+                    lineTo(sealCx, sealCy + sealR * 0.80f)
+                    lineTo(sealCx + sealR * 0.18f, sealCy + sealR * 1.18f)
+                    lineTo(sealCx + sealR * 0.62f, sealCy + sealR * 1.42f)
+                    lineTo(sealCx + sealR * 0.42f, sealCy + sealR * 0.65f)
+                    close()
+                }
+                drawPath(path = ribbonPath, color = Color(0xFFD97706))
+
+                // Outer golden seal medallion
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFB45309)),
+                        start = Offset(sealCx - sealR, sealCy - sealR),
+                        end = Offset(sealCx + sealR, sealCy + sealR)
+                    ),
+                    radius = sealR,
+                    center = Offset(sealCx, sealCy)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.70f),
+                    radius = sealR,
+                    center = Offset(sealCx, sealCy),
+                    style = Stroke(width = 1.dp.toPx())
+                )
+
+                // Inner deep-emerald medallion core + crisp verification check stroke
+                drawCircle(
+                    color = Color(0xFF065F46),
+                    radius = sealR * 0.62f,
+                    center = Offset(sealCx, sealCy)
+                )
+                val checkPath = Path().apply {
+                    moveTo(sealCx - sealR * 0.28f, sealCy + sealR * 0.02f)
+                    lineTo(sealCx - sealR * 0.06f, sealCy + sealR * 0.24f)
+                    lineTo(sealCx + sealR * 0.30f, sealCy - sealR * 0.20f)
+                }
+                drawPath(
+                    path = checkPath,
+                    color = Color(0xFFFDE68A),
+                    style = Stroke(
+                        width = 1.8.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+            }
+
+            Crossfade(
+                targetState = phrases[phraseIndex],
+                animationSpec = tween(420),
+                label = "report_card_cert_phrase_crossfade"
+            ) { phrase ->
+                Text(
+                    text = phrase,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+/**
+ * ختم مدرسي هندسي مصقول مرسوم بـ Compose Canvas لترويسة معاينة الكارت المدرسي الرسمي.
+ */
+@Composable
+private fun CertificateGeometricSealCanvas(
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val outerR = size.minDimension * 0.46f
+
+        // 12-point geometric rosette perimeter in royal gold
+        val rosettePath = Path()
+        val points = 24
+        for (i in 0 until points) {
+            val angle = (i * 360.0 / points) * kotlin.math.PI / 180.0
+            val r = if (i % 2 == 0) outerR else outerR * 0.88f
+            val px = cx + (r * kotlin.math.cos(angle)).toFloat()
+            val py = cy + (r * kotlin.math.sin(angle)).toFloat()
+            if (i == 0) rosettePath.moveTo(px, py) else rosettePath.lineTo(px, py)
+        }
+        rosettePath.close()
+
+        drawPath(
+            path = rosettePath,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFFFDE68A), Color(0xFFF59E0B), Color(0xFFD97706)),
+                start = Offset(cx - outerR, cy - outerR),
+                end = Offset(cx + outerR, cy + outerR)
+            )
+        )
+
+        // Inner deep-emerald seal ring
+        drawCircle(
+            color = Color(0xFF064E3B),
+            radius = outerR * 0.74f,
+            center = Offset(cx, cy)
+        )
+        drawCircle(
+            color = Color(0xFFFDE68A).copy(alpha = 0.78f),
+            radius = outerR * 0.64f,
+            center = Offset(cx, cy),
+            style = Stroke(width = 1.dp.toPx())
+        )
+
+        // Geometric open-book / crest emblem in the center
+        val bookW = outerR * 0.62f
+        val bookH = outerR * 0.36f
+        val bookPath = Path().apply {
+            // Left page
+            moveTo(cx, cy - bookH * 0.30f)
+            lineTo(cx - bookW * 0.50f, cy - bookH * 0.55f)
+            lineTo(cx - bookW * 0.50f, cy + bookH * 0.45f)
+            lineTo(cx, cy + bookH * 0.65f)
+            // Right page
+            lineTo(cx + bookW * 0.50f, cy + bookH * 0.45f)
+            lineTo(cx + bookW * 0.50f, cy - bookH * 0.55f)
+            close()
+        }
+        drawPath(
+            path = bookPath,
+            color = Color(0xFFFDE68A),
+            style = Stroke(
+                width = 1.6.dp.toPx(),
+                cap = StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round
+            )
+        )
+        // Center spine
+        drawLine(
+            color = Color(0xFFFDE68A),
+            start = Offset(cx, cy - bookH * 0.30f),
+            end = Offset(cx, cy + bookH * 0.65f),
+            strokeWidth = 1.4.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+
+
+
+

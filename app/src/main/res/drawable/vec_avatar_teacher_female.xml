@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="160"
+    android:viewportHeight="160">
+
+    <!-- Soft Mint-Cream Academic Backdrop -->
+    <path android:pathData="M0,0 H160 V160 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="18"
+                android:startY="10"
+                android:endX="142"
+                android:endY="155"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFF6FBF9" />
+                <item android:offset="0.55" android:color="#FFE1F5EE" />
+                <item android:offset="1" android:color="#FFC3E9DC" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Subtle Decorative Halo -->
+    <path
+        android:pathData="M80,15 A65,65 0 1,1 79.9,15 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#3810B981"
+        android:strokeWidth="1.4" />
+
+    <!-- Academic Modest Cardigan / Tunic -->
+    <path android:pathData="M20,160 C23,127 44,112 80,112 C116,112 137,127 140,160 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="80"
+                android:startY="112"
+                android:endX="80"
+                android:endY="160"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF0D9488" />
+                <item android:offset="1" android:color="#FF0F766E" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M66,114 L80,154 L94,114 Z"
+        android:fillColor="#FFFDFBF7" />
+
+    <!-- Contemporary Soft-Ivory & Mint Hijab Silhouette -->
+    <path android:pathData="M42,72 C42,38 57,23 80,23 C103,23 118,38 118,72 C119,98 114,121 103,134 C91,142 69,142 57,134 C46,121 41,98 42,72 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="44"
+                android:startY="25"
+                android:endX="116"
+                android:endY="138"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFECF7F2" />
+                <item android:offset="0.6" android:color="#FFCFECE0" />
+                <item android:offset="1" android:color="#FFA6D9C6" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Emerald Inner Undercap Band -->
+    <path
+        android:pathData="M53,66 C53,45 64,35 80,35 C96,35 107,45 107,66 C104,54 94,46 80,46 C66,46 56,54 53,66 Z"
+        android:fillColor="#FF0F766E" />
+
+    <!-- Sculpted Face -->
+    <path android:pathData="M55,67 C55,48 66,41 80,41 C94,41 105,48 105,67 C105,85 95,101 80,102 C65,101 55,85 55,67 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="80"
+                android:startY="41"
+                android:endX="80"
+                android:endY="102"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFF9DEC9" />
+                <item android:offset="1" android:color="#FFEDC4A9" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Flowing Diagonal Hijab Wrap Fold -->
+    <path android:pathData="M48,89 C58,104 71,110 85,110 C100,110 112,101 116,87 C116,109 107,130 92,138 C78,144 60,139 51,125 C46,115 45,101 48,89 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="50"
+                android:startY="89"
+                android:endX="112"
+                android:endY="138"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFE3F4EC" />
+                <item android:offset="1" android:color="#FFB3E0CE" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:pathData="M53,96 C66,112 94,113 111,98"
+        android:fillColor="#00000000"
+        android:strokeColor="#660F766E"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round" />
+
+    <!-- Warm Golden Brooch Accent -->
+    <path
+        android:pathData="M96,120 m-3.2,0 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0"
+        android:fillColor="#FFD9A441" />
+
+    <!-- Soft Editorial Blush -->
+    <path
+        android:pathData="M63,79 m-5,0 a5,3 0 1,0 10,0 a5,3 0 1,0 -10,0"
+        android:fillColor="#28E57E70" />
+    <path
+        android:pathData="M97,79 m-5,0 a5,3 0 1,0 10,0 a5,3 0 1,0 -10,0"
+        android:fillColor="#28E57E70" />
+
+    <!-- Eyebrows -->
+    <path
+        android:pathData="M61.5,62 Q68,58.5 74,61"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF43322C"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M86,61 Q92,58.5 98.5,62"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF43322C"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+
+    <!-- Warm Expressive Almond Eyes -->
+    <path
+        android:pathData="M62,69 Q68,65 74,69 Q68,73 62,69 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M68,69 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+        android:fillColor="#FF2F231E" />
+    <path
+        android:pathData="M69,68 m-0.8,0 a0.8,0.8 0 1,0 1.6,0 a0.8,0.8 0 1,0 -1.6,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M61.2,68.2 Q68,64 74.5,68.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF2E221D"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+
+    <path
+        android:pathData="M86,69 Q92,65 98,69 Q92,73 86,69 Z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M92,69 m-2.5,0 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0"
+        android:fillColor="#FF2F231E" />
+    <path
+        android:pathData="M93,68 m-0.8,0 a0.8,0.8 0 1,0 1.6,0 a0.8,0.8 0 1,0 -1.6,0"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M85.5,68.5 Q92,64 98.8,68.2"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF2E221D"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+
+    <!-- Delicate Nose & Warm Smile -->
+    <path
+        android:pathData="M80,70 L79,77 Q80,78.6 81.4,77.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFD9A989"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M73,86.5 Q80,92 87,86.5"
+        android:fillColor="#00000000"
+        android:strokeColor="#FFBA6257"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round" />
+</vector>

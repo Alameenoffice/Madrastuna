@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="432dp"
+    android:height="432dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="46"
+                android:gradientRadius="68"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#064E3B" />
+                <item android:offset="0.55" android:color="#022C22" />
+                <item android:offset="1.0" android:color="#011510" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,20A34,34 0,1 1,20 54A34,34 0,0 1,54 20Z"
+        android:strokeColor="#66FDE68A"
+        android:strokeWidth="1.2" />
+
+    <!-- Golden Royal Crescent Moon -->
+    <path android:pathData="M62,28 C46,28 34,40 34,55 C34,70 46,82 62,82 C68,82 73.5,80 78,76.5 C71.5,78 65,76.5 60,72 C51,64 50,50 58,40 C62.5,34.5 69,31.5 76,31.5 C71.5,29.2 66.8,28 62,28 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="34"
+                android:startY="28"
+                android:endX="78"
+                android:endY="82"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FFFBEB" />
+                <item android:offset="0.45" android:color="#FDE047" />
+                <item android:offset="1.0" android:color="#B45309" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Hanging Royal Golden Lantern -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M64,22 L64,37"
+        android:strokeColor="#FDE68A"
+        android:strokeWidth="1.6" />
+    <path
+        android:fillColor="#D4AF37"
+        android:pathData="M59,37 L69,37 L72,43 L56,43 Z" />
+    <path
+        android:fillColor="#FEF08A"
+        android:pathData="M57.5,43 L70.5,43 L68.5,58 L59.5,58 Z" />
+    <path
+        android:fillColor="#B45309"
+        android:pathData="M58,58 L70,58 L66,63 L62,63 Z" />
+
+    <!-- 8-Pointed Golden Star -->
+    <path
+        android:fillColor="#FFFBEB"
+        android:pathData="M42,35 L43.8,39.2 L48,41 L43.8,42.8 L42,47 L40.2,42.8 L36,41 L40.2,39.2 Z" />
+</vector>

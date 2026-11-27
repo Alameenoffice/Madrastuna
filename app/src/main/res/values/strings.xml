@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">بوابة زمار الذكية</string>
+    <string name="platform_subtitle">منصة ناحية زمار الخدمية والتجارية الذكية</string>
+    <string name="default_address_hint">العنوان الجغرافي</string>
+    <string name="developer_credit">منصة مدرستي الذكية المتكاملة</string>
+    <string name="start_now">البدء الآن</string>
+    <string name="login_title">تسجيل الدخول الموحد</string>
+    <string name="setup_title">تأسيس منصة المدرسة وإنشاء حساب المدير العام</string>
+    <string name="logout">تسجيل الخروج</string>
+</resources>
