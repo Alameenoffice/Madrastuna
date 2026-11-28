@@ -1716,8 +1716,129 @@ fun PastBroadcastsHistoryDialog(
 }
 
 /**
+ * Live In-App Vector Acoustic Wave & Microphone Pulse Header (Compose Canvas)
+ * matching the exact emerald-mint-gold visual identity of the external BigPictureStyle banner.
+ */
+@Composable
+fun LiveBroadcastAcousticVectorBannerCanvas(
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "urgent_invite_live_waves")
+    val wavePhasePrimary by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "urgent_wave_primary"
+    )
+    val wavePhaseSecondary by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "urgent_wave_secondary"
+    )
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "urgent_mic_pulse"
+    )
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        if (w <= 0f || h <= 0f) return@Canvas
+
+        val centerY = h * 0.68f
+        val stepPx = (w / 44f).coerceIn(8f, 20f)
+        val fillPath = Path()
+        val wave1 = Path()
+        val wave2 = Path()
+        val wave3 = Path()
+
+        var x = 0f
+        var first = true
+        while (x <= w + stepPx) {
+            val cx = x.coerceAtMost(w)
+            val norm = cx / w
+            val env = 0.50f + 0.50f * sin(norm * PI).toFloat()
+            val y1 = centerY + sin(norm * 4.2 * PI + wavePhasePrimary).toFloat() * (h * 0.16f * env)
+            val y2 = centerY - 3.dp.toPx() + sin(norm * 3.0 * PI - wavePhaseSecondary + 1.2).toFloat() * (h * 0.12f * env)
+            val y3 = centerY + 4.dp.toPx() + sin(norm * 5.6 * PI + wavePhasePrimary * 1.3 + 2.1).toFloat() * (h * 0.08f * env)
+            if (first) {
+                fillPath.moveTo(cx, h)
+                fillPath.lineTo(cx, y1)
+                wave1.moveTo(cx, y1)
+                wave2.moveTo(cx, y2)
+                wave3.moveTo(cx, y3)
+                first = false
+            } else {
+                fillPath.lineTo(cx, y1)
+                wave1.lineTo(cx, y1)
+                wave2.lineTo(cx, y2)
+                wave3.lineTo(cx, y3)
+            }
+            if (cx >= w) break
+            x += stepPx
+        }
+        fillPath.lineTo(w, h)
+        fillPath.close()
+
+        drawPath(
+            path = fillPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color(0xFF34D399).copy(alpha = 0.22f),
+                    Color.Transparent
+                ),
+                startY = h * 0.35f,
+                endY = h
+            )
+        )
+        drawPath(
+            path = wave2,
+            color = BroadcastMintSoft.copy(alpha = 0.28f),
+            style = Stroke(width = 1.25.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawPath(
+            path = wave3,
+            color = BroadcastGoldLight.copy(alpha = 0.38f),
+            style = Stroke(width = 1.1.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawPath(
+            path = wave1,
+            color = Color(0xFF34D399).copy(alpha = 0.55f),
+            style = Stroke(width = 1.7.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        // Subtle ambient golden pulse glow at top-end
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    BroadcastGoldLight.copy(alpha = 0.22f),
+                    Color.Transparent
+                ),
+                center = Offset(w * 0.16f, h * 0.40f),
+                radius = h * 0.55f * pulseScale
+            ),
+            radius = h * 0.55f * pulseScale,
+            center = Offset(w * 0.16f, h * 0.40f)
+        )
+    }
+}
+
+/**
  * Prominent Urgent Broadcast Join Invite Dialog displayed instantly on the recipient's screen
  * when the Principal sends an urgent join alert from inside the live broadcast room.
+ * Features live emerald-mint-gold Compose Canvas acoustic wave animation matching the external banner.
  */
 @Composable
 fun UrgentBroadcastInviteOverlayDialog(
@@ -1752,42 +1873,59 @@ fun UrgentBroadcastInviteOverlayDialog(
                         .fillMaxWidth()
                         .background(
                             Brush.linearGradient(
-                                colors = listOf(BroadcastDeepEmerald, BroadcastRichEmerald)
+                                colors = listOf(BroadcastDeepEmerald, BroadcastRichEmerald, Color(0xFF0A4E5A))
                             )
                         )
-                        .padding(horizontal = 18.dp, vertical = 16.dp)
                 ) {
+                    LiveBroadcastAcousticVectorBannerCanvas(
+                        modifier = Modifier.matchParentSize()
+                    )
+
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 18.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFFEF4444).copy(alpha = 0.25f),
-                            border = BorderStroke(1.dp, Color(0xFFFCA5A5).copy(alpha = 0.7f)),
-                            modifier = Modifier.size(44.dp)
+                        // Animated live microphone studio glass badge
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.16f))
+                                .border(1.2.dp, BroadcastGoldLight.copy(alpha = 0.72f), CircleShape),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.NotificationsActive,
-                                    contentDescription = null,
-                                    tint = BroadcastGoldLight,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.Podcasts,
+                                contentDescription = null,
+                                tint = BroadcastGoldLight,
+                                modifier = Modifier.size(26.dp)
+                            )
                         }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color(0xFFEF4444).copy(alpha = 0.28f),
+                                border = BorderStroke(0.8.dp, Color(0xFFFCA5A5).copy(alpha = 0.75f))
                             ) {
-                                PulsingLiveDotCanvas(size = 10.dp)
-                                Text(
-                                    text = "تنبيه عاجل للدخول للبث المباشر",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = BroadcastGoldLight,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    PulsingLiveDotCanvas(size = 9.dp)
+                                    Text(
+                                        text = "تنبيه عاجل للدخول للبث المباشر",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
                             }
                             Text(
                                 text = invite.roomTitle.ifBlank { "جلسة بث صوتي مباشر" },
@@ -1800,6 +1938,8 @@ fun UrgentBroadcastInviteOverlayDialog(
                         }
                     }
                 }
+
+                HorizontalDivider(thickness = 1.2.dp, color = BroadcastGoldAccent.copy(alpha = 0.65f))
 
                 Column(
                     modifier = Modifier
@@ -1901,4 +2041,60 @@ fun LiveNotificationPermissionRationaleDialog(
         }
     )
 }
+
+/**
+ * One-time smart prompt guiding the user to exempt "مدرستي الذكية" from Android battery optimization
+ * so external notifications for live audio broadcasts and urgent announcements arrive reliably even when closed.
+ */
+@Composable
+fun BatteryOptimizationGuidanceDialog(
+    onOpenSettings: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.NotificationsActive,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = "ضمان وصول الإشعارات عند إغلاق التطبيق",
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center
+            )
+        },
+        text = {
+            Text(
+                text = "لضمان وصول إشعارات البث الصوتي المباشر وتبليغات إدارة المدرسة العاجلة حتى عندما يكون التطبيق مغلقاً، يُنصح باستثناء «مدرستي الذكية» من قيود توفير البطارية في إعدادات الجهاز.",
+                lineHeight = 22.sp
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onOpenSettings,
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF047857),
+                    contentColor = Color.White
+                ),
+                modifier = Modifier.testTag("open_battery_opt_settings_btn")
+            ) {
+                Text("فتح إعدادات البطارية", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("dismiss_battery_opt_prompt_btn")
+            ) {
+                Text("لاحقاً")
+            }
+        }
+    )
+}
+
 

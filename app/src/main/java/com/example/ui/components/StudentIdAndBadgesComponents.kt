@@ -1891,15 +1891,54 @@ fun AdminSubscriptionAndBroadcastBanner(
     if (!showExpiryWarning && latestBroadcast == null) return
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        if (latestBroadcast != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("admin_developer_broadcast_banner"),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val broadcastIconKey = OccasionIconKey.fromKey(latestBroadcast.iconKey)
+                DeveloperSystemBroadcastBanner(
+                    title = latestBroadcast.title,
+                    subtitle = latestBroadcast.message,
+                    badgeText = "تعميم المنصة",
+                    dateText = formatCleanDate(latestBroadcast.createdAt),
+                    iconKey = broadcastIconKey,
+                    illustrationType = broadcastIconKey.toThreeDIllustrationType(),
+                    dockedUnderHeroWave = false,
+                    onDismiss = {
+                        isBroadcastBannerDismissed = true
+                        developerBroadcasts.forEach { bc ->
+                            val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                            onDismissBroadcast(key)
+                            if (bc.id.isNotBlank()) {
+                                onDismissBroadcast(bc.id)
+                            }
+                        }
+                    }
+                )
+
+                if (latestBroadcast.imageBase64.isNotBlank() || latestBroadcast.imageUrl.isNotBlank()) {
+                    Box(modifier = Modifier.padding(horizontal = 12.dp)) {
+                        DeveloperAttachedImageBannerSection(
+                            imageBase64 = latestBroadcast.imageBase64,
+                            imageUrl = latestBroadcast.imageUrl
+                        )
+                    }
+                }
+            }
+        }
+
         if (showExpiryWarning) {
             val isExpired = daysRemaining <= 0
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(14.dp),
                 color = if (isExpired) DangerRed.copy(alpha = 0.12f) else DeepEmerald.copy(alpha = 0.10f),
                 border = BorderStroke(1.dp, if (isExpired) DangerRed else DeepEmerald.copy(alpha = 0.45f))
@@ -1912,7 +1951,7 @@ fun AdminSubscriptionAndBroadcastBanner(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.WarningAmber,
+                        imageVector = Icons.Filled.WarningAmber,
                         contentDescription = null,
                         tint = if (isExpired) DangerRed else DeepEmerald,
                         modifier = Modifier.size(22.dp)
@@ -1943,49 +1982,13 @@ fun AdminSubscriptionAndBroadcastBanner(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Filled.Close,
                                 contentDescription = "إغلاق التنبيه",
                                 tint = DeepForestGreen,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
                     }
-                }
-            }
-        }
-
-        if (latestBroadcast != null) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("admin_developer_broadcast_banner"),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                val broadcastIconKey = OccasionIconKey.fromKey(latestBroadcast.iconKey)
-                DeveloperSystemBroadcastBanner(
-                    title = latestBroadcast.title,
-                    subtitle = latestBroadcast.message,
-                    badgeText = "تعميم إدارة المنصة",
-                    dateText = formatCleanDate(latestBroadcast.createdAt),
-                    iconKey = broadcastIconKey,
-                    illustrationType = broadcastIconKey.toThreeDIllustrationType(),
-                    onDismiss = {
-                        isBroadcastBannerDismissed = true
-                        developerBroadcasts.forEach { bc ->
-                            val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                            onDismissBroadcast(key)
-                            if (bc.id.isNotBlank()) {
-                                onDismissBroadcast(bc.id)
-                            }
-                        }
-                    }
-                )
-
-                if (latestBroadcast.imageBase64.isNotBlank() || latestBroadcast.imageUrl.isNotBlank()) {
-                    DeveloperAttachedImageBannerSection(
-                        imageBase64 = latestBroadcast.imageBase64,
-                        imageUrl = latestBroadcast.imageUrl
-                    )
                 }
             }
         }

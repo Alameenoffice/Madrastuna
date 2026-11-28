@@ -326,49 +326,7 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.Top
             ) {
-                // 1) TOP SLIM BAR: شريط تنبيهات المطور (تعميم إدارة المنصة) أعلى الصفحة مباشرة قبل بطاقة الترحيب الخضراء
-                if (showOccasionBroadcast || (showAdminDirectBroadcast && latestAdminBroadcast != null)) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp, bottom = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
-                    ) {
-                        if (showOccasionBroadcast) {
-                            val devIconKey = occasionThemeConfig.resolvedIconKey
-                            DeveloperSystemBroadcastBanner(
-                                title = occasionThemeConfig.effectiveTitle,
-                                subtitle = occasionThemeConfig.effectiveBannerText,
-                                badgeText = "تعميم المنصة",
-                                iconKey = devIconKey,
-                                illustrationType = devIconKey.toThreeDIllustrationType()
-                            )
-                        }
-
-                        if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
-                            val bcIconKey = OccasionIconKey.fromKey(latestAdminBroadcast.iconKey)
-                            DeveloperSystemBroadcastBanner(
-                                title = latestAdminBroadcast.title,
-                                subtitle = latestAdminBroadcast.message,
-                                badgeText = "تعميم المنصة",
-                                dateText = formatCleanDate(latestAdminBroadcast.createdAt),
-                                iconKey = bcIconKey,
-                                illustrationType = bcIconKey.toThreeDIllustrationType(),
-                                onDismiss = {
-                                    developerBroadcasts.forEach { bc ->
-                                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
-                                        viewModel.dismissDeveloperBroadcastForAdmin(key)
-                                        if (bc.id.isNotBlank()) {
-                                            viewModel.dismissDeveloperBroadcastForAdmin(bc.id)
-                                        }
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-
-                // 2) Welcome Hero Section ("مرحباً بك، ...") with SmartWelcomeProfileAvatar & Daily Status Ring
+                // 1) Welcome Hero Section ("مرحباً بك، ...") with SmartWelcomeProfileAvatar & Daily Status Ring
                 val activeAvatarPhotoSource = remember(
                     isParentOrStudent,
                     myStudent?.id,
@@ -504,8 +462,8 @@ fun DashboardScreen(
                     modifier = edgeToEdgeWaveModifier.zIndex(4f)
                 )
 
-                // 3) شريط تنبيهات إدارة المدرسة الملتصق والمتموّج أسفل بطاقة الترحيب الخضراء (بدون تكرار عطلة اليوم المعروضة داخل الترحيب)
-                val activeDynamicSchoolAlerts = remember(
+                // 2) شريط تنبيهات إدارة المدرسة وتعميم المنصة الملتصق والمتموّج مباشرة أسفل بطاقة الترحيب الخضراء
+                val activeSchoolAlertsExcludingPlatform = remember(
                     shouldShowUrgentAlertBanner,
                     currentUrgentSig,
                     activeUrgentAlert.message,
@@ -637,8 +595,65 @@ fun DashboardScreen(
                     items.sortedBy { it.type.priorityOrder }
                 }
 
-                // شريط تنبيهات إدارة المدرسة ملتصق ومتموّج مباشرة أسفل بطاقة الترحيب الخضراء بدون أي فراغ أبيض
+                val hasPlatformAnnouncement = showOccasionBroadcast || (showAdminDirectBroadcast && latestAdminBroadcast != null)
+                val dismissAllAdminBroadcasts: () -> Unit = {
+                    developerBroadcasts.forEach { bc ->
+                        val key = bc.id.ifBlank { "${bc.title}_${bc.createdAt}" }
+                        viewModel.dismissDeveloperBroadcastForAdmin(key)
+                        if (bc.id.isNotBlank()) {
+                            viewModel.dismissDeveloperBroadcastForAdmin(bc.id)
+                        }
+                    }
+                }
+
+                // تضمين تعميم المنصة النشط ضمن شريط التنبيهات الدوّار أسفل بطاقة الترحيب عند وجود تنبيهات مدرسية أخرى،
+                // أو عرضه مباشرة كشريط متموّج ممتد من الحافة للحافة أسفل بطاقة الترحيب الخضراء دون أي تكرار أو فراغات.
+                val activeDynamicSchoolAlerts = remember(
+                    activeSchoolAlertsExcludingPlatform,
+                    showOccasionBroadcast,
+                    occasionThemeConfig.effectiveTitle,
+                    occasionThemeConfig.effectiveBannerText,
+                    showAdminDirectBroadcast,
+                    latestAdminBroadcast
+                ) {
+                    if (activeSchoolAlertsExcludingPlatform.isEmpty()) {
+                        emptyList()
+                    } else {
+                        val combined = activeSchoolAlertsExcludingPlatform.toMutableList()
+                        if (showOccasionBroadcast) {
+                            combined.add(
+                                SchoolBannerAlertItem(
+                                    id = "platform_occasion_${occasionThemeConfig.themeType.name}_${occasionThemeConfig.effectiveTitle.hashCode()}",
+                                    type = SchoolBannerAlertType.PLATFORM_ANNOUNCEMENT,
+                                    badgeText = "تعميم المنصة",
+                                    title = occasionThemeConfig.effectiveTitle.ifBlank { "تعميم المنصة" },
+                                    subtitle = occasionThemeConfig.effectiveBannerText,
+                                    displayDurationMs = 4500L
+                                )
+                            )
+                        }
+                        if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
+                            combined.add(
+                                SchoolBannerAlertItem(
+                                    id = "platform_dev_${latestAdminBroadcast.id.ifBlank { latestAdminBroadcast.createdAt }}",
+                                    type = SchoolBannerAlertType.PLATFORM_ANNOUNCEMENT,
+                                    badgeText = "تعميم المنصة",
+                                    title = latestAdminBroadcast.title.ifBlank { "تعميم المنصة" },
+                                    subtitle = latestAdminBroadcast.message,
+                                    displayDurationMs = 4500L,
+                                    showPrincipalActions = true,
+                                    onDismissPrincipalAlert = dismissAllAdminBroadcasts
+                                )
+                            )
+                        }
+                        combined.sortedBy { it.type.priorityOrder }
+                    }
+                }
+
+                val hasDockedUpperStrip = activeDynamicSchoolAlerts.isNotEmpty() || hasPlatformAnnouncement
+
                 if (activeDynamicSchoolAlerts.isNotEmpty()) {
+                    // شريط تنبيهات إدارة المدرسة وتعميم المنصة الدوّار الملتصق والمتموّج مباشرة أسفل بطاقة الترحيب الخضراء
                     SchoolDynamicAlertsCarouselBanner(
                         alerts = activeDynamicSchoolAlerts,
                         isAdmin = isAdmin,
@@ -648,14 +663,46 @@ fun DashboardScreen(
                             .seamlessWaveOverlap(24.dp)
                             .zIndex(3f)
                     )
+                } else if (hasPlatformAnnouncement) {
+                    // شريط تعميم المنصة الانسيابي الممتد من الحافة إلى الحافة والملتصق مباشرة أسفل موجة بطاقة الترحيب الخضراء
+                    val primaryPlatformTitle = when {
+                        showAdminDirectBroadcast && latestAdminBroadcast != null -> latestAdminBroadcast.title
+                        else -> occasionThemeConfig.effectiveTitle
+                    }
+                    val primaryPlatformSubtitle = when {
+                        showAdminDirectBroadcast && latestAdminBroadcast != null -> latestAdminBroadcast.message
+                        else -> occasionThemeConfig.effectiveBannerText
+                    }
+                    val primaryPlatformDate = if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
+                        formatCleanDate(latestAdminBroadcast.createdAt)
+                    } else ""
+                    val primaryPlatformIconKey = if (showAdminDirectBroadcast && latestAdminBroadcast != null) {
+                        OccasionIconKey.fromKey(latestAdminBroadcast.iconKey)
+                    } else {
+                        occasionThemeConfig.resolvedIconKey
+                    }
+
+                    DeveloperSystemBroadcastBanner(
+                        title = primaryPlatformTitle,
+                        subtitle = primaryPlatformSubtitle,
+                        badgeText = "تعميم المنصة",
+                        dateText = primaryPlatformDate,
+                        iconKey = primaryPlatformIconKey,
+                        illustrationType = primaryPlatformIconKey.toThreeDIllustrationType(),
+                        dockedUnderHeroWave = true,
+                        topOverlapPadding = 22.dp,
+                        onDismiss = if (showAdminDirectBroadcast && latestAdminBroadcast != null) dismissAllAdminBroadcasts else null,
+                        modifier = Modifier
+                            .seamlessWaveOverlap(24.dp)
+                            .zIndex(3f)
+                    )
                 }
 
-                // 4) شريط تنبيه البث الصوتي الانسيابي الممتد بكامل عرض الشاشة (مباشر أو منتهي تلقائياً)
+                // 3) شريط تنبيه البث الصوتي الانسيابي الممتد بكامل عرض الشاشة (مباشر أو منتهي تلقائياً)
                 if (homeBannerAudioRoom != null) {
-                    val hasDockedAlertsAbove = activeDynamicSchoolAlerts.isNotEmpty()
                     com.example.livebroadcast.HomeLiveAudioBroadcastCard(
                         room = homeBannerAudioRoom,
-                        topOverlapPadding = if (hasDockedAlertsAbove) 14.dp else 22.dp,
+                        topOverlapPadding = if (hasDockedUpperStrip) 14.dp else 22.dp,
                         onJoinClick = {
                             if (homeBannerAudioRoom.isLive && onJoinLiveAudioRoom != null) {
                                 onJoinLiveAudioRoom(homeBannerAudioRoom)
@@ -667,7 +714,7 @@ fun DashboardScreen(
                             showPastBroadcastsHistoryDialog = true
                         },
                         modifier = Modifier
-                            .seamlessWaveOverlap(if (hasDockedAlertsAbove) 16.dp else 24.dp)
+                            .seamlessWaveOverlap(if (hasDockedUpperStrip) 16.dp else 24.dp)
                             .zIndex(2f)
                     )
                 }

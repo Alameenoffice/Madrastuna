@@ -6019,9 +6019,11 @@ private val SeamlessFullWidthWaveShape = GenericShape { size, _ ->
 }
 
 /**
- * 1) شريط تعميم إدارة المنصة النحيل (Ultra-Slim Single-Row Platform Announcement Bar):
- * - صف واحد نحيل وهادئ متناسق مع هوية التطبيق في الوضعين النهاري والليلي (RTL).
- * - يعرض أيقونة صغيرة + شارة "تعميم المنصة" + النص مختصراً بنقاط في سطر واحد + زر إغلاق صغير.
+ * 1) شريط «تعميم المنصة» الممتد من الحافة إلى الحافة (Edge-to-Edge Platform Announcement Ribbon):
+ * - بدون أي بطاقة عائمة أو هوامش جانبية أو زوايا دائرية منفصلة.
+ * - على الرئيسية (dockedUnderHeroWave = true): يلتحم بنعومة مباشرة أسفل موجة بطاقة الترحيب الخضراء
+ *   مع خلفية موجات فيكتور متحركة هادئة بألوان الزمردي والذهبي وأيقونة متجهة متحركة شفافة وزر إغلاق ناعم.
+ * - على بقية الشاشات (dockedUnderHeroWave = false): شريط نحيل ممتد بكامل عرض الشاشة بخط سفلي رفيع.
  * - عند الضغط عليه تفتح نافذة منبثقة أنيقة تعرض النص الكامل والتاريخ.
  */
 @Composable
@@ -6034,6 +6036,7 @@ fun DeveloperSystemBroadcastBanner(
     iconKey: OccasionIconKey = OccasionIconKey.BELL,
     illustrationType: ThreeDIllustrationType = iconKey.toThreeDIllustrationType(),
     topOverlapPadding: Dp = 0.dp,
+    dockedUnderHeroWave: Boolean = false,
     onDismiss: (() -> Unit)? = null
 ) {
     val isDark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -6059,111 +6062,245 @@ fun DeveloperSystemBroadcastBanner(
 
     var showDetailsDialog by remember { mutableStateOf(false) }
 
-    val barShape = RoundedCornerShape(13.dp)
-    val bgBrush = if (!isDark) {
-        Brush.horizontalGradient(
-            colors = listOf(Color(0xFFF3FAF7), Color(0xFFFFFCF5))
-        )
-    } else {
-        Brush.horizontalGradient(
-            colors = listOf(Color(0xFF102A23), Color(0xFF1A2824))
-        )
-    }
-    val borderColor = if (!isDark) {
-        Color(0xFF059669).copy(alpha = 0.22f)
-    } else {
-        Color(0xFF34D399).copy(alpha = 0.28f)
-    }
-    val badgeBg = if (!isDark) Color(0xFFFEF3C7) else Color(0xFFD9A441).copy(alpha = 0.22f)
-    val badgeTextCol = if (!isDark) Color(0xFF92400E) else Color(0xFFFDE68A)
-    val textCol = if (!isDark) Color(0xFF064E3B) else Color(0xFFECFDF5)
+    val waveTransition = rememberInfiniteTransition(label = "platform_banner_soft_waves")
+    val wavePhase by waveTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 5200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "platform_wave_phase"
+    )
+    val waveBreath by waveTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "platform_wave_breath"
+    )
 
-    Surface(
-        modifier = modifier
+    val bgBrush = when {
+        dockedUnderHeroWave && !isDark -> Brush.linearGradient(
+            colors = listOf(Color(0xFF056850), Color(0xFF085B55), Color(0xFF0E415C))
+        )
+        dockedUnderHeroWave && isDark -> Brush.linearGradient(
+            colors = listOf(Color(0xFF064E3E), Color(0xFF094245), Color(0xFF0D334C))
+        )
+        !isDark -> Brush.horizontalGradient(
+            colors = listOf(Color(0xFFE9FBF3), Color(0xFFF6FDF9), Color(0xFFFEF9E7))
+        )
+        else -> Brush.horizontalGradient(
+            colors = listOf(Color(0xFF0E2922), Color(0xFF132D27), Color(0xFF1E2920))
+        )
+    }
+
+    val badgeBg = when {
+        dockedUnderHeroWave -> Color(0xFFF3D58D).copy(alpha = 0.22f)
+        !isDark -> Color(0xFFFEF3C7)
+        else -> Color(0xFFD9A441).copy(alpha = 0.24f)
+    }
+    val badgeBorder = when {
+        dockedUnderHeroWave -> Color(0xFFF3D58D).copy(alpha = 0.52f)
+        !isDark -> Color(0xFFF59E0B).copy(alpha = 0.45f)
+        else -> Color(0xFFF59E0B).copy(alpha = 0.42f)
+    }
+    val badgeTextCol = when {
+        dockedUnderHeroWave -> Color(0xFFFEF3C7)
+        !isDark -> Color(0xFF92400E)
+        else -> Color(0xFFFDE68A)
+    }
+    val textCol = when {
+        dockedUnderHeroWave -> Color.White
+        !isDark -> Color(0xFF064E3B)
+        else -> Color(0xFFECFDF5)
+    }
+    val bottomHairlineColor = when {
+        dockedUnderHeroWave -> Color(0xFFF3D58D).copy(alpha = 0.30f)
+        !isDark -> Color(0xFF059669).copy(alpha = 0.18f)
+        else -> Color(0xFF34D399).copy(alpha = 0.24f)
+    }
+    val waveEmeraldStroke = when {
+        dockedUnderHeroWave -> Color(0xFFA7F3D0).copy(alpha = 0.16f + 0.06f * waveBreath)
+        !isDark -> Color(0xFF059669).copy(alpha = 0.11f + 0.05f * waveBreath)
+        else -> Color(0xFF34D399).copy(alpha = 0.16f + 0.05f * waveBreath)
+    }
+    val waveGoldStroke = when {
+        dockedUnderHeroWave -> Color(0xFFF3D58D).copy(alpha = 0.20f + 0.08f * waveBreath)
+        !isDark -> Color(0xFFD9A441).copy(alpha = 0.16f + 0.07f * waveBreath)
+        else -> Color(0xFFF3D58D).copy(alpha = 0.16f + 0.06f * waveBreath)
+    }
+
+    val containerModifier = if (dockedUnderHeroWave) {
+        modifier
             .fillMaxWidth()
-            .clip(barShape)
+            .shadow(
+                elevation = 4.dp,
+                shape = DockedSchoolAlertBottomWaveShape,
+                ambientColor = Color(0xFF047857).copy(alpha = 0.20f),
+                spotColor = Color(0xFF0F3D5E).copy(alpha = 0.22f)
+            )
+            .clip(DockedSchoolAlertBottomWaveShape)
+    } else {
+        modifier.fillMaxWidth()
+    }
+
+    Box(
+        modifier = containerModifier
+            .background(bgBrush)
             .clickable { showDetailsDialog = true }
-            .testTag("platform_announcement_slim_bar"),
-        shape = barShape,
-        color = Color.Transparent,
-        shadowElevation = if (isDark) 2.dp else 1.5.dp,
-        border = BorderStroke(0.9.dp, borderColor)
+            .testTag("platform_announcement_slim_bar")
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(bgBrush)
-                .padding(horizontal = 9.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            // أيقونة هندسية مصغّرة للمنصة
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF163D32) else Color(0xFFECFDF5)),
-                contentAlignment = Alignment.Center
-            ) {
-                PlatformAnnouncementEmblemCanvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(3.dp)
-                )
+        // Animated soft emerald & warm-gold vector waves spanning full edge-to-edge width
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            if (w <= 0f || h <= 0f) return@Canvas
+            val topSafe = topOverlapPadding.toPx().coerceAtMost(h * 0.45f)
+            val usableH = (h - topSafe).coerceAtLeast(16f)
+            val centerY = topSafe + usableH * 0.54f
+            val stepPx = (w / 42f).coerceIn(10f, 24f)
+
+            val primaryWave = Path()
+            val goldWave = Path()
+            var x = 0f
+            var first = true
+            while (x <= w + stepPx) {
+                val cx = x.coerceAtMost(w)
+                val norm = cx / w
+                val y1 = centerY + sin(norm * 3.2 * kotlin.math.PI + wavePhase).toFloat() * (usableH * 0.17f)
+                val y2 = centerY + 2.dp.toPx() + sin(norm * 2.2 * kotlin.math.PI - wavePhase * 0.75 + 1.2).toFloat() * (usableH * 0.13f)
+                if (first) {
+                    primaryWave.moveTo(cx, y1)
+                    goldWave.moveTo(cx, y2)
+                    first = false
+                } else {
+                    primaryWave.lineTo(cx, y1)
+                    goldWave.lineTo(cx, y2)
+                }
+                if (cx >= w) break
+                x += stepPx
             }
 
-            // شارة "تعميم المنصة" المختصرة
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = badgeBg,
-                border = BorderStroke(
-                    0.7.dp,
-                    if (isDark) Color(0xFFF59E0B).copy(alpha = 0.42f) else Color(0xFFFCD34D)
-                )
-            ) {
-                Text(
-                    text = resolvedBadge,
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = badgeTextCol,
-                    maxLines = 1,
-                    softWrap = false,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                )
-            }
-
-            // نص التنبيه مختصراً في سطر واحد بدون زيادة ارتفاع الشريط
-            Text(
-                text = singleLineSummary,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = textCol,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+            drawPath(
+                path = primaryWave,
+                color = waveEmeraldStroke,
+                style = Stroke(width = 1.35.dp.toPx(), cap = StrokeCap.Round)
+            )
+            drawPath(
+                path = goldWave,
+                color = waveGoldStroke,
+                style = Stroke(width = 1.05.dp.toPx(), cap = StrokeCap.Round)
             )
 
-            // زر إغلاق صغير
-            if (onDismiss != null) {
-                Surface(
-                    shape = CircleShape,
-                    color = if (isDark) Color.White.copy(alpha = 0.10f) else Color(0xFF064E3B).copy(alpha = 0.08f),
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .clickable { onDismiss() }
-                        .testTag("platform_announcement_dismiss_btn")
+            if (dockedUnderHeroWave) {
+                val waveAmp = (h * 0.16f).coerceIn(8f, 15f)
+                val sheenPath = Path().apply {
+                    moveTo(0f, h - waveAmp * 0.45f - 1.dp.toPx())
+                    cubicTo(
+                        w * 0.28f, h - waveAmp * 1.45f - 1.dp.toPx(),
+                        w * 0.72f, h + waveAmp * 0.35f - 1.dp.toPx(),
+                        w, h - waveAmp - 1.dp.toPx()
+                    )
+                }
+                drawPath(
+                    path = sheenPath,
+                    color = bottomHairlineColor,
+                    style = Stroke(width = 1.15.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+        }
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 15.dp,
+                        end = 13.dp,
+                        top = if (dockedUnderHeroWave) topOverlapPadding + 7.dp else 7.dp,
+                        bottom = if (dockedUnderHeroWave) 14.dp else 7.dp
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Lightweight transparent-background animated vector emblem (no opaque circle box)
+                Box(
+                    modifier = Modifier.size(25.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    PlatformAnnouncementEmblemCanvas(
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // Compact "تعميم المنصة" badge
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = badgeBg,
+                    border = BorderStroke(0.75.dp, badgeBorder)
+                ) {
+                    Text(
+                        text = resolvedBadge,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = badgeTextCol,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+
+                // Single-line ellipsized announcement summary
+                Text(
+                    text = singleLineSummary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = textCol,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Subtle close/dismiss button
+                if (onDismiss != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    dockedUnderHeroWave -> Color.White.copy(alpha = 0.14f)
+                                    isDark -> Color.White.copy(alpha = 0.10f)
+                                    else -> Color(0xFF064E3B).copy(alpha = 0.08f)
+                                }
+                            )
+                            .clickable { onDismiss() }
+                            .testTag("platform_announcement_dismiss_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Filled.Close,
                             contentDescription = "إغلاق تعميم المنصة",
-                            tint = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569),
-                            modifier = Modifier.size(13.dp)
+                            tint = when {
+                                dockedUnderHeroWave -> Color(0xFFFEF3C7)
+                                isDark -> Color(0xFFCBD5E1)
+                                else -> Color(0xFF475569)
+                            },
+                            modifier = Modifier.size(13.5.dp)
                         )
                     }
                 }
+            }
+
+            if (!dockedUnderHeroWave) {
+                HorizontalDivider(
+                    thickness = 0.8.dp,
+                    color = bottomHairlineColor
+                )
             }
         }
     }
@@ -6812,8 +6949,9 @@ enum class SchoolBannerAlertType(
     val defaultDurationMs: Long
 ) {
     PRINCIPAL_URGENT(priorityOrder = 0, defaultDurationMs = 6500L),
-    OFFICIAL_HOLIDAY(priorityOrder = 1, defaultDurationMs = 4000L),
-    OTHER_IMPORTANT(priorityOrder = 2, defaultDurationMs = 4000L)
+    PLATFORM_ANNOUNCEMENT(priorityOrder = 1, defaultDurationMs = 4500L),
+    OFFICIAL_HOLIDAY(priorityOrder = 2, defaultDurationMs = 4000L),
+    OTHER_IMPORTANT(priorityOrder = 3, defaultDurationMs = 4000L)
 }
 
 data class SchoolBannerAlertItem(
@@ -6911,6 +7049,62 @@ private fun resolveSchoolBannerPalette(
                 counterBg = Color(0xFFFFFFFF).copy(alpha = 0.09f),
                 counterTextColor = Color(0xFFA7F3D0),
                 arrowTint = Color(0xFF6EE7B7),
+                activeDotColor = Color(0xFF34D399),
+                inactiveDotColor = Color(0xFFFFFFFF).copy(alpha = 0.22f)
+            )
+        }
+
+        SchoolBannerAlertType.PLATFORM_ANNOUNCEMENT -> if (!isDark) {
+            SchoolBannerVisualPalette(
+                accentBarColors = listOf(Color(0xFF047857), goldLuminous, Color(0xFF10B981)),
+                cardGradientColors = listOf(
+                    Color(0xFFF2FBF7),
+                    Color(0xFFFFFCF3),
+                    Color(0xFFECFDF5)
+                ),
+                ambientGlowColor = goldLuminous.copy(alpha = 0.10f),
+                borderColor = Color(0xFF059669).copy(alpha = 0.22f),
+                shadowColor = Color(0xFF047857).copy(alpha = 0.12f),
+                iconContainerBg = Color(0xFFECFDF5),
+                iconContainerBorder = goldLuminous.copy(alpha = 0.45f),
+                pulseHaloColor = goldLuminous,
+                badgeBg = Color(0xFFFEF3C7),
+                badgeBorder = Color(0xFFF59E0B).copy(alpha = 0.45f),
+                badgeTextColor = Color(0xFF92400E),
+                liveDotColor = goldLuminous,
+                titleColor = Color(0xFF064E3B),
+                bodyColor = Color(0xFF284139),
+                dividerColor = Color(0xFF059669).copy(alpha = 0.12f),
+                counterBg = Color(0xFF065F46).copy(alpha = 0.08f),
+                counterTextColor = Color(0xFF065F46),
+                arrowTint = Color(0xFF047857),
+                activeDotColor = Color(0xFF059669),
+                inactiveDotColor = Color(0xFF059669).copy(alpha = 0.22f)
+            )
+        } else {
+            SchoolBannerVisualPalette(
+                accentBarColors = listOf(Color(0xFF34D399), goldSoft, Color(0xFF10B981)),
+                cardGradientColors = listOf(
+                    Color(0xFF0E2821),
+                    Color(0xFF142E27),
+                    Color(0xFF192B22)
+                ),
+                ambientGlowColor = goldSoft.copy(alpha = 0.12f),
+                borderColor = Color(0xFF34D399).copy(alpha = 0.26f),
+                shadowColor = Color(0xFF000000).copy(alpha = 0.36f),
+                iconContainerBg = Color(0xFF143A30),
+                iconContainerBorder = goldSoft.copy(alpha = 0.42f),
+                pulseHaloColor = goldSoft,
+                badgeBg = Color(0xFFD9A441).copy(alpha = 0.22f),
+                badgeBorder = Color(0xFFF59E0B).copy(alpha = 0.40f),
+                badgeTextColor = Color(0xFFFDE68A),
+                liveDotColor = goldSoft,
+                titleColor = Color(0xFFECFDF5),
+                bodyColor = Color(0xFFD1E7DD),
+                dividerColor = Color(0xFFFFFFFF).copy(alpha = 0.10f),
+                counterBg = Color(0xFFFFFFFF).copy(alpha = 0.09f),
+                counterTextColor = Color(0xFFFDE68A),
+                arrowTint = Color(0xFFF3D58D),
                 activeDotColor = Color(0xFF34D399),
                 inactiveDotColor = Color(0xFFFFFFFF).copy(alpha = 0.22f)
             )
@@ -7298,6 +7492,9 @@ fun SchoolDynamicAlertsCarouselBanner(
                         activeAlert.type == SchoolBannerAlertType.PRINCIPAL_URGENT -> DockedTransparentBroadcastPulseIcon(
                             modifier = Modifier.fillMaxSize()
                         )
+                        activeAlert.type == SchoolBannerAlertType.PLATFORM_ANNOUNCEMENT -> PlatformAnnouncementEmblemCanvas(
+                            modifier = Modifier.fillMaxSize()
+                        )
                         activeAlert.type == SchoolBannerAlertType.OFFICIAL_HOLIDAY -> DockedTransparentHolidayEmblemIcon(
                             modifier = Modifier.fillMaxSize()
                         )
@@ -7318,6 +7515,15 @@ fun SchoolDynamicAlertsCarouselBanner(
                             onDarkSurface = isDark
                         )
                     }
+                } else if (activeAlert.type == SchoolBannerAlertType.PLATFORM_ANNOUNCEMENT) {
+                    Box(
+                        modifier = Modifier.size(26.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        PlatformAnnouncementEmblemCanvas(
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 } else {
                     Surface(
                         modifier = Modifier.size(28.dp),
@@ -7330,6 +7536,11 @@ fun SchoolDynamicAlertsCarouselBanner(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(4.dp)
+                            )
+                            SchoolBannerAlertType.PLATFORM_ANNOUNCEMENT -> PlatformAnnouncementEmblemCanvas(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(2.dp)
                             )
                             SchoolBannerAlertType.OFFICIAL_HOLIDAY -> HolidayCalendarEmblemCanvas(
                                 modifier = Modifier
@@ -7630,6 +7841,11 @@ fun SchoolDynamicAlertsCarouselBanner(
                                 ) {
                                     when (modalItem.type) {
                                         SchoolBannerAlertType.PRINCIPAL_URGENT -> SchoolBroadcastWavesCanvas(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(6.dp)
+                                        )
+                                        SchoolBannerAlertType.PLATFORM_ANNOUNCEMENT -> PlatformAnnouncementEmblemCanvas(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .padding(6.dp)

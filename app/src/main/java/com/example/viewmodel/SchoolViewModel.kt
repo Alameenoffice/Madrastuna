@@ -8181,7 +8181,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
             type = NotificationType.GRADES,
             targetStudentId = student.id,
             targetSection = AppSection.EXAMS_GRADES.name,
-            targetTab = 2,
+            targetTab = 0,
             targetItemId = card.id
         )
         showToastAlert(
@@ -8258,7 +8258,7 @@ class SchoolViewModel(application: Application) : AndroidViewModel(application) 
                 type = NotificationType.GRADES,
                 targetStudentId = stu.id,
                 targetSection = AppSection.EXAMS_GRADES.name,
-                targetTab = 2,
+                targetTab = 0,
                 targetItemId = card.id
             )
         }

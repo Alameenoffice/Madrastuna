@@ -132,9 +132,46 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val notificationDeepLinkState = mutableStateOf<NotificationLaunchAction?>(null)
+
+    private data class NotificationLaunchAction(
+        val id: Long = System.nanoTime(),
+        val targetSectionName: String = "",
+        val liveRoomId: String = "",
+        val autoEnterLiveRoom: Boolean = false
+    )
+
+    private fun extractNotificationAction(intent: android.content.Intent?): NotificationLaunchAction? {
+        if (intent == null) return null
+        val openBroadcast = intent.getBooleanExtra("open_live_broadcast", false)
+        val sectionName = intent.getStringExtra(com.example.util.SystemNotificationHelper.EXTRA_TARGET_SECTION).orEmpty()
+        val roomId = intent.getStringExtra(com.example.util.SystemNotificationHelper.EXTRA_LIVE_ROOM_ID).orEmpty()
+        val autoEnter = intent.getBooleanExtra(com.example.util.SystemNotificationHelper.EXTRA_AUTO_ENTER_ROOM, false)
+        if (!openBroadcast && sectionName.isBlank() && roomId.isBlank()) return null
+        return NotificationLaunchAction(
+            targetSectionName = sectionName.ifBlank {
+                if (openBroadcast) AppSection.LIVE_AUDIO_BROADCAST.name else ""
+            },
+            liveRoomId = roomId,
+            autoEnterLiveRoom = autoEnter || openBroadcast
+        )
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractNotificationAction(intent)?.let { action ->
+            notificationDeepLinkState.value = action
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.example.util.SystemNotificationHelper.ensureChannelCreated(this)
+        extractNotificationAction(intent)?.let { action ->
+            notificationDeepLinkState.value = action
+        }
         setContent {
             val schoolViewModel: SchoolViewModel = viewModel()
             val isDarkMode by schoolViewModel.isDarkMode.collectAsState()
@@ -142,6 +179,7 @@ class MainActivity : ComponentActivity() {
             val students by schoolViewModel.students.collectAsState()
             val selectedParentChildId by schoolViewModel.selectedParentChildId.collectAsState()
             val schoolConfig by schoolViewModel.schoolConfig.collectAsState()
+            val pendingNotifAction by notificationDeepLinkState
 
             val isFeminineTheme: Boolean = remember(currentUser, students, selectedParentChildId, schoolConfig.schoolGenderType) {
                 val user = currentUser
@@ -168,7 +206,14 @@ class MainActivity : ComponentActivity() {
                 darkTheme = isDarkMode,
                 isFeminineTheme = false
             ) {
-                MadrasatiRootApp(viewModel = schoolViewModel)
+                MadrasatiRootApp(
+                    viewModel = schoolViewModel,
+                    pendingExternalSectionName = pendingNotifAction?.targetSectionName.orEmpty(),
+                    pendingExternalLiveRoomId = pendingNotifAction?.liveRoomId.orEmpty(),
+                    pendingExternalAutoEnterRoom = pendingNotifAction?.autoEnterLiveRoom == true,
+                    pendingExternalActionToken = pendingNotifAction?.id ?: 0L,
+                    onConsumeExternalAction = { notificationDeepLinkState.value = null }
+                )
             }
         }
     }
@@ -176,7 +221,12 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MadrasatiRootApp(
-    viewModel: SchoolViewModel
+    viewModel: SchoolViewModel,
+    pendingExternalSectionName: String = "",
+    pendingExternalLiveRoomId: String = "",
+    pendingExternalAutoEnterRoom: Boolean = false,
+    pendingExternalActionToken: Long = 0L,
+    onConsumeExternalAction: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val isDarkMode by viewModel.isDarkMode.collectAsState()
@@ -201,6 +251,7 @@ fun MadrasatiRootApp(
     ) { _ -> }
 
     LaunchedEffect(Unit) {
+        com.example.util.SystemNotificationHelper.ensureChannelCreated(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -212,13 +263,20 @@ fun MadrasatiRootApp(
         }
     }
 
-    // Lightweight Real-Time Presence Lifecycle Observer (ON_RESUME -> online + 45s heartbeat, ON_STOP -> offline)
+    // Lightweight Real-Time Presence Lifecycle Observer + Background Alert Follow-Up Scheduler
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_RESUME -> viewModel.onAppResumed()
-                Lifecycle.Event.ON_STOP -> viewModel.onAppStopped()
+                Lifecycle.Event.ON_STOP -> {
+                    viewModel.onAppStopped()
+                    val session = com.example.util.BackgroundSessionStore.loadSession(context)
+                    if (session.isLoggedIn && session.schoolId.isNotBlank()) {
+                        com.example.util.BackgroundAlertMonitorScheduler.schedulePeriodicMonitoring(context)
+                        com.example.util.BackgroundAlertMonitorScheduler.scheduleQuickFollowUp(context, delayMs = 75_000L)
+                    }
+                }
                 else -> Unit
             }
         }
@@ -393,7 +451,14 @@ fun MadrasatiRootApp(
                 }
             }
             else -> {
-                AuthenticatedMainPlatform(viewModel = viewModel)
+                AuthenticatedMainPlatform(
+                    viewModel = viewModel,
+                    pendingExternalSectionName = pendingExternalSectionName,
+                    pendingExternalLiveRoomId = pendingExternalLiveRoomId,
+                    pendingExternalAutoEnterRoom = pendingExternalAutoEnterRoom,
+                    pendingExternalActionToken = pendingExternalActionToken,
+                    onConsumeExternalAction = onConsumeExternalAction
+                )
             }
         }
 
@@ -752,7 +817,12 @@ fun MadrasatiRootApp(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AuthenticatedMainPlatform(
-    viewModel: SchoolViewModel
+    viewModel: SchoolViewModel,
+    pendingExternalSectionName: String = "",
+    pendingExternalLiveRoomId: String = "",
+    pendingExternalAutoEnterRoom: Boolean = false,
+    pendingExternalActionToken: Long = 0L,
+    onConsumeExternalAction: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val isDarkMode by viewModel.isDarkMode.collectAsState()
@@ -830,12 +900,72 @@ fun AuthenticatedMainPlatform(
         mutableStateOf<Pair<com.example.livebroadcast.LiveRoomUrgentInvite, com.example.livebroadcast.LiveAudioRoom>?>(null)
     }
     var showLiveNotifPermissionRationale by remember { mutableStateOf(false) }
+    var showBatteryOptGuidanceDialog by remember { mutableStateOf(false) }
     val liveNotifPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
             viewModel.showToastAlert("تم تفعيل إشعارات البث الصوتي المباشر بنجاح", isSuccess = true)
+            if (com.example.util.SystemNotificationHelper.shouldShowBatteryOptimizationPrompt(context)) {
+                com.example.util.SystemNotificationHelper.markBatteryOptimizationPromptShown(context)
+                showBatteryOptGuidanceDialog = true
+            }
         }
+    }
+
+    // Keep closed-app Background Alert Monitor synced with current logged-in session
+    LaunchedEffect(
+        currentUser?.id,
+        currentUser?.role,
+        schoolConfig.schoolId,
+        schoolConfig.schoolName,
+        loggedInStudentRecord?.gradeClass,
+        parentChildren
+    ) {
+        val user = currentUser
+        val sid = schoolConfig.schoolId.ifBlank { "default_school" }
+        if (user != null && sid.isNotBlank()) {
+            val gradesSet = buildSet {
+                loggedInStudentRecord?.gradeClass?.takeIf { it.isNotBlank() }?.let { add(it) }
+                parentChildren.forEach { child ->
+                    if (child.gradeClass.isNotBlank()) add(child.gradeClass)
+                }
+            }
+            com.example.util.BackgroundSessionStore.saveActiveSession(
+                context = context,
+                schoolId = sid,
+                schoolName = schoolConfig.schoolName,
+                userId = user.id,
+                userRole = user.role,
+                studentGrades = gradesSet
+            )
+            com.example.util.BackgroundAlertMonitorScheduler.scheduleAll(context)
+            // One-time smart battery optimization exemption guide for reliable background notifications
+            if (com.example.util.SystemNotificationHelper.hasNotificationPermission(context) &&
+                com.example.util.SystemNotificationHelper.shouldShowBatteryOptimizationPrompt(context)
+            ) {
+                delay(2200L)
+                com.example.util.SystemNotificationHelper.markBatteryOptimizationPromptShown(context)
+                showBatteryOptGuidanceDialog = true
+            }
+        } else {
+            com.example.util.BackgroundSessionStore.clearSession(context)
+            com.example.util.BackgroundAlertMonitorScheduler.cancelAll(context)
+        }
+    }
+
+    // Deduplicated external notification whenever a new Developer / Platform Announcement arrives
+    LaunchedEffect(developerBroadcasts, currentUser?.id, schoolConfig.schoolId) {
+        val user = currentUser ?: return@LaunchedEffect
+        val latest = developerBroadcasts.firstOrNull { it.isActive } ?: return@LaunchedEffect
+        val bcId = latest.id.ifBlank { "${latest.title.hashCode()}_${latest.createdAt}" }
+        com.example.util.SystemNotificationHelper.showAnnouncementNotificationOnce(
+            context = context,
+            dedupKey = "bg_dev_broadcast_$bcId",
+            title = latest.title.ifBlank { "تعميم إدارة المنصة" },
+            body = latest.message.ifBlank { latest.title },
+            isUrgentAdmin = false
+        )
     }
 
     fun requestLiveNotificationPermissionGentlyIfNeeded() {
@@ -858,6 +988,47 @@ fun AuthenticatedMainPlatform(
             return
         }
         activeLiveAudioRoom = room
+    }
+
+    // Handle deep-link taps from external Android notifications ("انضمام للبث الآن" / section tap)
+    LaunchedEffect(
+        pendingExternalActionToken,
+        allLiveBroadcastRooms,
+        currentUser?.id
+    ) {
+        if (pendingExternalActionToken == 0L || currentUser == null) return@LaunchedEffect
+        val user = currentUser ?: return@LaunchedEffect
+        val targetSection = AppSection.entries.firstOrNull {
+            it.name.equals(pendingExternalSectionName, ignoreCase = true)
+        }
+        if (targetSection != null) {
+            viewModel.dismissSmartWelcomeHubToClassic()
+            viewModel.navigateToSection(targetSection)
+        }
+        if (pendingExternalAutoEnterRoom || pendingExternalLiveRoomId.isNotBlank()) {
+            val matchedRoom = allLiveBroadcastRooms.firstOrNull { r ->
+                r.isLive && pendingExternalLiveRoomId.isNotBlank() && r.id == pendingExternalLiveRoomId
+            } ?: allLiveBroadcastRooms.firstOrNull { r ->
+                r.isLive &&
+                    (user.role == UserRole.ADMIN || !r.isUserBanned(user.id)) &&
+                    com.example.livebroadcast.isUserIncludedInRoom(
+                        room = r,
+                        user = user,
+                        linkedStudent = loggedInStudentRecord,
+                        parentChildren = parentChildren
+                    )
+            }
+            if (matchedRoom != null) {
+                viewModel.dismissSmartWelcomeHubToClassic()
+                enterLiveAudioRoomGuarded(matchedRoom)
+                onConsumeExternalAction()
+            } else if (allLiveBroadcastRooms.isNotEmpty()) {
+                // Rooms loaded, none currently live -> stay on Live Audio Broadcast hub & consume
+                onConsumeExternalAction()
+            }
+        } else {
+            onConsumeExternalAction()
+        }
     }
 
     LaunchedEffect(activeSection) {
@@ -900,7 +1071,10 @@ fun AuthenticatedMainPlatform(
                     dedupKey = "live_room_${room.id}_${user.id}",
                     title = "بث صوتي مباشر الآن",
                     body = "${room.title} • بإشراف ${room.hostName}",
-                    isUrgentInvite = false
+                    isUrgentInvite = false,
+                    roomId = room.id,
+                    roomTitle = room.title,
+                    hostName = room.hostName
                 )
             }
         }
@@ -927,7 +1101,10 @@ fun AuthenticatedMainPlatform(
                 dedupKey = "urgent_invite_${invite.id}",
                 title = "تنبيه عاجل للدخول للبث المباشر",
                 body = "تدعوك ${invite.senderName} للانضمام فوراً إلى «${invite.roomTitle.ifBlank { targetRoom.title }}»",
-                isUrgentInvite = true
+                isUrgentInvite = true,
+                roomId = targetRoom.id,
+                roomTitle = invite.roomTitle.ifBlank { targetRoom.title },
+                hostName = invite.senderName.ifBlank { targetRoom.hostName }
             )
             if (activeLiveAudioRoom?.id != targetRoom.id) {
                 if (invite.id !in chimedUrgentInviteIds) {
@@ -1013,6 +1190,9 @@ fun AuthenticatedMainPlatform(
             add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
             add(AppSection.CURRICULUM_BOOKS to Icons.Filled.AutoStories)
             add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
+            if (currentUser?.role != UserRole.STUDENT && currentUser?.role != UserRole.PARENT) {
+                add(AppSection.RESULTS_ISSUANCE to Icons.Filled.WorkspacePremium)
+            }
             if (featureSettings.studentActivitiesEnabled) {
                 add(AppSection.STUDENT_ACTIVITIES to StudentActivitiesLinearVector)
             }
@@ -1204,6 +1384,9 @@ fun AuthenticatedMainPlatform(
                         add(AppSection.SCHEDULE_HOMEWORK to Icons.Filled.CalendarMonth)
                         add(AppSection.CURRICULUM_BOOKS to Icons.Filled.AutoStories)
                         add(AppSection.EXAMS_GRADES to Icons.Filled.Assessment)
+                        if (currentUser?.role != UserRole.STUDENT && currentUser?.role != UserRole.PARENT) {
+                            add(AppSection.RESULTS_ISSUANCE to Icons.Filled.WorkspacePremium)
+                        }
                     }
                 }
                 val communityGroupSections = remember(schoolConfig.schoolType, featureSettings, currentUser) {
@@ -2276,6 +2459,7 @@ fun AuthenticatedMainPlatform(
                             AppSection.SCHEDULE_HOMEWORK -> ScheduleAndHomeworkScreen(viewModel = viewModel)
                             AppSection.CURRICULUM_BOOKS -> CurriculumBooksScreen(viewModel = viewModel)
                             AppSection.EXAMS_GRADES -> ExamsAndGradesScreen(viewModel = viewModel)
+                            AppSection.RESULTS_ISSUANCE -> ResultsIssuanceScreen(viewModel = viewModel)
                             AppSection.STUDENT_ACTIVITIES -> StudentActivitiesScreen(viewModel = viewModel)
                             AppSection.HONOR_ROLL -> HonorRollScreen(viewModel = viewModel)
                             AppSection.TEACHER_EVALUATION -> TeacherEvaluationScreen(viewModel = viewModel)
@@ -2333,6 +2517,19 @@ fun AuthenticatedMainPlatform(
             },
             onLater = {
                 showLiveNotifPermissionRationale = false
+            }
+        )
+    }
+
+    // One-Time Smart Battery Optimization Exemption Guide for Reliable Background Alerts
+    if (showBatteryOptGuidanceDialog) {
+        com.example.livebroadcast.BatteryOptimizationGuidanceDialog(
+            onOpenSettings = {
+                showBatteryOptGuidanceDialog = false
+                com.example.util.SystemNotificationHelper.openBatteryOptimizationSettings(context)
+            },
+            onDismiss = {
+                showBatteryOptGuidanceDialog = false
             }
         )
     }

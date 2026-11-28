@@ -275,6 +275,7 @@ enum class AppSection(private val rawArabicTitle: String) {
     SCHEDULE_HOMEWORK("الجدول والواجبات"),
     CURRICULUM_BOOKS("المناهج الدراسية"),
     EXAMS_GRADES("الامتحانات والدرجات"),
+    RESULTS_ISSUANCE("إصدار النتائج"),
     STUDENT_PERSONAL_PROFILE("ملفي الشخصي والبيانات الشاملة"),
     STUDENT_COMPREHENSIVE_ARCHIVE("السجل الأكاديمي والإحصائي الشامل"),
     HONOR_ROLL("لوحة الشرف"),
