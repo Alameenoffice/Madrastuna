@@ -59,7 +59,9 @@ data class LiveRoomParticipant(
     val role: String = "TEACHER",
     val gender: String = "",
     val avatarUrl: String = "",
-    val joinedAt: Long = System.currentTimeMillis()
+    val joinedAt: Long = System.currentTimeMillis(),
+    val isMicOn: Boolean = false,
+    val isSpeaking: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("userId", userId)
@@ -68,6 +70,8 @@ data class LiveRoomParticipant(
         put("gender", gender)
         put("avatarUrl", avatarUrl)
         put("joinedAt", joinedAt)
+        put("isMicOn", isMicOn)
+        put("isSpeaking", isSpeaking)
     }
 
     companion object {
@@ -81,7 +85,9 @@ data class LiveRoomParticipant(
                 role = obj.optString("role", "TEACHER").trim(),
                 gender = obj.optString("gender").trim(),
                 avatarUrl = obj.optString("avatarUrl").trim(),
-                joinedAt = obj.optLong("joinedAt", System.currentTimeMillis())
+                joinedAt = obj.optLong("joinedAt", System.currentTimeMillis()),
+                isMicOn = obj.optBoolean("isMicOn", false),
+                isSpeaking = obj.optBoolean("isSpeaking", false)
             )
         }
     }
@@ -144,6 +150,7 @@ data class LiveAudioRoom(
     val targetGrade: String = "",
     val targetSection: String = "",
     val coHosts: List<String> = emptyList(),
+    val handRaisedUserIds: List<String> = emptyList(),
     val activeParticipants: Map<String, LiveRoomParticipant> = emptyMap(),
     val participantIdsHistory: List<String> = emptyList(),
     val mutedUserIds: List<String> = emptyList(),
@@ -168,6 +175,29 @@ data class LiveAudioRoom(
     fun isUserMuted(userId: String): Boolean {
         if (userId.isBlank()) return false
         return mutedUserIds.any { it.equals(userId, ignoreCase = true) }
+    }
+
+    fun hasRaisedHand(userId: String): Boolean {
+        if (userId.isBlank()) return false
+        return handRaisedUserIds.any { it.equals(userId, ignoreCase = true) }
+    }
+
+    fun isUserCoHostSpeaker(userId: String): Boolean {
+        if (userId.isBlank()) return false
+        return coHosts.any { it.equals(userId, ignoreCase = true) }
+    }
+
+    /**
+     * Strict speaking eligibility:
+     * - Broadcast creator (hostId) or school Principal (ADMIN): always allowed to speak.
+     * - Explicitly authorized speakers (in coHosts) AND not muted by admin: allowed to speak.
+     * - Everyone else: strict Listener (Audience) only.
+     */
+    fun canParticipantSpeak(userId: String, userRole: String = ""): Boolean {
+        if (userId.isBlank()) return false
+        if (userId.equals(hostId, ignoreCase = true)) return true
+        if (userRole.equals(UserRole.ADMIN.name, ignoreCase = true)) return true
+        return isUserCoHostSpeaker(userId) && !isUserMuted(userId)
     }
 
     fun isUserBanned(userId: String): Boolean {
@@ -239,6 +269,7 @@ data class LiveAudioRoom(
         put("targetGrade", targetGrade)
         put("targetSection", targetSection)
         put("coHosts", JSONArray().apply { coHosts.forEach { put(it) } })
+        put("handRaisedUserIds", JSONArray().apply { handRaisedUserIds.distinct().forEach { put(it) } })
         put("activeParticipants", JSONObject().apply {
             activeParticipants.forEach { (uid, p) ->
                 put(uid, p.toJson())
@@ -390,6 +421,7 @@ data class LiveAudioRoom(
                 targetGrade = obj.optString("targetGrade").trim(),
                 targetSection = obj.optString("targetSection").trim(),
                 coHosts = readStringArray("coHosts"),
+                handRaisedUserIds = readStringArray("handRaisedUserIds"),
                 activeParticipants = participantsMap,
                 participantIdsHistory = historyIds,
                 mutedUserIds = readStringArray("mutedUserIds"),
@@ -424,15 +456,13 @@ fun buildCleanZegoUserId(user: UserAccount?): String {
 }
 
 /**
- * Automatic Role Policy:
- * - Room creator (hostId) or any user inside coHosts -> ZegoUIKitPrebuilt.Host
- * - Everyone else -> ZegoUIKitPrebuilt.Audience
+ * Strict Speaking Role Policy:
+ * - Room creator (hostId), School Principal (ADMIN), or any explicitly authorized speaker in coHosts (and not muted) -> Speaker
+ * - Everyone else -> Strict Listener (Audience)
  */
 fun isUserHostOrCoHost(room: LiveAudioRoom, user: UserAccount?): Boolean {
     if (user == null) return false
-    if (user.id.isNotBlank() && user.id == room.hostId) return true
-    if (user.id.isNotBlank() && room.coHosts.any { it.equals(user.id, ignoreCase = true) }) return true
-    return false
+    return room.canParticipantSpeak(user.id, user.role.name)
 }
 
 /**
@@ -676,7 +706,8 @@ object LiveAudioBroadcastCloudStore {
         context: Context,
         rawSchoolId: String,
         roomId: String,
-        user: UserAccount
+        user: UserAccount,
+        initialMicOn: Boolean = false
     ): Boolean = withContext(Dispatchers.IO) {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
         if (cleanSchoolId.isBlank() || roomId.isBlank() || user.id.isBlank()) return@withContext false
@@ -684,13 +715,17 @@ object LiveAudioBroadcastCloudStore {
         if (!existing.isLive || existing.isUserBanned(user.id)) return@withContext false
 
         val nowMs = System.currentTimeMillis()
+        val canSpeak = existing.canParticipantSpeak(user.id, user.role.name)
+        val prev = existing.activeParticipants[user.id]
         val participant = LiveRoomParticipant(
             userId = user.id,
             fullName = user.fullName.ifBlank { user.role.arabicTitle },
             role = user.role.name,
             gender = user.gender,
             avatarUrl = user.photoBase64,
-            joinedAt = existing.activeParticipants[user.id]?.joinedAt ?: nowMs
+            joinedAt = prev?.joinedAt ?: nowMs,
+            isMicOn = if (canSpeak) initialMicOn else false,
+            isSpeaking = false
         )
         val updatedParticipants = existing.activeParticipants.toMutableMap().apply {
             put(user.id, participant)
@@ -713,13 +748,159 @@ object LiveAudioBroadcastCloudStore {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
         if (cleanSchoolId.isBlank() || roomId.isBlank() || userId.isBlank()) return@withContext false
         val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
-        if (!existing.activeParticipants.containsKey(userId)) return@withContext true
+        if (!existing.activeParticipants.containsKey(userId) && !existing.hasRaisedHand(userId)) {
+            return@withContext true
+        }
 
         val updatedParticipants = existing.activeParticipants.toMutableMap().apply {
             remove(userId)
         }
+        val updatedHandRaised = existing.handRaisedUserIds.filterNot { it.equals(userId, ignoreCase = true) }
         val updatedRoom = existing.copy(
             activeParticipants = updatedParticipants,
+            handRaisedUserIds = updatedHandRaised,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun updateParticipantMicState(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        userId: String,
+        isMicOn: Boolean,
+        isSpeaking: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        if (cleanSchoolId.isBlank() || roomId.isBlank() || userId.isBlank()) return@withContext false
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        val currentP = existing.activeParticipants[userId] ?: return@withContext false
+        val allowed = existing.canParticipantSpeak(userId, currentP.role)
+        val effectiveMic = allowed && isMicOn
+        val effectiveSpeaking = effectiveMic && isSpeaking
+        if (currentP.isMicOn == effectiveMic && currentP.isSpeaking == effectiveSpeaking) return@withContext true
+
+        val nextParticipants = existing.activeParticipants.toMutableMap().apply {
+            put(userId, currentP.copy(isMicOn = effectiveMic, isSpeaking = effectiveSpeaking))
+        }
+        val updatedRoom = existing.copy(
+            activeParticipants = nextParticipants,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    /**
+     * Ultra-lightweight RTDB single-field patch for real-time speaking wave indicators without full-room churn.
+     */
+    suspend fun patchParticipantSpeakingFast(
+        rawSchoolId: String,
+        roomId: String,
+        userId: String,
+        isSpeaking: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        if (cleanSchoolId.isBlank() || roomId.isBlank() || userId.isBlank()) return@withContext false
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        val currentP = existing.activeParticipants[userId] ?: return@withContext false
+        val allowed = existing.canParticipantSpeak(userId, currentP.role) && currentP.isMicOn
+        val effectiveSpeaking = allowed && isSpeaking
+        if (currentP.isSpeaking == effectiveSpeaking) return@withContext true
+
+        val nextParticipants = existing.activeParticipants.toMutableMap().apply {
+            put(userId, currentP.copy(isSpeaking = effectiveSpeaking))
+        }
+        _rooms.value = _rooms.value.map { if (it.id == roomId) it.copy(activeParticipants = nextParticipants) else it }
+        val url =
+            "${FirebaseConfigConstants.DATABASE_URL}/schools/$cleanSchoolId/${FirebaseConfigConstants.COL_LIVE_ROOMS}/$roomId/activeParticipants/$userId/isSpeaking.json"
+        executeHttpWrite(url, "PUT", if (effectiveSpeaking) "true" else "false")
+    }
+
+    suspend fun toggleRaiseHand(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        userId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (cleanSchoolId.isBlank() || userId.isBlank() || !existing.isLive) return@withContext false
+        if (existing.isUserBanned(userId) || existing.isUserMuted(userId)) return@withContext false
+
+        val alreadyRaised = existing.hasRaisedHand(userId)
+        val nextRaised = if (alreadyRaised) {
+            existing.handRaisedUserIds.filterNot { it.equals(userId, ignoreCase = true) }
+        } else {
+            (existing.handRaisedUserIds + userId).distinct()
+        }
+        val updatedRoom = existing.copy(
+            handRaisedUserIds = nextRaised,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun declineSpeakRequest(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targetUserId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (targetUserId.isBlank()) return@withContext false
+        val nextRaised = existing.handRaisedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val updatedRoom = existing.copy(
+            handRaisedUserIds = nextRaised,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun grantSpeakerPermission(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targetUserId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (targetUserId.isBlank()) return@withContext false
+        val nextCoHosts = (existing.coHosts + targetUserId)
+            .filter { it.isNotBlank() && !it.equals(existing.hostId, ignoreCase = true) }
+            .distinct()
+        val nextRaised = existing.handRaisedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextMuted = existing.mutedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val updatedRoom = existing.copy(
+            coHosts = nextCoHosts,
+            handRaisedUserIds = nextRaised,
+            mutedUserIds = nextMuted,
+            updatedAt = System.currentTimeMillis()
+        )
+        commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
+    }
+
+    suspend fun revokeSpeakerPermission(
+        context: Context,
+        rawSchoolId: String,
+        roomId: String,
+        targetUserId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
+        val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
+        if (targetUserId.isBlank()) return@withContext false
+        val nextCoHosts = existing.coHosts.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextRaised = existing.handRaisedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextParticipants = existing.activeParticipants.toMutableMap().apply {
+            this[targetUserId]?.let { p ->
+                put(targetUserId, p.copy(isMicOn = false, isSpeaking = false))
+            }
+        }
+        val updatedRoom = existing.copy(
+            coHosts = nextCoHosts,
+            handRaisedUserIds = nextRaised,
+            activeParticipants = nextParticipants,
             updatedAt = System.currentTimeMillis()
         )
         commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
@@ -740,8 +921,23 @@ object LiveAudioBroadcastCloudStore {
         } else {
             (existing.mutedUserIds + targetUserId).distinct()
         }
+        // Strict rule: muting a participant immediately revokes active speaker status, closes mic, and returns them to Listener
+        val nextCoHosts = if (alreadyMuted) existing.coHosts
+        else existing.coHosts.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextRaised = if (alreadyMuted) existing.handRaisedUserIds
+        else existing.handRaisedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextParticipants = existing.activeParticipants.toMutableMap().apply {
+            if (!alreadyMuted) {
+                this[targetUserId]?.let { p ->
+                    put(targetUserId, p.copy(isMicOn = false, isSpeaking = false))
+                }
+            }
+        }
         val updatedRoom = existing.copy(
             mutedUserIds = nextMuted,
+            coHosts = nextCoHosts,
+            handRaisedUserIds = nextRaised,
+            activeParticipants = nextParticipants,
             updatedAt = System.currentTimeMillis()
         )
         commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
@@ -763,8 +959,12 @@ object LiveAudioBroadcastCloudStore {
         val nextParticipants = existing.activeParticipants.toMutableMap().apply {
             remove(targetUserId)
         }
+        val nextCoHosts = existing.coHosts.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextRaised = existing.handRaisedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
         val updatedRoom = existing.copy(
             activeParticipants = nextParticipants,
+            coHosts = nextCoHosts,
+            handRaisedUserIds = nextRaised,
             kickedUsers = nextKicked,
             updatedAt = nowMs
         )
@@ -790,8 +990,12 @@ object LiveAudioBroadcastCloudStore {
             remove(targetUserId)
         }
         val nextMuted = existing.mutedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextCoHosts = existing.coHosts.filterNot { it.equals(targetUserId, ignoreCase = true) }
+        val nextRaised = existing.handRaisedUserIds.filterNot { it.equals(targetUserId, ignoreCase = true) }
         val updatedRoom = existing.copy(
             activeParticipants = nextParticipants,
+            coHosts = nextCoHosts,
+            handRaisedUserIds = nextRaised,
             bannedUserIds = nextBanned,
             bannedUsersInfo = nextBannedInfo,
             mutedUserIds = nextMuted,
@@ -863,8 +1067,21 @@ object LiveAudioBroadcastCloudStore {
         val cleanSchoolId = InputSanitizer.sanitizeSchoolId(rawSchoolId)
         val existing = _rooms.value.firstOrNull { it.id == roomId } ?: return@withContext false
         val distinctCoHosts = newCoHosts.filter { it.isNotBlank() && it != existing.hostId }.distinct()
+        val removedCoHosts = existing.coHosts.filterNot { oldId -> distinctCoHosts.any { it.equals(oldId, ignoreCase = true) } }
+        val nextRaised = existing.handRaisedUserIds.filterNot { uid -> distinctCoHosts.any { it.equals(uid, ignoreCase = true) } }
+        val nextMuted = existing.mutedUserIds.filterNot { uid -> distinctCoHosts.any { it.equals(uid, ignoreCase = true) } }
+        val nextParticipants = existing.activeParticipants.toMutableMap().apply {
+            removedCoHosts.forEach { removedId ->
+                this[removedId]?.let { p ->
+                    put(removedId, p.copy(isMicOn = false, isSpeaking = false))
+                }
+            }
+        }
         val updatedRoom = existing.copy(
             coHosts = distinctCoHosts,
+            handRaisedUserIds = nextRaised,
+            mutedUserIds = nextMuted,
+            activeParticipants = nextParticipants,
             updatedAt = System.currentTimeMillis()
         )
         commitRoomLocallyAndCloud(context, cleanSchoolId, updatedRoom)
@@ -1078,7 +1295,25 @@ object LiveAudioBroadcastCloudStore {
                 _rooms.value = sorted
                 saveCachedRooms(context, cleanSchoolId, sorted)
             } else {
-                // Sub-path changed (e.g. "/room_123" or moderation/invite update) -> fast refresh
+                // Ultra-fast in-memory update for speaking indicator patches (/roomId/activeParticipants/userId/isSpeaking)
+                val segments = path.trim('/').split('/')
+                if (segments.size == 4 && segments[1] == "activeParticipants" && segments[3] == "isSpeaking") {
+                    val targetRoomId = segments[0]
+                    val targetUserId = segments[2]
+                    val speakingBool = (dataVal as? Boolean) ?: dataVal?.toString()?.equals("true", ignoreCase = true) ?: false
+                    _rooms.value = _rooms.value.map { room ->
+                        if (room.id != targetRoomId) room
+                        else {
+                            val participant = room.activeParticipants[targetUserId] ?: return@map room
+                            val nextParticipants = room.activeParticipants.toMutableMap().apply {
+                                put(targetUserId, participant.copy(isSpeaking = speakingBool))
+                            }
+                            room.copy(activeParticipants = nextParticipants)
+                        }
+                    }
+                    return
+                }
+                // Sub-path changed (e.g. "/room_123" or moderation/invite/hand-raise update) -> fast refresh
                 scope.launch {
                     val refreshed = fetchRoomsFromRtdb(cleanSchoolId)
                     if (refreshed != null) {
@@ -1255,6 +1490,7 @@ object LiveAudioBroadcastCloudStore {
             targetGrade = str("targetGrade"),
             targetSection = str("targetSection"),
             coHosts = strArray("coHosts"),
+            handRaisedUserIds = strArray("handRaisedUserIds"),
             activeParticipants = participantsMap,
             participantIdsHistory = historyIds,
             mutedUserIds = strArray("mutedUserIds"),
@@ -1323,6 +1559,7 @@ object LiveAudioBroadcastCloudStore {
                 put("targetGrade", JSONObject().put("stringValue", room.targetGrade))
                 put("targetSection", JSONObject().put("stringValue", room.targetSection))
                 put("coHosts", toFsArray(room.coHosts))
+                put("handRaisedUserIds", toFsArray(room.handRaisedUserIds))
                 put("participantIdsHistory", toFsArray(room.participantIdsHistory))
                 put("mutedUserIds", toFsArray(room.mutedUserIds))
                 put("bannedUserIds", toFsArray(room.bannedUserIds))

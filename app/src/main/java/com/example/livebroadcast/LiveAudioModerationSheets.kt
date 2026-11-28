@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Groups
@@ -28,10 +29,13 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.VoiceOverOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -80,6 +84,9 @@ fun RoomParticipantsModerationSheet(
     currentUserId: String,
     allAccounts: List<UserAccount>,
     schoolConfig: SchoolConfig,
+    onGrantSpeak: (LiveRoomParticipant) -> Unit,
+    onRevokeSpeak: (LiveRoomParticipant) -> Unit,
+    onDeclineSpeakRequest: (LiveRoomParticipant) -> Unit,
     onToggleMute: (LiveRoomParticipant) -> Unit,
     onKick: (LiveRoomParticipant) -> Unit,
     onBan: (LiveRoomParticipant) -> Unit,
@@ -93,9 +100,11 @@ fun RoomParticipantsModerationSheet(
     var confirmKickTarget by remember { mutableStateOf<LiveRoomParticipant?>(null) }
     var confirmBanTarget by remember { mutableStateOf<LiveRoomParticipant?>(null) }
 
-    val activeList = remember(room.activeParticipants, room.hostId) {
+    val activeList = remember(room.activeParticipants, room.hostId, room.handRaisedUserIds, room.coHosts) {
         room.activeParticipants.values.sortedWith(
             compareByDescending<LiveRoomParticipant> { it.userId == room.hostId }
+                .thenByDescending { room.hasRaisedHand(it.userId) }
+                .thenByDescending { room.isUserCoHostSpeaker(it.userId) }
                 .thenBy { it.joinedAt }
         )
     }
@@ -256,6 +265,8 @@ fun RoomParticipantsModerationSheet(
                             val isSelf = participant.userId == currentUserId
                             val isHost = participant.userId == room.hostId
                             val isMuted = room.isUserMuted(participant.userId)
+                            val hasRaisedHand = room.hasRaisedHand(participant.userId)
+                            val isAuthorizedSpeaker = room.isUserCoHostSpeaker(participant.userId) && !isMuted
                             val roleEnum = runCatching { UserRole.valueOf(participant.role) }.getOrDefault(UserRole.TEACHER)
                             val persona = remember(participant.userId, participant.gender, participant.fullName) {
                                 resolveSmartAvatarPersona(
@@ -265,11 +276,20 @@ fun RoomParticipantsModerationSheet(
                                     fullName = participant.fullName
                                 )
                             }
-                            val badge = remember(isMuted) {
+                            val badge = remember(isMuted, hasRaisedHand, isAuthorizedSpeaker) {
                                 DailyStatusBadgeSpec(
-                                    label = if (isMuted) "مكتوم" else "متصل",
-                                    ringColors = if (isMuted) listOf(BroadcastCoralEnd, Color(0xFFFCA5A5))
-                                    else listOf(BroadcastRichEmerald, BroadcastGoldAccent),
+                                    label = when {
+                                        isMuted -> "مكتوم"
+                                        hasRaisedHand -> "يطلب التحدث"
+                                        isAuthorizedSpeaker -> "متحدث"
+                                        else -> "مستمع"
+                                    },
+                                    ringColors = when {
+                                        isMuted -> listOf(BroadcastCoralEnd, Color(0xFFFCA5A5))
+                                        hasRaisedHand -> listOf(BroadcastGoldAccent, BroadcastGoldLight)
+                                        isAuthorizedSpeaker -> listOf(BroadcastRichEmerald, BroadcastMintSoft)
+                                        else -> listOf(Color(0xFF94A3B8), Color(0xFFCBD5E1))
+                                    },
                                     pillBackground = BroadcastDeepEmerald,
                                     pillBorder = Color.White,
                                     pillTextColor = Color.White
@@ -278,11 +298,19 @@ fun RoomParticipantsModerationSheet(
 
                             Surface(
                                 shape = RoundedCornerShape(15.dp),
-                                color = if (isDark) colorScheme.surfaceVariant.copy(alpha = 0.45f) else Color(0xFFF8FAFC),
+                                color = when {
+                                    hasRaisedHand -> if (isDark) Color(0xFF2B2412) else Color(0xFFFFFBEB)
+                                    isDark -> colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                    else -> Color(0xFFF8FAFC)
+                                },
                                 border = BorderStroke(
-                                    0.9.dp,
-                                    if (isMuted) BroadcastCoralEnd.copy(alpha = 0.45f)
-                                    else colorScheme.outlineVariant.copy(alpha = 0.65f)
+                                    width = if (hasRaisedHand) 1.25.dp else 0.9.dp,
+                                    color = when {
+                                        hasRaisedHand -> BroadcastGoldAccent.copy(alpha = 0.78f)
+                                        isMuted -> BroadcastCoralEnd.copy(alpha = 0.45f)
+                                        isAuthorizedSpeaker -> colorScheme.primary.copy(alpha = 0.45f)
+                                        else -> colorScheme.outlineVariant.copy(alpha = 0.65f)
+                                    }
                                 ),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -320,31 +348,88 @@ fun RoomParticipantsModerationSheet(
                                                     overflow = TextOverflow.Ellipsis,
                                                     modifier = Modifier.weight(1f, fill = false)
                                                 )
-                                                if (isHost) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(50),
-                                                        color = BroadcastGoldAccent.copy(alpha = 0.22f)
-                                                    ) {
-                                                        Text(
-                                                            text = "المشرف",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = if (isDark) BroadcastGoldLight else Color(0xFF784E06),
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                                        )
+                                                when {
+                                                    isHost || roleEnum == UserRole.ADMIN -> {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = BroadcastGoldAccent.copy(alpha = 0.22f)
+                                                        ) {
+                                                            Text(
+                                                                text = "مشرف البث",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = if (isDark) BroadcastGoldLight else Color(0xFF784E06),
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                            )
+                                                        }
                                                     }
-                                                } else if (isMuted) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(50),
-                                                        color = BroadcastCoralEnd.copy(alpha = 0.16f)
-                                                    ) {
-                                                        Text(
-                                                            text = "مكتوم",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
-                                                            fontWeight = FontWeight.Bold,
-                                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                                        )
+                                                    hasRaisedHand -> {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = BroadcastGoldAccent.copy(alpha = 0.26f),
+                                                            border = BorderStroke(0.7.dp, BroadcastGoldAccent.copy(alpha = 0.65f))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Filled.PanTool,
+                                                                    contentDescription = null,
+                                                                    tint = if (isDark) BroadcastGoldLight else Color(0xFF92400E),
+                                                                    modifier = Modifier.size(11.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "يطلب التحدث",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = if (isDark) BroadcastGoldLight else Color(0xFF92400E),
+                                                                    fontWeight = FontWeight.ExtraBold
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    isAuthorizedSpeaker -> {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = colorScheme.primary.copy(alpha = 0.16f)
+                                                        ) {
+                                                            Text(
+                                                                text = "متحدث مخوّل",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = colorScheme.primary,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    isMuted -> {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = BroadcastCoralEnd.copy(alpha = 0.16f)
+                                                        ) {
+                                                            Text(
+                                                                text = "مكتوم",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                    else -> {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(50),
+                                                            color = colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                                                        ) {
+                                                            Text(
+                                                                text = "مستمع",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = colorScheme.onSurfaceVariant,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }
@@ -356,8 +441,136 @@ fun RoomParticipantsModerationSheet(
                                         }
                                     }
 
-                                    // Moderation Controls Row (Mute/Unmute, Kick, Ban) for non-self/non-admin participants
+                                    // Speak Authorization / Hand Raise Decision Row + Moderation Row
                                     if (!isSelf && roleEnum != UserRole.ADMIN) {
+                                        if (hasRaisedHand) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Surface(
+                                                    onClick = { onGrantSpeak(participant) },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = colorScheme.primary,
+                                                    modifier = Modifier
+                                                        .weight(1.3f)
+                                                        .height(36.dp)
+                                                        .testTag("mod_accept_speak_${participant.userId}")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Check,
+                                                            contentDescription = "قبول ومنح الميكروفون",
+                                                            tint = colorScheme.onPrimary,
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = "قبول وتخويل التحدث",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = colorScheme.onPrimary,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+
+                                                Surface(
+                                                    onClick = { onDeclineSpeakRequest(participant) },
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = BroadcastCoralEnd.copy(alpha = if (isDark) 0.24f else 0.12f),
+                                                    border = BorderStroke(0.8.dp, BroadcastCoralEnd.copy(alpha = 0.5f)),
+                                                    modifier = Modifier
+                                                        .weight(0.75f)
+                                                        .height(36.dp)
+                                                        .testTag("mod_decline_speak_${participant.userId}")
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Close,
+                                                            contentDescription = "رفض الطلب",
+                                                            tint = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(3.dp))
+                                                        Text(
+                                                            text = "رفض",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.ExtraBold,
+                                                            color = if (isDark) Color(0xFFFCA5A5) else BroadcastCoralEnd,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Surface(
+                                                onClick = {
+                                                    if (isAuthorizedSpeaker) onRevokeSpeak(participant)
+                                                    else onGrantSpeak(participant)
+                                                },
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (isAuthorizedSpeaker) {
+                                                    Color(0xFF0F766E).copy(alpha = if (isDark) 0.26f else 0.11f)
+                                                } else {
+                                                    colorScheme.primary.copy(alpha = if (isDark) 0.22f else 0.12f)
+                                                },
+                                                border = BorderStroke(
+                                                    0.85.dp,
+                                                    if (isAuthorizedSpeaker) Color(0xFF0F766E).copy(alpha = 0.5f)
+                                                    else colorScheme.primary.copy(alpha = 0.45f)
+                                                ),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(34.dp)
+                                                    .testTag(
+                                                        if (isAuthorizedSpeaker) "mod_revoke_speak_${participant.userId}"
+                                                        else "mod_grant_speak_${participant.userId}"
+                                                    )
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isAuthorizedSpeaker) Icons.Filled.VoiceOverOff else Icons.Filled.RecordVoiceOver,
+                                                        contentDescription = if (isAuthorizedSpeaker) "سحب صلاحية التحدث" else "تخويل للتحدث",
+                                                        tint = if (isAuthorizedSpeaker) {
+                                                            if (isDark) Color(0xFF5EEAD4) else Color(0xFF0F766E)
+                                                        } else {
+                                                            colorScheme.primary
+                                                        },
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text(
+                                                        text = if (isAuthorizedSpeaker) "سحب التخويل (إعادة لمستمع)" else "تخويل للتحدث (منح الميكروفون)",
+                                                        fontSize = 11.5.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = if (isAuthorizedSpeaker) {
+                                                            if (isDark) Color(0xFF5EEAD4) else Color(0xFF0F766E)
+                                                        } else {
+                                                            colorScheme.primary
+                                                        },
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // Moderation Controls Row (Mute/Unmute, Kick, Ban)
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
