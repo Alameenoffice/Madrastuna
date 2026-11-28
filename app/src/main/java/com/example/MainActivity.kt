@@ -322,6 +322,25 @@ fun MadrasatiRootApp(
     val showSmartWelcomeHubRoot by viewModel.showSmartWelcomeHub.collectAsState()
     val userUiPrefsRoot by viewModel.userInterfacePreferences.collectAsState()
     val platformPresenceRoot by viewModel.platformPresenceSummary.collectAsState()
+    val rootStudents by viewModel.students.collectAsState()
+    val rootAccounts by viewModel.accounts.collectAsState()
+    val rootValidStudentIds = remember(rootStudents) {
+        rootStudents.map { it.id.trim() }.filter { it.isNotEmpty() }.toSet()
+    }
+    val rootExcludedStaffIds = remember(rootAccounts) {
+        rootAccounts
+            .filter { it.role == UserRole.ADMIN || it.role == UserRole.TEACHER || it.isBusDriverAccount }
+            .flatMap { listOf(it.id.trim(), it.username.trim()) }
+            .filter { it.isNotEmpty() }
+            .toSet()
+    }
+    val rootExcludedStaffNames = remember(rootAccounts) {
+        rootAccounts
+            .filter { it.role == UserRole.ADMIN || it.role == UserRole.TEACHER || it.isBusDriverAccount }
+            .map { it.fullName.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
+    }
     var showDriverReadingOasisOverlay by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -421,6 +440,10 @@ fun MadrasatiRootApp(
                             studentId = activeDriver.id.ifBlank { "driver_user" },
                             studentName = activeDriver.fullName.ifBlank { "بطل القراءة" },
                             studentGrade = "",
+                            isStudentParticipant = false,
+                            validStudentIds = rootValidStudentIds,
+                            excludedStaffIds = rootExcludedStaffIds,
+                            excludedStaffNames = rootExcludedStaffNames,
                             onClose = { showDriverReadingOasisOverlay = false }
                         )
                     }
@@ -747,7 +770,6 @@ fun MadrasatiRootApp(
         // Executive Technical Offline Screen + Direct Offline Reading Oasis Access
         val isNetworkOnline by viewModel.isNetworkOnline.collectAsState()
         val isCheckingNetworkNow by viewModel.isCheckingNetworkNow.collectAsState()
-        val rootStudents by viewModel.students.collectAsState()
         val rootSelectedChildId by viewModel.selectedParentChildId.collectAsState()
         var showOfflineReadingOasis by remember { mutableStateOf(false) }
 
@@ -802,11 +824,17 @@ fun MadrasatiRootApp(
                     .zIndex(100000f)
             ) {
                 BackHandler { showOfflineReadingOasis = false }
+                val isOfflineStudentParticipant = !user.isBusDriverAccount &&
+                    (user.role == UserRole.STUDENT || (user.role == UserRole.PARENT && offlineStudent != null))
                 com.example.reading.ReadingOasisScreen(
                     schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
                     studentId = offlineStudent?.id?.ifBlank { user.id } ?: user.id,
                     studentName = offlineStudent?.studentName?.ifBlank { user.fullName } ?: user.fullName.ifBlank { "بطل القراءة" },
                     studentGrade = offlineStudent?.gradeClass.orEmpty(),
+                    isStudentParticipant = isOfflineStudentParticipant,
+                    validStudentIds = rootValidStudentIds,
+                    excludedStaffIds = rootExcludedStaffIds,
+                    excludedStaffNames = rootExcludedStaffNames,
                     onClose = { showOfflineReadingOasis = false }
                 )
             }
@@ -833,6 +861,7 @@ fun AuthenticatedMainPlatform(
     val allNotifications by viewModel.notifications.collectAsState()
     val latestBannerAlert by viewModel.latestBannerAlert.collectAsState()
     val allStudents by viewModel.students.collectAsState()
+    val allAccounts by viewModel.accounts.collectAsState()
     val selectedParentChildId by viewModel.selectedParentChildId.collectAsState()
     val developerBroadcasts by viewModel.developerBroadcasts.collectAsState()
     val dismissedBroadcastIds by viewModel.dismissedBroadcastIds.collectAsState()
@@ -1248,11 +1277,36 @@ fun AuthenticatedMainPlatform(
             ?: currentUser?.fullName?.ifBlank { "بطل القراءة" }
             ?: "بطل القراءة"
 
+        val readingValidStudentIds = remember(allStudents) {
+            allStudents.map { it.id.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+        val readingExcludedStaffIds = remember(allAccounts) {
+            allAccounts
+                .filter { it.role == UserRole.ADMIN || it.role == UserRole.TEACHER || it.isBusDriverAccount }
+                .flatMap { listOf(it.id.trim(), it.username.trim()) }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        }
+        val readingExcludedStaffNames = remember(allAccounts) {
+            allAccounts
+                .filter { it.role == UserRole.ADMIN || it.role == UserRole.TEACHER || it.isBusDriverAccount }
+                .map { it.fullName.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        }
+        val isReadingStudentParticipant = currentUser != null &&
+            !currentUser!!.isBusDriverAccount &&
+            (currentUser!!.role == UserRole.STUDENT || (currentUser!!.role == UserRole.PARENT && activeReadingStudent != null))
+
         com.example.reading.ReadingOasisScreen(
             schoolCode = readingSchoolCode,
             studentId = readingStudentId,
             studentName = readingStudentName,
             studentGrade = activeReadingStudent?.gradeClass.orEmpty(),
+            isStudentParticipant = isReadingStudentParticipant,
+            validStudentIds = readingValidStudentIds,
+            excludedStaffIds = readingExcludedStaffIds,
+            excludedStaffNames = readingExcludedStaffNames,
             onClose = { showReadingOasisOverlay = false }
         )
         return

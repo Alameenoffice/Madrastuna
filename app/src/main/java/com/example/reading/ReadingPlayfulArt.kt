@@ -1,5 +1,6 @@
 package com.example.reading
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -25,8 +26,13 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,15 +86,15 @@ fun PlayfulBouncyButton(
     val pressOffset by animateDpAsState(
         targetValue = if (isPressed && enabled) lipDepth else 0.dp,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioLowBouncy,
             stiffness = Spring.StiffnessMedium
         ),
         label = "playful_btn_offset"
     )
     val scale by animateFloatAsState(
-        targetValue = if (isPressed && enabled) 0.96f else 1f,
+        targetValue = if (isPressed && enabled) 0.94f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioLowBouncy,
             stiffness = Spring.StiffnessMedium
         ),
         label = "playful_btn_scale"
@@ -151,9 +157,38 @@ fun PlayfulBouncyButton(
 fun ReadingMascotCanvas(
     modifier: Modifier = Modifier,
     isCelebrating: Boolean = false,
-    isSpeaking: Boolean = false
+    isSpeaking: Boolean = false,
+    onTap: (() -> Unit)? = null
 ) {
     val infinite = rememberInfiniteTransition(label = "fasih_mascot_anim")
+    var tapCount by remember { mutableIntStateOf(0) }
+    val tapJump = remember { Animatable(0f) }
+    val tapTilt = remember { Animatable(0f) }
+
+    LaunchedEffect(tapCount) {
+        if (tapCount > 0) {
+            launch {
+                tapJump.snapTo(0f)
+                tapJump.animateTo(
+                    targetValue = -22f,
+                    animationSpec = tween(durationMillis = 135, easing = FastOutSlowInEasing)
+                )
+                tapJump.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
+            }
+            launch {
+                tapTilt.animateTo(-10f, tween(90))
+                tapTilt.animateTo(10f, tween(110))
+                tapTilt.animateTo(-5f, tween(90))
+                tapTilt.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+            }
+        }
+    }
 
     val floatOffset by infinite.animateFloat(
         initialValue = -4.5f,
@@ -165,12 +200,22 @@ fun ReadingMascotCanvas(
         label = "mascot_float"
     )
 
+    val breatheScale by infinite.animateFloat(
+        initialValue = 0.975f,
+        targetValue = 1.03f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "mascot_breathe"
+    )
+
     val wingFlap by infinite.animateFloat(
         initialValue = -11f,
         targetValue = 15f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = if (isCelebrating) 300 else 1150,
+                durationMillis = if (isCelebrating || tapJump.value < -2f) 260 else 1150,
                 easing = FastOutSlowInEasing
             ),
             repeatMode = RepeatMode.Reverse
@@ -180,7 +225,7 @@ fun ReadingMascotCanvas(
 
     val haloPulse by infinite.animateFloat(
         initialValue = 0.88f,
-        targetValue = 1.06f,
+        targetValue = 1.08f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 2000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -207,11 +252,28 @@ fun ReadingMascotCanvas(
         label = "mascot_celebrate_jump"
     )
 
-    val isBlinking = blinkPhase > 0.93f && !isCelebrating
+    val isHappyJump = isCelebrating || tapJump.value < -3f
+    val isBlinking = blinkPhase > 0.93f && !isHappyJump
+
+    val interactiveModifier = if (onTap != null) {
+        val tapSource = remember { MutableInteractionSource() }
+        modifier.clickable(
+            interactionSource = tapSource,
+            indication = null
+        ) {
+            tapCount++
+            onTap()
+        }
+    } else {
+        modifier
+    }
 
     Canvas(
-        modifier = modifier.graphicsLayer {
-            translationY = floatOffset + celebrationBounce
+        modifier = interactiveModifier.graphicsLayer {
+            translationY = floatOffset + celebrationBounce + tapJump.value
+            rotationZ = tapTilt.value
+            scaleX = breatheScale
+            scaleY = breatheScale
         }
     ) {
         val w = size.width
@@ -390,7 +452,7 @@ fun ReadingMascotCanvas(
             )
         }
 
-        if (isBlinking || isCelebrating) {
+        if (isBlinking || isHappyJump) {
             val smileEyeStroke = Stroke(width = w * 0.034f, cap = StrokeCap.Round)
             listOf(leftEyeCenter, rightEyeCenter).forEach { center ->
                 val arc = Path().apply {
@@ -1456,3 +1518,115 @@ fun KidsCelebrationCanvas(
         }
     }
 }
+
+/**
+ * غلاف دخول متتابع نابض ومرح لبطاقات الحروف والمقاطع عند فتح المحطة أو الدرس.
+ */
+@Composable
+fun StaggeredSpringEntrance(
+    index: Int,
+    modifier: Modifier = Modifier,
+    delayPerItemMs: Long = 55L,
+    content: @Composable () -> Unit
+) {
+    val progress = remember(index) { Animatable(0f) }
+
+    LaunchedEffect(index) {
+        delay((index.coerceIn(0, 12) * delayPerItemMs))
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        )
+    }
+
+    Box(
+        modifier = modifier.graphicsLayer {
+            val p = progress.value
+            alpha = p.coerceIn(0f, 1f)
+            val s = 0.78f + p * 0.22f
+            scaleX = s
+            scaleY = s
+            translationY = (1f - p) * 24f
+        }
+    ) {
+        content()
+    }
+}
+
+/**
+ * انفجار نجوم ولمعان احتفالي موضعي خفيف حول قطع البازل المتعشّقة لحظة نجاح الدمج.
+ */
+@Composable
+fun PuzzleCelebrationBurstCanvas(
+    burstTrigger: Int,
+    modifier: Modifier = Modifier
+) {
+    val anim = remember { Animatable(0f) }
+
+    LaunchedEffect(burstTrigger) {
+        if (burstTrigger > 0) {
+            anim.snapTo(0f)
+            anim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 820, easing = FastOutSlowInEasing)
+            )
+        }
+    }
+
+    val p = anim.value
+    if (burstTrigger <= 0 || p <= 0.005f || p >= 0.995f) return
+
+    val particleColors = remember {
+        listOf(
+            ReadingColors.SunYellow,
+            ReadingColors.CoralOrange,
+            ReadingColors.SkyBlue,
+            ReadingColors.MeadowGreen,
+            ReadingColors.CandyPink,
+            ReadingColors.BerryPurple
+        )
+    }
+
+    Canvas(modifier = modifier) {
+        val cx = size.width * 0.5f
+        val cy = size.height * 0.5f
+        val maxDist = size.minDimension * 0.56f
+        val fade = (1f - ((p - 0.55f) / 0.45f).coerceIn(0f, 1f)).coerceIn(0f, 1f)
+
+        // حلقة توهج ذهبية تتوسع بهدوء
+        drawCircle(
+            color = ReadingColors.SunYellow.copy(alpha = fade * 0.42f),
+            radius = maxDist * (0.28f + p * 0.74f),
+            center = Offset(cx, cy),
+            style = Stroke(width = (8f * (1f - p * 0.65f)).coerceAtLeast(1.5f))
+        )
+
+        val count = 12
+        for (i in 0 until count) {
+            val angle = (i * 2.0 * PI / count) + p * 0.45
+            val dist = maxDist * (0.18f + p * (0.72f + (i % 3) * 0.10f))
+            val px = cx + (cos(angle) * dist).toFloat()
+            val py = cy + (sin(angle) * dist).toFloat()
+            val starR = (7f + (i % 3) * 3f) * (0.65f + (1f - p) * 0.55f)
+
+            if (i % 2 == 0) {
+                drawCurvedStar(
+                    center = Offset(px, py),
+                    outerRadius = starR,
+                    innerRadius = starR * 0.46f,
+                    filled = true
+                )
+            } else {
+                drawCircle(
+                    color = particleColors[i % particleColors.size].copy(alpha = fade * 0.92f),
+                    radius = starR * 0.55f,
+                    center = Offset(px, py)
+                )
+            }
+        }
+    }
+}
+

@@ -225,11 +225,36 @@ fun DashboardScreen(
     val liveHistoryScope = rememberCoroutineScope()
 
     if (showLocalReadingOasis) {
+        val localValidStudentIds = remember(students) {
+            students.map { it.id.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+        val localExcludedStaffIds = remember(accounts) {
+            accounts
+                .filter { it.role == UserRole.ADMIN || it.role == UserRole.TEACHER || it.isBusDriverAccount }
+                .flatMap { listOf(it.id.trim(), it.username.trim()) }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        }
+        val localExcludedStaffNames = remember(accounts) {
+            accounts
+                .filter { it.role == UserRole.ADMIN || it.role == UserRole.TEACHER || it.isBusDriverAccount }
+                .map { it.fullName.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        }
+        val isLocalReadingStudentParticipant = currentUser != null &&
+            !currentUser!!.isBusDriverAccount &&
+            (currentUser!!.role == UserRole.STUDENT || (currentUser!!.role == UserRole.PARENT && myStudent != null))
+
         com.example.reading.ReadingOasisScreen(
             schoolCode = schoolConfig.schoolId.ifBlank { "default_school" },
             studentId = myStudent?.id?.ifBlank { currentUser?.id ?: "guest_student" } ?: currentUser?.id ?: "guest_student",
             studentName = myStudent?.studentName?.ifBlank { currentUser?.fullName ?: "بطل القراءة" } ?: currentUser?.fullName ?: "بطل القراءة",
             studentGrade = myStudent?.gradeClass.orEmpty(),
+            isStudentParticipant = isLocalReadingStudentParticipant,
+            validStudentIds = localValidStudentIds,
+            excludedStaffIds = localExcludedStaffIds,
+            excludedStaffNames = localExcludedStaffNames,
             onClose = { showLocalReadingOasis = false }
         )
         return

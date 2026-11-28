@@ -1,5 +1,6 @@
 package com.example.reading.qiraati
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -13,6 +14,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,7 +32,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,10 +50,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -191,14 +200,38 @@ fun LetterCloudCanvas(
 fun ReadingBlueBirdCanvas(
     bannerText: String = "أقرأ",
     isCelebrating: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onTap: (() -> Unit)? = null
 ) {
     val infinite = rememberInfiniteTransition(label = "blue_bird_anim")
+    var tapCount by remember { mutableIntStateOf(0) }
+    val tapJump = remember { Animatable(0f) }
+    val tapTilt = remember { Animatable(0f) }
+
+    LaunchedEffect(tapCount) {
+        if (tapCount > 0) {
+            launch {
+                tapJump.snapTo(0f)
+                tapJump.animateTo(-18f, tween(130, easing = FastOutSlowInEasing))
+                tapJump.animateTo(
+                    0f,
+                    spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
+                )
+            }
+            launch {
+                tapTilt.animateTo(9f, tween(90))
+                tapTilt.animateTo(-9f, tween(100))
+                tapTilt.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+            }
+        }
+    }
+
+    val isExcited = isCelebrating || tapJump.value < -2f
     val wingFlap by infinite.animateFloat(
         initialValue = -14f,
         targetValue = 18f,
         animationSpec = infiniteRepeatable(
-            animation = tween(if (isCelebrating) 260 else 820, easing = FastOutSlowInEasing),
+            animation = tween(if (isExcited) 220 else 820, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "bird_wing"
@@ -212,9 +245,43 @@ fun ReadingBlueBirdCanvas(
         ),
         label = "bird_bob"
     )
+    val breatheScale by infinite.animateFloat(
+        initialValue = 0.98f,
+        targetValue = 1.035f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2100, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "bird_breathe"
+    )
+    val blinkPhase by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3900, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "bird_blink"
+    )
+    val isBlinking = blinkPhase > 0.93f && !isExcited
+
+    val interactiveModifier = if (onTap != null) {
+        val tapSource = remember { MutableInteractionSource() }
+        modifier.clickable(interactionSource = tapSource, indication = null) {
+            tapCount++
+            onTap()
+        }
+    } else {
+        modifier
+    }
 
     Row(
-        modifier = modifier.graphicsLayer { translationY = bobY },
+        modifier = interactiveModifier.graphicsLayer {
+            translationY = bobY + tapJump.value
+            rotationZ = tapTilt.value
+            scaleX = breatheScale
+            scaleY = breatheScale
+        },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -299,10 +366,18 @@ fun ReadingBlueBirdCanvas(
                 )
             }
 
-            // العين المشرقة والوجنة الوردية
+            // العين المشرقة والوجنة الوردية مع رمش طبيعي وابتسامة فرح عند القفز
             drawCircle(Color.White, w * 0.105f, Offset(w * 0.64f, h * 0.40f))
-            drawCircle(ReadingColors.InkDark, w * 0.056f, Offset(w * 0.66f, h * 0.40f))
-            drawCircle(Color.White, w * 0.022f, Offset(w * 0.64f, h * 0.37f))
+            if (isBlinking || isExcited) {
+                val eyeArc = Path().apply {
+                    moveTo(w * 0.59f, h * 0.41f)
+                    quadraticBezierTo(w * 0.65f, h * 0.35f, w * 0.70f, h * 0.41f)
+                }
+                drawPath(eyeArc, color = ReadingColors.InkDark, style = Stroke(width = 3.2f, cap = StrokeCap.Round))
+            } else {
+                drawCircle(ReadingColors.InkDark, w * 0.056f, Offset(w * 0.66f, h * 0.40f))
+                drawCircle(Color.White, w * 0.022f, Offset(w * 0.64f, h * 0.37f))
+            }
             drawCircle(Color(0xFFF472B6).copy(alpha = 0.55f), w * 0.052f, Offset(w * 0.56f, h * 0.49f))
 
             // المنقار الذهبي المبتسم
@@ -693,12 +768,14 @@ fun JigsawPuzzlePieceCanvas(
     shadowColor: Color,
     interlockSide: PuzzleInterlockSide,
     isHighlighted: Boolean = false,
+    sheenProgress: Float = -1f,
+    isErrorFlash: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (isHighlighted) 1.06f else 1f,
+        targetValue = if (isHighlighted) 1.05f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
+            dampingRatio = Spring.DampingRatioLowBouncy,
             stiffness = Spring.StiffnessMedium
         ),
         label = "puzzle_scale"
@@ -766,10 +843,13 @@ fun JigsawPuzzlePieceCanvas(
                 }
             }
 
+            val effectiveColor = if (isErrorFlash) Color(0xFFEF4444) else pieceColor
+            val effectiveShadow = if (isErrorFlash) Color(0xFFB91C1C) else shadowColor
+
             // طبقة العمق السفلية البارزة
             drawPath(
                 path = buildPiecePath(offsetY = 8f),
-                color = shadowColor
+                color = effectiveShadow
             )
 
             // جسم قطعة البازل بتدرج مشرق
@@ -778,21 +858,47 @@ fun JigsawPuzzlePieceCanvas(
                 path = mainPath,
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        pieceColor.copy(alpha = 0.94f),
-                        pieceColor,
-                        shadowColor.copy(alpha = 0.92f)
+                        effectiveColor.copy(alpha = 0.94f),
+                        effectiveColor,
+                        effectiveShadow.copy(alpha = 0.92f)
                     )
                 )
             )
 
+            // ومضة ضوئية مائلة تنساب على القطعة لحظة التعشيق المغناطيسي
+            if (sheenProgress in 0f..1f) {
+                clipPath(mainPath) {
+                    val bandW = w * 0.42f
+                    val sweepX = -bandW + (w + bandW * 2f) * sheenProgress
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0xFFFFFBEB).copy(alpha = 0.72f),
+                                ReadingColors.SunYellow.copy(alpha = 0.45f),
+                                Color.Transparent
+                            ),
+                            start = Offset(sweepX, 0f),
+                            end = Offset(sweepX + bandW, h)
+                        ),
+                        topLeft = Offset(0f, 0f),
+                        size = Size(w, h)
+                    )
+                }
+            }
+
             // إطار أبيض لطيف ولمعة علوية
             drawPath(
                 path = mainPath,
-                color = if (isHighlighted) ReadingColors.SunYellow else Color.White.copy(alpha = 0.72f),
-                style = Stroke(width = if (isHighlighted) 5f else 3f, join = StrokeJoin.Round)
+                color = when {
+                    isErrorFlash -> Color(0xFFFEE2E2)
+                    isHighlighted -> ReadingColors.SunYellow
+                    else -> Color.White.copy(alpha = 0.72f)
+                },
+                style = Stroke(width = if (isHighlighted || isErrorFlash) 5.5f else 3f, join = StrokeJoin.Round)
             )
             drawLine(
-                color = Color.White.copy(alpha = 0.40f),
+                color = Color.White.copy(alpha = 0.42f),
                 start = Offset(left + 20f, top + 10f),
                 end = Offset(right - 20f, top + 10f),
                 strokeWidth = 4.5f,

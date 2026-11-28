@@ -35,12 +35,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.reading.qiraati.NewQiraatiNavHost
 
 private sealed interface OasisViewMode {
@@ -62,9 +65,14 @@ fun ReadingOasisScreen(
     studentId: String,
     studentName: String,
     studentGrade: String = "",
+    isStudentParticipant: Boolean = true,
+    validStudentIds: Set<String> = emptySet(),
+    excludedStaffIds: Set<String> = emptySet(),
+    excludedStaffNames: Set<String> = emptySet(),
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val effectiveSchoolCode = schoolCode.ifBlank { "default_school" }
     val effectiveStudentId = studentId.ifBlank { "guest_student" }
     val effectiveStudentName = studentName.ifBlank { "بطل القراءة" }
@@ -80,25 +88,43 @@ fun ReadingOasisScreen(
     var viewMode by remember { mutableStateOf<OasisViewMode>(OasisViewMode.Map) }
     var modeBeforeLeaderboard by remember { mutableStateOf<OasisViewMode>(OasisViewMode.Map) }
     var showAvatarPicker by remember { mutableStateOf(false) }
+    var showSoundSettings by remember { mutableStateOf(false) }
 
-    val engine = remember(effectiveSchoolCode, effectiveStudentId, effectiveStudentName, studentGradeLabel) {
+    val engine = remember(
+        effectiveSchoolCode,
+        effectiveStudentId,
+        effectiveStudentName,
+        studentGradeLabel,
+        isStudentParticipant
+    ) {
         ReadingAudioAndProgressEngine(
             context = context,
             schoolCode = effectiveSchoolCode,
             studentId = effectiveStudentId,
             studentName = effectiveStudentName,
-            studentGrade = studentGradeLabel
+            studentGrade = studentGradeLabel,
+            isStudentParticipant = isStudentParticipant
         )
     }
 
-    DisposableEffect(engine) {
+    DisposableEffect(engine, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> engine.pauseBackgroundAudio()
+                Lifecycle.Event.ON_RESUME -> engine.resumeBackgroundAudio()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             engine.release()
         }
     }
 
     val progress by engine.progress.collectAsState()
     val isSpeaking by engine.isSpeaking.collectAsState()
+    val soundSettings by engine.soundSettings.collectAsState()
 
     fun openLeaderboardFrom(origin: OasisViewMode) {
         engine.playTapPop()
@@ -106,8 +132,14 @@ fun ReadingOasisScreen(
         viewMode = OasisViewMode.Leaderboard
     }
 
-    BackHandler(enabled = showAvatarPicker || viewMode !is OasisViewMode.NewQiraatiBook) {
+    fun openSoundSettingsDialog() {
+        engine.playTapPop()
+        showSoundSettings = true
+    }
+
+    BackHandler(enabled = showSoundSettings || showAvatarPicker || viewMode !is OasisViewMode.NewQiraatiBook) {
         when {
+            showSoundSettings -> showSoundSettings = false
             showAvatarPicker -> showAvatarPicker = false
             viewMode is OasisViewMode.Leaderboard -> viewMode = modeBeforeLeaderboard
             viewMode is OasisViewMode.Lesson -> viewMode = OasisViewMode.Map
@@ -164,12 +196,21 @@ fun ReadingOasisScreen(
                                 viewMode = OasisViewMode.NewQiraatiBook
                             },
                             onOpenAvatarPicker = {
-                                engine.playTapPop()
-                                showAvatarPicker = true
+                                if (isStudentParticipant) {
+                                    engine.playTapPop()
+                                    showAvatarPicker = true
+                                }
                             },
                             onOpenLeaderboard = {
                                 openLeaderboardFrom(OasisViewMode.Map)
-                            }
+                            },
+                            soundSettings = soundSettings,
+                            onOpenSoundSettings = { openSoundSettingsDialog() },
+                            onBirdTap = {
+                                engine.playTapPop()
+                                engine.speak("أقرأ")
+                            },
+                            isStudentParticipant = isStudentParticipant
                         )
 
                         OasisViewMode.NewQiraatiBook -> NewQiraatiNavHost(
@@ -179,12 +220,16 @@ fun ReadingOasisScreen(
                             engine = engine,
                             onBackToOasis = { viewMode = OasisViewMode.Map },
                             onOpenAvatarPicker = {
-                                engine.playTapPop()
-                                showAvatarPicker = true
+                                if (isStudentParticipant) {
+                                    engine.playTapPop()
+                                    showAvatarPicker = true
+                                }
                             },
                             onOpenLeaderboard = {
                                 openLeaderboardFrom(OasisViewMode.NewQiraatiBook)
-                            }
+                            },
+                            soundSettings = soundSettings,
+                            onOpenSoundSettings = { openSoundSettingsDialog() }
                         )
 
                         OasisViewMode.Leaderboard -> ReadingLeaderboardScreen(
@@ -194,9 +239,15 @@ fun ReadingOasisScreen(
                             currentStudentGrade = studentGradeLabel,
                             progress = progress,
                             engine = engine,
+                            isStudentParticipant = isStudentParticipant,
+                            validStudentIds = validStudentIds,
+                            excludedStaffIds = excludedStaffIds,
+                            excludedStaffNames = excludedStaffNames,
                             onOpenAvatarPicker = {
-                                engine.playTapPop()
-                                showAvatarPicker = true
+                                if (isStudentParticipant) {
+                                    engine.playTapPop()
+                                    showAvatarPicker = true
+                                }
                             },
                             onBack = {
                                 engine.playTapPop()
@@ -209,12 +260,14 @@ fun ReadingOasisScreen(
                             progress = progress,
                             isSpeaking = isSpeaking,
                             engine = engine,
+                            soundSettings = soundSettings,
+                            onOpenSoundSettings = { openSoundSettingsDialog() },
                             onBackToMap = { viewMode = OasisViewMode.Map }
                         )
                     }
                 }
 
-                if (showAvatarPicker) {
+                if (showAvatarPicker && isStudentParticipant) {
                     ReadingAvatarPickerDialog(
                         currentAvatarId = progress.avatarId,
                         onSelectAvatar = { chosenAvatarId ->
@@ -232,6 +285,27 @@ fun ReadingOasisScreen(
                         onDismiss = {
                             engine.playTapPop()
                             showAvatarPicker = false
+                        }
+                    )
+                }
+
+                if (showSoundSettings) {
+                    ReadingSoundSettingsDialog(
+                        settings = soundSettings,
+                        onToggleSfx = { enabled ->
+                            engine.setSfxEnabled(enabled)
+                            if (enabled) engine.playTapPop()
+                        },
+                        onToggleBgMusic = { enabled ->
+                            engine.setBgMusicEnabled(enabled)
+                            engine.playTapPop()
+                        },
+                        onVolumeChange = { volume ->
+                            engine.setBgMusicVolume(volume)
+                        },
+                        onDismiss = {
+                            engine.playTapPop()
+                            showSoundSettings = false
                         }
                     )
                 }

@@ -79,6 +79,10 @@ fun ReadingLeaderboardScreen(
     currentStudentGrade: String,
     progress: ReadingProgressState,
     engine: ReadingAudioAndProgressEngine,
+    isStudentParticipant: Boolean = true,
+    validStudentIds: Set<String> = emptySet(),
+    excludedStaffIds: Set<String> = emptySet(),
+    excludedStaffNames: Set<String> = emptySet(),
     onOpenAvatarPicker: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -89,13 +93,16 @@ fun ReadingLeaderboardScreen(
     var refreshNonce by remember { mutableIntStateOf(0) }
     var uiState by remember { mutableStateOf<LeaderboardUiState>(LeaderboardUiState.Loading) }
 
-    // جلب قائمة أبطال الصف عند تغيير الصف أو الضغط على التحديث
-    LaunchedEffect(schoolCode, selectedGrade, refreshNonce) {
+    // جلب قائمة أبطال الصف (للطلبة الفعليين فقط مع استبعاد المدير والكادر تلقائياً)
+    LaunchedEffect(schoolCode, selectedGrade, refreshNonce, validStudentIds, excludedStaffIds) {
         uiState = LeaderboardUiState.Loading
         uiState = when (
             val result = ReadingAudioAndProgressEngine.fetchGradeLeaderboard(
                 schoolCode = schoolCode,
-                targetGrade = selectedGrade
+                targetGrade = selectedGrade,
+                validStudentIds = validStudentIds,
+                excludedStaffIds = excludedStaffIds,
+                excludedStaffNames = excludedStaffNames
             )
         ) {
             is LeaderboardFetchResult.Success -> LeaderboardUiState.Ready(result.entries)
@@ -103,10 +110,18 @@ fun ReadingLeaderboardScreen(
         }
     }
 
-    // تحديث فوري لشخصية الطالب ونجومه داخل القائمة المعروضة إذا كان في نفس صفه
-    val displayedEntries = remember(uiState, progress.avatarId, progress.totalStars, selectedGrade, defaultGrade) {
+    // تحديث فوري لشخصية الطالب ونجومه داخل القائمة المعروضة فقط إذا كان الحساب طالباً فعلياً في نفس صفه
+    val displayedEntries = remember(
+        uiState,
+        progress.avatarId,
+        progress.totalStars,
+        selectedGrade,
+        defaultGrade,
+        isStudentParticipant,
+        currentStudentId
+    ) {
         val ready = uiState as? LeaderboardUiState.Ready ?: return@remember emptyList()
-        if (selectedGrade != defaultGrade) {
+        if (!isStudentParticipant || selectedGrade != defaultGrade) {
             ready.entries
         } else {
             val updated = ready.entries.map { entry ->
@@ -135,8 +150,10 @@ fun ReadingLeaderboardScreen(
         }
     }
 
-    val myEntryInGrade = remember(displayedEntries, currentStudentId) {
-        displayedEntries.firstOrNull { it.studentId == currentStudentId }
+    val effectiveHighlightStudentId = if (isStudentParticipant) currentStudentId else ""
+    val myEntryInGrade = remember(displayedEntries, effectiveHighlightStudentId) {
+        if (effectiveHighlightStudentId.isBlank()) null
+        else displayedEntries.firstOrNull { it.studentId == effectiveHighlightStudentId }
     }
     val entryDirectlyAhead = remember(displayedEntries, myEntryInGrade) {
         val me = myEntryInGrade ?: return@remember null
@@ -162,11 +179,12 @@ fun ReadingLeaderboardScreen(
                 contentPadding = PaddingValues(bottom = 128.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 1) الترويسة الاحتفالية الطفولية + زر شخصيتي + زر التحديث
+                // 1) الترويسة الاحتفالية الطفولية + زر شخصيتي (للطلبة) + زر التحديث
                 item(key = "leaderboard_header") {
                     LeaderboardHeroHeader(
                         selectedGrade = selectedGrade,
                         currentAvatarId = progress.avatarId,
+                        showAvatarButton = isStudentParticipant,
                         onBack = onBack,
                         onRefresh = {
                             engine.playTapPop()
@@ -183,7 +201,7 @@ fun ReadingLeaderboardScreen(
                 item(key = "grade_selector") {
                     GradeLeagueSelectorBar(
                         selectedGrade = selectedGrade,
-                        studentDefaultGrade = defaultGrade,
+                        studentDefaultGrade = if (isStudentParticipant) defaultGrade else "",
                         onSelectGrade = { grade ->
                             engine.playTapPop()
                             selectedGrade = grade
@@ -261,7 +279,7 @@ fun ReadingLeaderboardScreen(
                                     first = displayedEntries.getOrNull(0),
                                     second = displayedEntries.getOrNull(1),
                                     third = displayedEntries.getOrNull(2),
-                                    currentStudentId = currentStudentId
+                                    currentStudentId = effectiveHighlightStudentId
                                 )
                             }
 
@@ -305,7 +323,8 @@ fun ReadingLeaderboardScreen(
                                 ) { entry ->
                                     LeaderboardStudentRowCard(
                                         entry = entry,
-                                        isCurrentStudent = entry.studentId == currentStudentId
+                                        isCurrentStudent = effectiveHighlightStudentId.isNotBlank() &&
+                                            entry.studentId == effectiveHighlightStudentId
                                     )
                                 }
                             }
@@ -314,10 +333,12 @@ fun ReadingLeaderboardScreen(
                 }
             }
 
-            // 4) شريط "موقعي في الصف" المثبت في أسفل الشاشة
+            // 4) شريط "موقعي في الصف" للطلبة أو شريط المتابعة الإشرافية للمدير والكادر
             MyRankStickyBottomBar(
                 selectedGrade = selectedGrade,
-                isViewingOwnGrade = selectedGrade == defaultGrade,
+                isStudentParticipant = isStudentParticipant,
+                totalStudentsInGrade = displayedEntries.size,
+                isViewingOwnGrade = isStudentParticipant && selectedGrade == defaultGrade,
                 studentName = currentStudentName,
                 avatarId = progress.avatarId,
                 localStars = progress.totalStars,
@@ -339,6 +360,7 @@ fun ReadingLeaderboardScreen(
 private fun LeaderboardHeroHeader(
     selectedGrade: String,
     currentAvatarId: String,
+    showAvatarButton: Boolean,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onOpenAvatarPicker: () -> Unit
@@ -430,34 +452,36 @@ private fun LeaderboardHeroHeader(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // زر "شخصيتي" يعرض شخصية الطالب الرمزية ويفتح نافذة الاختيار
-                    PlayfulBouncyButton(
-                        onClick = onOpenAvatarPicker,
-                        backgroundColor = Color.White,
-                        shadowColor = Color(0xFFCBD5E1),
-                        cornerRadius = 20.dp,
-                        lipDepth = 4.dp,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
-                        testTagValue = "leaderboard_my_avatar_btn"
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    if (showAvatarButton) {
+                        // زر "شخصيتي" يعرض شخصية الطالب الرمزية ويفتح نافذة الاختيار
+                        PlayfulBouncyButton(
+                            onClick = onOpenAvatarPicker,
+                            backgroundColor = Color.White,
+                            shadowColor = Color(0xFFCBD5E1),
+                            cornerRadius = 20.dp,
+                            lipDepth = 4.dp,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 5.dp),
+                            testTagValue = "leaderboard_my_avatar_btn"
                         ) {
-                            ReadingAvatarCanvas(
-                                avatarId = currentAvatarId,
-                                size = 30.dp,
-                                animated = false
-                            )
-                            Text(
-                                text = "شخصيتي",
-                                fontFamily = ReadingTajawalFont,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp,
-                                color = ReadingColors.InkDark,
-                                maxLines = 1,
-                                softWrap = false
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                ReadingAvatarCanvas(
+                                    avatarId = currentAvatarId,
+                                    size = 30.dp,
+                                    animated = false
+                                )
+                                Text(
+                                    text = "شخصيتي",
+                                    fontFamily = ReadingTajawalFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = ReadingColors.InkDark,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
 
@@ -979,6 +1003,8 @@ private fun formatArabicStarsCount(count: Int): String = when (count) {
 @Composable
 private fun MyRankStickyBottomBar(
     selectedGrade: String,
+    isStudentParticipant: Boolean,
+    totalStudentsInGrade: Int,
     isViewingOwnGrade: Boolean,
     studentName: String,
     avatarId: String,
@@ -992,12 +1018,15 @@ private fun MyRankStickyBottomBar(
     val rankInfo = resolveReadingHeroTitle(effectiveStars)
 
     val headlineText = when {
+        !isStudentParticipant -> "متابعة ساحة أبطال $selectedGrade (حصرية للطلبة)"
         myEntry != null -> "موقعي في الصف: المركز ${myEntry.rank} • ${rankInfo.title}"
         isViewingOwnGrade -> "$studentName • ${rankInfo.title} ($effectiveStars نجمة)"
         else -> "أنت تستعرض الآن دوري $selectedGrade"
     }
 
     val motivationalText = when {
+        !isStudentParticipant ->
+            "حسابات الإدارة والكادر لا تشارك في المنافسة وتظهر هنا أسماء الطلبة الفعليين فقط."
         myEntry != null && myEntry.rank == 1 ->
             "أنت بطل الصف الأول الآن، حافظ على الصدارة!"
         myEntry != null && aheadEntry != null -> {
@@ -1017,7 +1046,7 @@ private fun MyRankStickyBottomBar(
         modifier = modifier
             .border(
                 width = 2.dp,
-                color = ReadingColors.SunYellow,
+                color = if (isStudentParticipant) ReadingColors.SunYellow else ReadingColors.SkyBlue,
                 shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
             )
             .testTag("leaderboard_my_rank_bottom_bar")
@@ -1030,16 +1059,29 @@ private fun MyRankStickyBottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .clickable { onOpenAvatarPicker() }
-                    .testTag("leaderboard_bottom_avatar_tap")
-            ) {
-                ReadingAvatarCanvas(
-                    avatarId = avatarId,
-                    size = 54.dp,
-                    animated = true
-                )
+            if (isStudentParticipant) {
+                Box(
+                    modifier = Modifier
+                        .clickable { onOpenAvatarPicker() }
+                        .testTag("leaderboard_bottom_avatar_tap")
+                ) {
+                    ReadingAvatarCanvas(
+                        avatarId = avatarId,
+                        size = 54.dp,
+                        animated = true
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(ReadingColors.SkyBackground)
+                        .border(1.5.dp, ReadingColors.SkyBlue.copy(alpha = 0.45f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    PlayfulTrophyIcon(modifier = Modifier.size(28.dp), animated = false)
+                }
             }
 
             Column(
@@ -1067,7 +1109,7 @@ private fun MyRankStickyBottomBar(
 
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = ReadingColors.SunYellow
+                color = if (isStudentParticipant) ReadingColors.SunYellow else ReadingColors.SkyBackground
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1076,10 +1118,10 @@ private fun MyRankStickyBottomBar(
                 ) {
                     PlayfulStarIcon(filled = true, modifier = Modifier.size(17.dp))
                     Text(
-                        text = "$effectiveStars",
+                        text = if (isStudentParticipant) "$effectiveStars" else "$totalStudentsInGrade بطل",
                         fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.sp,
+                        fontSize = if (isStudentParticipant) 14.sp else 12.5.sp,
                         color = ReadingColors.InkDark
                     )
                 }

@@ -18,6 +18,7 @@ import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -66,6 +67,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,22 +81,29 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import com.example.R
+import com.example.reading.qiraati.JigsawPuzzlePieceCanvas
+import com.example.reading.qiraati.PuzzleInterlockSide
 import java.io.File
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * شاشة الدرس التفاعلي المتكيفة مع المستويات القرائية الثلاثة بخط تجوال (Tajawal):
@@ -109,7 +118,9 @@ fun ReadingLessonScreen(
     progress: ReadingProgressState,
     isSpeaking: Boolean,
     engine: ReadingAudioAndProgressEngine,
-    onBackToMap: () -> Unit
+    onBackToMap: () -> Unit,
+    soundSettings: ReadingSoundSettings = ReadingSoundSettings(),
+    onOpenSoundSettings: () -> Unit = {}
 ) {
     var activeTab by remember(lesson.id) { mutableStateOf(ReadingLessonTab.LEARN) }
     var showCelebration by remember(lesson.id) { mutableStateOf(false) }
@@ -170,6 +181,8 @@ fun ReadingLessonScreen(
                 lesson = lesson,
                 totalStars = progress.totalStars,
                 lessonStars = progress.starsForLesson(lesson.id),
+                soundSettings = soundSettings,
+                onOpenSoundSettings = onOpenSoundSettings,
                 onBackToMap = {
                     engine.playTapPop()
                     onBackToMap()
@@ -297,6 +310,8 @@ private fun ReadingLessonTopBar(
     lesson: ReadingLesson,
     totalStars: Int,
     lessonStars: Int,
+    soundSettings: ReadingSoundSettings,
+    onOpenSoundSettings: () -> Unit,
     onBackToMap: () -> Unit
 ) {
     Row(
@@ -312,7 +327,7 @@ private fun ReadingLessonTopBar(
             shadowColor = ReadingColors.CoralShadow,
             cornerRadius = 18.dp,
             lipDepth = 4.dp,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            contentPadding = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
             testTagValue = "reading_lesson_back_btn"
         ) {
             Row(
@@ -324,7 +339,7 @@ private fun ReadingLessonTopBar(
                     text = "الخريطة",
                     fontFamily = ReadingTajawalFont,
                     fontWeight = FontWeight.ExtraBold,
-                    fontSize = 14.sp,
+                    fontSize = 13.5.sp,
                     color = Color.White,
                     maxLines = 1,
                     softWrap = false
@@ -337,34 +352,56 @@ private fun ReadingLessonTopBar(
                 text = lesson.title,
                 fontFamily = ReadingTajawalFont,
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 18.sp,
+                fontSize = 17.5.sp,
                 color = ReadingColors.InkDark
             )
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 for (i in 1..3) {
-                    PlayfulStarIcon(filled = i <= lessonStars, modifier = Modifier.size(16.dp))
+                    PlayfulStarIcon(filled = i <= lessonStars, modifier = Modifier.size(15.dp))
                 }
             }
         }
 
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = Color.White,
-            shadowElevation = 4.dp
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            PlayfulBouncyButton(
+                onClick = onOpenSoundSettings,
+                backgroundColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlue else Color.White,
+                shadowColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlueShadow else Color(0xFFCBD5E1),
+                cornerRadius = 16.dp,
+                lipDepth = 3.dp,
+                contentPadding = PaddingValues(6.dp),
+                modifier = Modifier.size(48.dp),
+                testTagValue = "reading_lesson_sound_settings_btn"
             ) {
-                PlayfulStarIcon(filled = true, modifier = Modifier.size(22.dp))
-                Text(
-                    text = "$totalStars",
-                    fontFamily = ReadingTajawalFont,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 16.sp,
-                    color = ReadingColors.InkDark
+                PlayfulSoundSettingsIcon(
+                    musicActive = soundSettings.bgMusicEnabled,
+                    tint = if (soundSettings.bgMusicEnabled) Color.White else ReadingColors.SkyBlueShadow,
+                    modifier = Modifier.size(21.dp)
                 )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = Color.White,
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    PlayfulStarIcon(filled = true, modifier = Modifier.size(20.dp))
+                    Text(
+                        text = "$totalStars",
+                        fontFamily = ReadingTajawalFont,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 15.sp,
+                        color = ReadingColors.InkDark
+                    )
+                }
             }
         }
     }
@@ -632,35 +669,37 @@ private fun LearnSyllablesTab(
             ) {
                 lesson.syllables.forEachIndexed { idx, syl ->
                     val isLongExample = syl.text.length > 3
-                    PlayfulBouncyButton(
-                        onClick = {
-                            engine.playTapPop()
-                            engine.speak(syl.spokenText)
-                        },
-                        backgroundColor = syl.color,
-                        shadowColor = syl.shadowColor,
-                        cornerRadius = 22.dp,
-                        lipDepth = 5.dp,
-                        contentPadding = PaddingValues(
-                            horizontal = if (isLongExample) 14.dp else 4.dp,
-                            vertical = 4.dp
-                        ),
-                        modifier = Modifier
-                            .defaultMinSize(minWidth = 76.dp, minHeight = 76.dp)
-                            .height(76.dp),
-                        testTagValue = "reading_syllable_btn_$idx"
-                    ) {
-                        Text(
-                            text = syl.text,
-                            fontFamily = ReadingTajawalFont,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = if (isLongExample) 22.sp else 28.sp,
-                            lineHeight = 40.sp,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                    StaggeredSpringEntrance(index = idx, delayPerItemMs = 45L) {
+                        PlayfulBouncyButton(
+                            onClick = {
+                                engine.playTapPop()
+                                engine.speak(syl.spokenText)
+                            },
+                            backgroundColor = syl.color,
+                            shadowColor = syl.shadowColor,
+                            cornerRadius = 22.dp,
+                            lipDepth = 5.dp,
+                            contentPadding = PaddingValues(
+                                horizontal = if (isLongExample) 14.dp else 4.dp,
+                                vertical = 4.dp
+                            ),
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 76.dp, minHeight = 76.dp)
+                                .height(76.dp),
+                            testTagValue = "reading_syllable_btn_$idx"
+                        ) {
+                            Text(
+                                text = syl.text,
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = if (isLongExample) 22.sp else 28.sp,
+                                lineHeight = 40.sp,
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
             }
@@ -985,9 +1024,44 @@ private fun AssembleWordTab(
         (required + distractors).shuffled()
     }
 
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
     var placedTiles by remember(lesson.id, wordIndex) { mutableStateOf<List<AssembleTile>>(emptyList()) }
     var feedbackMessage by remember(lesson.id, wordIndex) { mutableStateOf(lesson.level.assemblePrompt) }
     var isWordSolved by remember(lesson.id, wordIndex) { mutableStateOf(false) }
+    var wrongTileUid by remember(lesson.id, wordIndex) { mutableIntStateOf(-1) }
+    var burstTrigger by remember(lesson.id, wordIndex) { mutableIntStateOf(0) }
+
+    val snapProgressAnim = remember(lesson.id, wordIndex) { Animatable(0f) }
+    val sheenAnim = remember(lesson.id, wordIndex) { Animatable(-0.2f) }
+    val wrongWobbleAnim = remember(lesson.id, wordIndex) { Animatable(0f) }
+
+    LaunchedEffect(isWordSolved) {
+        if (isWordSolved) {
+            snapProgressAnim.snapTo(0f)
+            launch {
+                snapProgressAnim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
+            }
+            delay(110L)
+            engine.playPuzzleSnap()
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            burstTrigger++
+            sheenAnim.snapTo(0f)
+            sheenAnim.animateTo(1f, tween(durationMillis = 560, easing = FastOutSlowInEasing))
+            sheenAnim.snapTo(-0.2f)
+        } else {
+            snapProgressAnim.snapTo(0f)
+            sheenAnim.snapTo(-0.2f)
+        }
+    }
 
     LaunchedEffect(lesson.id, wordIndex) {
         delay(260L)
@@ -1051,7 +1125,11 @@ private fun AssembleWordTab(
                 ReadingMascotCanvas(
                     modifier = Modifier.size(76.dp),
                     isCelebrating = isWordSolved || isCelebrating,
-                    isSpeaking = isSpeaking
+                    isSpeaking = isSpeaking,
+                    onTap = {
+                        engine.playTapPop()
+                        engine.speak(currentWord.spokenWord)
+                    }
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -1094,10 +1172,12 @@ private fun AssembleWordTab(
             }
         }
 
+        val useJigsawStage = !isSentenceLevel && currentWord.syllables.size in 2..4
+
         Surface(
             shape = RoundedCornerShape(26.dp),
             color = if (isWordSolved) Color(0xFFDCFCE7) else Color.White,
-            shadowElevation = 4.dp,
+            shadowElevation = if (isWordSolved) 7.dp else 4.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .border(
@@ -1106,68 +1186,151 @@ private fun AssembleWordTab(
                     shape = RoundedCornerShape(26.dp)
                 )
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
             ) {
-                if (isWordSolved) {
-                    Text(
-                        text = currentWord.fullWord,
-                        fontFamily = ReadingTajawalFont,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = if (currentWord.fullWord.length > 12) 28.sp else 48.sp,
-                        lineHeight = 44.sp,
-                        color = ReadingColors.MeadowShadow,
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = "أحسنت يا بطل!",
-                        fontFamily = ReadingTajawalFont,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 20.sp,
-                        color = ReadingColors.CoralOrange
-                    )
-                } else {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        currentWord.syllables.forEachIndexed { slotIdx, expectedSyl ->
-                            val placed = placedTiles.getOrNull(slotIdx)
-                            Box(
-                                modifier = Modifier
-                                    .defaultMinSize(minWidth = if (isSentenceLevel) 92.dp else 84.dp, minHeight = 72.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                                    .background(
-                                        if (placed != null) placed.syllable.color else ReadingColors.SkyBackground
-                                    )
-                                    .border(
-                                        width = 3.dp,
-                                        color = if (placed != null) placed.syllable.shadowColor else expectedSyl.color.copy(alpha = 0.55f),
-                                        shape = RoundedCornerShape(20.dp)
-                                    )
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (useJigsawStage) {
+                        val pieceCount = currentWord.syllables.size
+                        val pieceW = when (pieceCount) {
+                            4 -> 84.dp
+                            3 -> 108.dp
+                            else -> 132.dp
+                        }
+                        val pieceH = when (pieceCount) {
+                            4 -> 82.dp
+                            3 -> 94.dp
+                            else -> 102.dp
+                        }
+                        val pieceWPx = with(density) { pieceW.toPx() }
+                        val midIdx = (pieceCount - 1) / 2f
+                        val snapP = snapProgressAnim.value
+                        val unsnappedGapPx = with(density) { 8.dp.toPx() }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            currentWord.syllables.forEachIndexed { slotIdx, _ ->
+                                val placed = placedTiles.getOrNull(slotIdx)
+                                val side = when (slotIdx) {
+                                    0 -> PuzzleInterlockSide.LEFT_TAB
+                                    currentWord.syllables.lastIndex -> PuzzleInterlockSide.RIGHT_SOCKET
+                                    else -> PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
+                                }
+                                val startShiftX = -(slotIdx - midIdx) * unsnappedGapPx
+                                val targetShiftX = (slotIdx - midIdx) * (0.28f * pieceWPx)
+                                val currentShiftX = startShiftX + (targetShiftX - startShiftX) * snapP
+
+                                JigsawPuzzlePieceCanvas(
                                     text = placed?.syllable?.text ?: "؟",
-                                    fontFamily = ReadingTajawalFont,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = if (isSentenceLevel) 22.sp else 30.sp,
-                                    lineHeight = 36.sp,
-                                    color = if (placed != null) Color.White else ReadingColors.InkSoft.copy(alpha = 0.45f)
+                                    pieceColor = placed?.syllable?.color ?: Color(0xFFCBD5E1),
+                                    shadowColor = placed?.syllable?.shadowColor ?: Color(0xFF94A3B8),
+                                    interlockSide = side,
+                                    isHighlighted = isWordSolved,
+                                    sheenProgress = if (isWordSolved) sheenAnim.value else -1f,
+                                    modifier = Modifier
+                                        .zIndex((pieceCount - slotIdx).toFloat())
+                                        .graphicsLayer {
+                                            translationX = currentShiftX
+                                        }
+                                        .size(width = pieceW, height = pieceH)
                                 )
+                            }
+                        }
+
+                        if (isWordSolved) {
+                            Text(
+                                text = currentWord.fullWord,
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 40.sp,
+                                lineHeight = 46.sp,
+                                color = ReadingColors.MeadowShadow,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "أحسنت يا بطل!",
+                                fontFamily = ReadingTajawalFont,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 19.sp,
+                                color = ReadingColors.CoralOrange
+                            )
+                        }
+                    } else if (isWordSolved) {
+                        Text(
+                            text = currentWord.fullWord,
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = if (currentWord.fullWord.length > 12) 28.sp else 48.sp,
+                            lineHeight = 44.sp,
+                            color = ReadingColors.MeadowShadow,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "أحسنت يا بطل!",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 20.sp,
+                            color = ReadingColors.CoralOrange
+                        )
+                    } else {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            currentWord.syllables.forEachIndexed { slotIdx, expectedSyl ->
+                                val placed = placedTiles.getOrNull(slotIdx)
+                                Box(
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = if (isSentenceLevel) 92.dp else 84.dp, minHeight = 72.dp)
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(
+                                            if (placed != null) placed.syllable.color else ReadingColors.SkyBackground
+                                        )
+                                        .border(
+                                            width = 3.dp,
+                                            color = if (placed != null) placed.syllable.shadowColor else expectedSyl.color.copy(alpha = 0.55f),
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = placed?.syllable?.text ?: "؟",
+                                        fontFamily = ReadingTajawalFont,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = if (isSentenceLevel) 22.sp else 30.sp,
+                                        lineHeight = 36.sp,
+                                        color = if (placed != null) Color.White else ReadingColors.InkSoft.copy(alpha = 0.45f)
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
+                PuzzleCelebrationBurstCanvas(
+                    burstTrigger = burstTrigger,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(144.dp)
+                )
             }
         }
 
         if (!isWordSolved) {
+            val wobblePx = with(density) { wrongWobbleAnim.value.dp.toPx() }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
@@ -1176,30 +1339,44 @@ private fun AssembleWordTab(
                 availableTiles.forEach { tile ->
                     val alreadyUsed = placedTiles.any { it.uid == tile.uid }
                     val isLongTile = tile.syllable.text.length > 3
+                    val isWobbling = wrongTileUid == tile.uid
                     PlayfulBouncyButton(
                         onClick = {
                             if (alreadyUsed || isWordSolved) return@PlayfulBouncyButton
                             val nextIndex = placedTiles.size
                             val expected = currentWord.syllables.getOrNull(nextIndex)
                             if (expected != null && tile.syllable.text == expected.text) {
+                                wrongTileUid = -1
                                 val nextList = placedTiles + tile
                                 placedTiles = nextList
-                                engine.playSuccessChime()
-                                engine.speak(tile.syllable.spokenText)
                                 if (nextList.size == currentWord.syllables.size) {
                                     isWordSolved = true
                                     feedbackMessage = "أحسنت يا بطل! ${currentWord.fullWord}"
                                     onWordCompleted(currentWord.fullWord)
                                 } else {
+                                    engine.playSuccessChime()
+                                    engine.speak(tile.syllable.spokenText)
                                     feedbackMessage = "رائع! اختر الجزء التالي"
                                 }
                             } else {
+                                wrongTileUid = tile.uid
                                 engine.playGentleTryAgain()
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 feedbackMessage = "حاول مرة أخرى يا بطل، اسمع جيداً"
+                                scope.launch {
+                                    wrongWobbleAnim.snapTo(0f)
+                                    wrongWobbleAnim.animateTo(13f, tween(55))
+                                    wrongWobbleAnim.animateTo(-13f, tween(65))
+                                    wrongWobbleAnim.animateTo(8f, tween(55))
+                                    wrongWobbleAnim.animateTo(-8f, tween(55))
+                                    wrongWobbleAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                    delay(350L)
+                                    if (wrongTileUid == tile.uid) wrongTileUid = -1
+                                }
                             }
                         },
-                        backgroundColor = tile.syllable.color,
-                        shadowColor = tile.syllable.shadowColor,
+                        backgroundColor = if (isWobbling) Color(0xFFEF4444) else tile.syllable.color,
+                        shadowColor = if (isWobbling) Color(0xFFB91C1C) else tile.syllable.shadowColor,
                         enabled = !alreadyUsed,
                         cornerRadius = 22.dp,
                         lipDepth = 5.dp,
@@ -1209,7 +1386,10 @@ private fun AssembleWordTab(
                         ),
                         modifier = Modifier
                             .defaultMinSize(minWidth = 78.dp, minHeight = 76.dp)
-                            .height(76.dp),
+                            .height(76.dp)
+                            .graphicsLayer {
+                                if (isWobbling) translationX = wobblePx
+                            },
                         testTagValue = "reading_assemble_tile_${tile.uid}"
                     ) {
                         Text(

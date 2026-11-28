@@ -21,6 +21,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -69,6 +70,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -89,9 +91,12 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -105,6 +110,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.core.content.res.ResourcesCompat
 import com.example.R
@@ -116,14 +122,18 @@ import com.example.reading.PlayfulCrayonIcon
 import com.example.reading.PlayfulCrownIcon
 import com.example.reading.PlayfulEraserIcon
 import com.example.reading.PlayfulMicIcon
+import com.example.reading.PlayfulSoundSettingsIcon
 import com.example.reading.PlayfulSpeakerIcon
 import com.example.reading.PlayfulStarIcon
 import com.example.reading.PlayfulTrophyIcon
+import com.example.reading.PuzzleCelebrationBurstCanvas
 import com.example.reading.ReadingAudioAndProgressEngine
 import com.example.reading.ReadingAvatarCanvas
 import com.example.reading.ReadingColors
 import com.example.reading.ReadingProgressState
+import com.example.reading.ReadingSoundSettings
 import com.example.reading.ReadingTajawalFont
+import com.example.reading.StaggeredSpringEntrance
 import java.io.File
 import kotlin.math.min
 import kotlinx.coroutines.delay
@@ -152,7 +162,9 @@ fun NewQiraatiNavHost(
     engine: ReadingAudioAndProgressEngine,
     onBackToOasis: () -> Unit,
     onOpenAvatarPicker: () -> Unit = {},
-    onOpenLeaderboard: () -> Unit = {}
+    onOpenLeaderboard: () -> Unit = {},
+    soundSettings: ReadingSoundSettings = ReadingSoundSettings(),
+    onOpenSoundSettings: () -> Unit = {}
 ) {
     var route by remember { mutableStateOf<QiraatiRoute>(QiraatiRoute.UnitsLibrary) }
 
@@ -195,6 +207,8 @@ fun NewQiraatiNavHost(
                     },
                     onOpenAvatarPicker = onOpenAvatarPicker,
                     onOpenLeaderboard = onOpenLeaderboard,
+                    soundSettings = soundSettings,
+                    onOpenSoundSettings = onOpenSoundSettings,
                     onBack = { navigateUp() }
                 )
 
@@ -219,6 +233,8 @@ fun NewQiraatiNavHost(
                             route = QiraatiRoute.UnitChant(currentRoute.unit)
                         }
                     },
+                    soundSettings = soundSettings,
+                    onOpenSoundSettings = onOpenSoundSettings,
                     onBack = { navigateUp() }
                 )
 
@@ -244,6 +260,8 @@ fun NewQiraatiNavHost(
                     progress = progress,
                     isSpeaking = isSpeaking,
                     engine = engine,
+                    soundSettings = soundSettings,
+                    onOpenSoundSettings = onOpenSoundSettings,
                     onBack = { navigateUp() }
                 )
 
@@ -291,7 +309,9 @@ fun NewQiraatiUnitsScreen(
     onTapUpcoming: (QiraatiUnit) -> Unit,
     onBack: () -> Unit,
     onOpenAvatarPicker: () -> Unit = {},
-    onOpenLeaderboard: () -> Unit = {}
+    onOpenLeaderboard: () -> Unit = {},
+    soundSettings: ReadingSoundSettings = ReadingSoundSettings(),
+    onOpenSoundSettings: () -> Unit = {}
 ) {
     val units = NewQiraatiRepository.allUnits
 
@@ -313,7 +333,7 @@ fun NewQiraatiUnitsScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // شريط علوي: زر الرجوع + عداد نجوم الطفل
+        // شريط علوي: زر الرجوع + إعدادات الصوت + أبطال الصف + عداد النجوم
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -325,19 +345,19 @@ fun NewQiraatiUnitsScreen(
                 shadowColor = ReadingColors.CoralShadow,
                 cornerRadius = 18.dp,
                 lipDepth = 4.dp,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
                 testTagValue = "qiraati_units_back_btn"
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    PlayfulBackArrowIcon(tint = Color.White, modifier = Modifier.size(20.dp))
+                    PlayfulBackArrowIcon(tint = Color.White, modifier = Modifier.size(18.dp))
                     Text(
                         text = "واحة القراءة",
                         fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.sp,
+                        fontSize = 13.5.sp,
                         color = Color.White,
                         maxLines = 1,
                         softWrap = false
@@ -347,8 +367,25 @@ fun NewQiraatiUnitsScreen(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
+                PlayfulBouncyButton(
+                    onClick = onOpenSoundSettings,
+                    backgroundColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlue else Color.White,
+                    shadowColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlueShadow else Color(0xFFCBD5E1),
+                    cornerRadius = 18.dp,
+                    lipDepth = 4.dp,
+                    contentPadding = PaddingValues(8.dp),
+                    modifier = Modifier.size(48.dp),
+                    testTagValue = "qiraati_units_sound_settings_btn"
+                ) {
+                    PlayfulSoundSettingsIcon(
+                        musicActive = soundSettings.bgMusicEnabled,
+                        tint = if (soundSettings.bgMusicEnabled) Color.White else ReadingColors.SkyBlueShadow,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
                 PlayfulBouncyButton(
                     onClick = onOpenLeaderboard,
                     backgroundColor = ReadingColors.SunYellow,
@@ -360,14 +397,14 @@ fun NewQiraatiUnitsScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        PlayfulTrophyIcon(modifier = Modifier.size(20.dp), animated = true)
+                        PlayfulTrophyIcon(modifier = Modifier.size(19.dp), animated = true)
                         Text(
                             text = "أبطال الصف",
                             fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 12.5.sp,
+                            fontSize = 12.sp,
                             color = ReadingColors.InkDark,
                             maxLines = 1,
                             softWrap = false
@@ -382,16 +419,16 @@ fun NewQiraatiUnitsScreen(
                     modifier = Modifier.testTag("qiraati_units_stars_badge")
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        PlayfulStarIcon(filled = true, modifier = Modifier.size(21.dp))
+                        PlayfulStarIcon(filled = true, modifier = Modifier.size(20.dp))
                         Text(
                             text = "${progress.totalStars}",
                             fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.5.sp,
+                            fontSize = 14.sp,
                             color = ReadingColors.InkDark
                         )
                     }
@@ -762,7 +799,9 @@ fun NewQiraatiUnitPathScreen(
     onOpenStory: () -> Unit,
     onOpenLetterLesson: (QiraatiLetterLesson) -> Unit,
     onBack: () -> Unit,
-    onOpenChant: () -> Unit = {}
+    onOpenChant: () -> Unit = {},
+    soundSettings: ReadingSoundSettings = ReadingSoundSettings(),
+    onOpenSoundSettings: () -> Unit = {}
 ) {
     val totalNodes = (if (unit.storySection != null) 1 else 0) +
         unit.letterLessons.size +
@@ -780,6 +819,16 @@ fun NewQiraatiUnitPathScreen(
     val rowSpacingDp = 166.dp
     val topPaddingDp = 18.dp
     val totalHeightDp = topPaddingDp + rowSpacingDp * totalNodes + 44.dp
+    val pathAnim = rememberInfiniteTransition(label = "qiraati_unit_path_flow")
+    val dashPhase by pathAnim.animateFloat(
+        initialValue = 0f,
+        targetValue = 38f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "unit_path_dash"
+    )
 
     Column(
         modifier = Modifier
@@ -829,24 +878,46 @@ fun NewQiraatiUnitPathScreen(
                 }
             }
 
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = Color.White,
-                shadowElevation = 4.dp
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                PlayfulBouncyButton(
+                    onClick = onOpenSoundSettings,
+                    backgroundColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlue else Color.White,
+                    shadowColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlueShadow else Color(0xFFCBD5E1),
+                    cornerRadius = 18.dp,
+                    lipDepth = 4.dp,
+                    contentPadding = PaddingValues(8.dp),
+                    modifier = Modifier.size(48.dp),
+                    testTagValue = "qiraati_unit_path_sound_settings_btn"
                 ) {
-                    PlayfulStarIcon(filled = true, modifier = Modifier.size(22.dp))
-                    Text(
-                        text = "${progress.totalStars} نجمة",
-                        fontFamily = ReadingTajawalFont,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.5.sp,
-                        color = ReadingColors.InkDark
+                    PlayfulSoundSettingsIcon(
+                        musicActive = soundSettings.bgMusicEnabled,
+                        tint = if (soundSettings.bgMusicEnabled) Color.White else ReadingColors.SkyBlueShadow,
+                        modifier = Modifier.size(22.dp)
                     )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color.White,
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        PlayfulStarIcon(filled = true, modifier = Modifier.size(22.dp))
+                        Text(
+                            text = "${progress.totalStars} نجمة",
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.5.sp,
+                            color = ReadingColors.InkDark
+                        )
+                    }
                 }
             }
         }
@@ -911,7 +982,7 @@ fun NewQiraatiUnitPathScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // مسار الوحدة المنحني
+        // مسار الوحدة المنحني المتحرك
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
@@ -945,7 +1016,7 @@ fun NewQiraatiUnitPathScreen(
                         style = Stroke(
                             width = 9f,
                             cap = StrokeCap.Round,
-                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(22f, 16f), 0f)
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(22f, 16f), -dashPhase)
                         )
                     )
                 }
@@ -1968,7 +2039,9 @@ fun NewQiraatiLetterScreen(
     progress: ReadingProgressState,
     isSpeaking: Boolean,
     engine: ReadingAudioAndProgressEngine,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    soundSettings: ReadingSoundSettings = ReadingSoundSettings(),
+    onOpenSoundSettings: () -> Unit = {}
 ) {
     val visibleStations = remember(lesson.id) {
         buildList {
@@ -2052,7 +2125,7 @@ fun NewQiraatiLetterScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding()
         ) {
-            // شريط علوي للدرس
+            // شريط علوي للدرس مع زر إعدادات الصوت
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2066,7 +2139,7 @@ fun NewQiraatiLetterScreen(
                     shadowColor = lesson.shadowColor,
                     cornerRadius = 18.dp,
                     lipDepth = 4.dp,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
                     testTagValue = "qiraati_letter_back_btn"
                 ) {
                     Row(
@@ -2078,7 +2151,7 @@ fun NewQiraatiLetterScreen(
                             text = unit.shortTitle,
                             fontFamily = ReadingTajawalFont,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 13.5.sp,
+                            fontSize = 13.sp,
                             color = Color.White
                         )
                     }
@@ -2089,30 +2162,52 @@ fun NewQiraatiLetterScreen(
                         text = lesson.letterName,
                         fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 19.sp,
+                        fontSize = 18.5.sp,
                         color = ReadingColors.InkDark
                     )
                     Text(
                         text = "محطة $activeStepIndex من ${visibleStations.size} • ${stationLabelFor(activeStation)}",
                         fontFamily = ReadingTajawalFont,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        fontSize = 11.5.sp,
                         color = ReadingColors.InkSoft
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.White,
-                    shadowElevation = 4.dp
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    PlayfulBouncyButton(
+                        onClick = onOpenSoundSettings,
+                        backgroundColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlue else Color.White,
+                        shadowColor = if (soundSettings.bgMusicEnabled) ReadingColors.SkyBlueShadow else Color(0xFFCBD5E1),
+                        cornerRadius = 16.dp,
+                        lipDepth = 3.dp,
+                        contentPadding = PaddingValues(6.dp),
+                        modifier = Modifier.size(48.dp),
+                        testTagValue = "qiraati_letter_sound_settings_btn"
                     ) {
-                        val stars = progress.starsForLesson(lesson.id)
-                        for (s in 1..3) {
-                            PlayfulStarIcon(filled = s <= stars, modifier = Modifier.size(18.dp))
+                        PlayfulSoundSettingsIcon(
+                            musicActive = soundSettings.bgMusicEnabled,
+                            tint = if (soundSettings.bgMusicEnabled) Color.White else ReadingColors.SkyBlueShadow,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White,
+                        shadowElevation = 4.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            val stars = progress.starsForLesson(lesson.id)
+                            for (s in 1..3) {
+                                PlayfulStarIcon(filled = s <= stars, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
@@ -2311,59 +2406,64 @@ private fun Station1IntroWords(
                         label = "intro_word_scale_$globalIdx"
                     )
 
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = if (isBounced) Color(0xFFFFF7ED) else Color.White,
-                        shadowElevation = if (isBounced) 8.dp else 4.dp,
-                        modifier = Modifier
-                            .weight(1f)
-                            .graphicsLayer {
-                                scaleX = cardScale
-                                scaleY = cardScale
-                            }
-                            .border(
-                                width = if (isBounced) 2.5.dp else 1.5.dp,
-                                color = if (isBounced) lesson.accentColor else Color(0xFFE2E8F0),
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            .clickable {
-                                activeWordIndex = globalIdx
-                                engine.playTapPop()
-                                engine.speak(item.spokenText)
-                            }
-                            .testTag("qiraati_intro_word_$globalIdx")
+                    StaggeredSpringEntrance(
+                        index = globalIdx,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Column(
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = if (isBounced) Color(0xFFFFF7ED) else Color.White,
+                            shadowElevation = if (isBounced) 8.dp else 4.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            QiraatiWordArtCanvas(
-                                artKey = item.artKey,
-                                modifier = Modifier.size(66.dp)
-                            )
-                            ArabicHighlightedWord(
-                                word = item.word,
-                                highlightRanges = item.highlightRanges,
-                                fontSize = 24.sp,
-                                lineHeight = 36.sp,
-                                baseColor = ReadingColors.InkDark,
-                                textAlign = TextAlign.Center
-                            )
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = lesson.accentColor.copy(alpha = 0.14f)
-                            ) {
-                                Text(
-                                    text = item.position.arabicLabel,
-                                    fontFamily = ReadingTajawalFont,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = lesson.shadowColor,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
+                                .graphicsLayer {
+                                    scaleX = cardScale
+                                    scaleY = cardScale
+                                }
+                                .border(
+                                    width = if (isBounced) 2.5.dp else 1.5.dp,
+                                    color = if (isBounced) lesson.accentColor else Color(0xFFE2E8F0),
+                                    shape = RoundedCornerShape(24.dp)
                                 )
+                                .clickable {
+                                    activeWordIndex = globalIdx
+                                    engine.playTapPop()
+                                    engine.speak(item.spokenText)
+                                }
+                                .testTag("qiraati_intro_word_$globalIdx")
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                QiraatiWordArtCanvas(
+                                    artKey = item.artKey,
+                                    modifier = Modifier.size(66.dp)
+                                )
+                                ArabicHighlightedWord(
+                                    word = item.word,
+                                    highlightRanges = item.highlightRanges,
+                                    fontSize = 24.sp,
+                                    lineHeight = 36.sp,
+                                    baseColor = ReadingColors.InkDark,
+                                    textAlign = TextAlign.Center
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = lesson.accentColor.copy(alpha = 0.14f)
+                                ) {
+                                    Text(
+                                        text = item.position.arabicLabel,
+                                        fontFamily = ReadingTajawalFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = lesson.shadowColor,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -3484,6 +3584,16 @@ private fun Station5AnalysisGame(
 // ============================================================================
 // المحطة 5: لعبة ركّب البازل المتشابك (نشاط 6 — انزلاق مرن وتعشيق القطعتين)
 // ============================================================================
+private data class QiraatiPuzzleOptionChip(
+    val uid: String,
+    val label: String,
+    val resultWordPreview: String?,
+    val validBranchIdx: Int, // -1 تعني قطعة مشتّتة للتأكد من اختيار القطعة الصحيحة
+    val pieceCount: Int,
+    val bg: Color,
+    val shadow: Color
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Station6PuzzleGame(
@@ -3507,24 +3617,29 @@ private fun Station6PuzzleGame(
         return
     }
 
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
     var puzzleIndex by remember(lesson.id) { mutableIntStateOf(0) }
     val puzzle = lesson.puzzleItems[puzzleIndex % lesson.puzzleItems.size]
 
     var selectedBranchIdx by remember(lesson.id, puzzleIndex) { mutableIntStateOf(-1) }
+    var snapTrigger by remember(lesson.id, puzzleIndex) { mutableIntStateOf(0) }
+    var burstTrigger by remember(lesson.id, puzzleIndex) { mutableIntStateOf(0) }
+    var wrongChipUid by remember(lesson.id, puzzleIndex) { mutableStateOf<String?>(null) }
+    var wrongHintText by remember(lesson.id, puzzleIndex) { mutableStateOf("") }
     val completedBranches = remember(lesson.id, puzzleIndex) { mutableStateListOf<Int>() }
+
+    // حركات التعشيق المغناطيسي الفيزيائي، الانطلاق نحو الفراغ، الومضة الضوئية، واهتزاز الخطأ
+    val flyInAnim = remember(lesson.id, puzzleIndex) { Animatable(1f) }
+    val snapProgressAnim = remember(lesson.id, puzzleIndex) { Animatable(0f) }
+    val sheenAnim = remember(lesson.id, puzzleIndex) { Animatable(-0.2f) }
+    val joyBounceAnim = remember(lesson.id, puzzleIndex) { Animatable(1f) }
+    val wrongWobbleAnim = remember(lesson.id, puzzleIndex) { Animatable(0f) }
 
     val selectedBranch = puzzle.branches.getOrNull(selectedBranchIdx)
     val isInterlocked = selectedBranch != null
-
-    // حركة انزلاق مرنة تدمج القطع المتشابكة عند اختيار الفرع
-    val slideGap by animateDpAsState(
-        targetValue = if (isInterlocked) (-26).dp else 18.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "puzzle_interlock_gap"
-    )
 
     val branchColors = remember {
         listOf(
@@ -3533,6 +3648,116 @@ private fun Station6PuzzleGame(
             ReadingColors.MeadowGreen to ReadingColors.MeadowShadow,
             ReadingColors.BerryPurple to ReadingColors.BerryShadow
         )
+    }
+
+    // بناء خيارات القطع مع قطعة مشتّتة ذكية لتجربة اهتزاز الخطأ والتعشيق المغناطيسي الحقيقي
+    val optionChips = remember(lesson.id, puzzleIndex) {
+        val validLabels = puzzle.branches.map { it.attachedPiece.trim() }.toSet()
+        val validChips = puzzle.branches.mapIndexed { idx, branch ->
+            val (bg, sh) = branchColors[idx % branchColors.size]
+            val pieces = branch.resolvedPieces(puzzle.basePiece)
+            val title = if (pieces.size >= 3) pieces.drop(1).joinToString(" + ") else branch.attachedPiece
+            QiraatiPuzzleOptionChip(
+                uid = "valid_${puzzleIndex}_$idx",
+                label = title,
+                resultWordPreview = branch.resultWord,
+                validBranchIdx = idx,
+                pieceCount = pieces.size,
+                bg = bg,
+                shadow = sh
+            )
+        }
+        val fallbackDistractors = listOf("سَـ", "لُـ", "نِـ", "عَـ", "تُـ", "كِـ")
+            .filter { cand ->
+                cand != puzzle.basePiece.trim() && validLabels.none { it.contains(cand.take(1)) }
+            }
+        val distractorLabel = fallbackDistractors.firstOrNull() ?: "زُ"
+        val distractorChip = QiraatiPuzzleOptionChip(
+            uid = "distractor_$puzzleIndex",
+            label = distractorLabel,
+            resultWordPreview = null,
+            validBranchIdx = -1,
+            pieceCount = 2,
+            bg = Color(0xFFF59E0B),
+            shadow = Color(0xFFB45309)
+        )
+        // وضع المشتّت في منتصف/آخر الخيارات بشكل ثابت لكل بازل
+        val combined = validChips.toMutableList()
+        val insertAt = (combined.size / 2).coerceIn(0, combined.size)
+        combined.add(insertAt, distractorChip)
+        combined.toList()
+    }
+
+    LaunchedEffect(snapTrigger) {
+        if (snapTrigger > 0 && selectedBranch != null) {
+            // المرحلة 1: انطلاق القطعة المختارة نحو الفراغ
+            flyInAnim.snapTo(0f)
+            snapProgressAnim.snapTo(0f)
+            sheenAnim.snapTo(-0.2f)
+            joyBounceAnim.snapTo(1f)
+
+            flyInAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing)
+            )
+            // المرحلة 2: الانجذاب المغناطيسي والتعشيق الفيزيائي المتبادل حتى التطابق التام (0px فجوة)
+            launch {
+                snapProgressAnim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
+            }
+            delay(130L)
+            engine.playPuzzleSnap()
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            burstTrigger++
+            launch {
+                joyBounceAnim.animateTo(1.07f, tween(110, easing = FastOutSlowInEasing))
+                joyBounceAnim.animateTo(
+                    1f,
+                    spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)
+                )
+            }
+            launch {
+                sheenAnim.snapTo(0f)
+                sheenAnim.animateTo(1f, tween(durationMillis = 560, easing = FastOutSlowInEasing))
+                sheenAnim.snapTo(-0.2f)
+            }
+            delay(120L)
+            onPuzzleSolved(selectedBranch.resultWord)
+        }
+    }
+
+    fun handleOptionSelected(chip: QiraatiPuzzleOptionChip) {
+        if (chip.validBranchIdx >= 0) {
+            wrongChipUid = null
+            wrongHintText = ""
+            selectedBranchIdx = chip.validBranchIdx
+            if (chip.validBranchIdx !in completedBranches) {
+                completedBranches.add(chip.validBranchIdx)
+            }
+            snapTrigger++
+        } else {
+            wrongChipUid = chip.uid
+            wrongHintText = "هذه القطعة لا تتعشّق مع «${puzzle.basePiece}»، جرّب قطعة أخرى يا بطل!"
+            engine.playGentleTryAgain()
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            scope.launch {
+                wrongWobbleAnim.snapTo(0f)
+                wrongWobbleAnim.animateTo(14f, tween(55))
+                wrongWobbleAnim.animateTo(-14f, tween(65))
+                wrongWobbleAnim.animateTo(9f, tween(60))
+                wrongWobbleAnim.animateTo(-9f, tween(60))
+                wrongWobbleAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                delay(420L)
+                if (wrongChipUid == chip.uid) {
+                    wrongChipUid = null
+                }
+            }
+        }
     }
 
     Column(
@@ -3577,9 +3802,9 @@ private fun Station6PuzzleGame(
 
         Text(
             text = when (maxPiecesInPuzzle) {
-                4 -> "اضغط على بطاقة المقاطع لتتعشّق القطع الأربع معاً وتكوّن الكلمة!"
-                3 -> "اضغط على بطاقة المقاطع لتتعشّق القطع الثلاث معاً وتكوّن الكلمة!"
-                else -> "اضغط على قطعة البازل الملونة لتتعشّق مع القطعة الأساسية وتكوّن الكلمة!"
+                4 -> "اضغط أو اسحب القطعة للأعلى لتتعشّق القطع الأربع مغناطيسياً وتكوّن الكلمة!"
+                3 -> "اضغط أو اسحب القطعة للأعلى لتتعشّق القطع الثلاث مغناطيسياً وتكوّن الكلمة!"
+                else -> "اضغط أو اسحب القطعة الملونة للأعلى لتتعشّق مع «${puzzle.basePiece}» وتكوّن الكلمة!"
             },
             fontFamily = ReadingTajawalFont,
             fontWeight = FontWeight.ExtraBold,
@@ -3588,11 +3813,11 @@ private fun Station6PuzzleGame(
             textAlign = TextAlign.Center
         )
 
-        // مسرح تعشيق قطع البازل (يدعم قطعتين أو 3 قطع أو 4 قطع متشابكة بسلاسة)
+        // مسرح تعشيق قطع البازل الفيزيائي مع انفجار النجوم والومضة الضوئية
         Surface(
             shape = RoundedCornerShape(28.dp),
             color = if (isInterlocked) Color(0xFFF0FDF4) else Color.White,
-            shadowElevation = 6.dp,
+            shadowElevation = if (isInterlocked) 8.dp else 6.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .border(
@@ -3601,194 +3826,248 @@ private fun Station6PuzzleGame(
                     shape = RoundedCornerShape(28.dp)
                 )
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
             ) {
-                val resolved = selectedBranch?.resolvedPieces(puzzle.basePiece)
-                val pieceCount = resolved?.size?.coerceIn(2, 4) ?: maxPiecesInPuzzle
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    val resolved = selectedBranch?.resolvedPieces(puzzle.basePiece)
+                    val pieceCount = resolved?.size?.coerceIn(2, 4) ?: maxPiecesInPuzzle
+                    val pieceWidthDp = when (pieceCount) {
+                        4 -> 84.dp
+                        3 -> 106.dp
+                        else -> 136.dp
+                    }
+                    val pieceHeightDp = when (pieceCount) {
+                        4 -> 84.dp
+                        3 -> 94.dp
+                        else -> 106.dp
+                    }
+                    val pieceWidthPx = with(density) { pieceWidthDp.toPx() }
+                    val snapP = snapProgressAnim.value
+                    val flyP = flyInAnim.value
+                    val sheenP = sheenAnim.value
+                    val midIdx = (pieceCount - 1) / 2f
+                    val unsnappedGapPx = with(density) { 10.dp.toPx() }
 
-                if (pieceCount >= 3) {
-                    val pieceWidth = if (pieceCount == 4) 82.dp else 104.dp
-                    val pieceHeight = if (pieceCount == 4) 82.dp else 92.dp
-                    val overlapStep = if (pieceCount == 4) 11.dp else 14.dp
-
-                    Row(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        for (pIdx in 0 until pieceCount) {
-                            val label = when {
-                                resolved != null -> resolved.getOrNull(pIdx) ?: "؟"
-                                pIdx == 0 -> puzzle.basePiece
-                                else -> "؟"
-                            }
-                            val (bg, sh) = when {
-                                pIdx == 0 -> ReadingColors.CoralOrange to ReadingColors.CoralShadow
-                                selectedBranchIdx >= 0 -> branchColors[(selectedBranchIdx + pIdx - 1) % branchColors.size]
-                                else -> Color(0xFF94A3B8) to Color(0xFF64748B)
-                            }
-                            val side = when (pIdx) {
-                                0 -> PuzzleInterlockSide.LEFT_TAB
-                                pieceCount - 1 -> PuzzleInterlockSide.RIGHT_SOCKET
-                                else -> PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
-                            }
-                            if (pIdx > 0) {
-                                Spacer(modifier = Modifier.width(if (isInterlocked) 0.dp else 3.dp))
-                            }
-                            JigsawPuzzlePieceCanvas(
-                                text = label,
-                                pieceColor = bg,
-                                shadowColor = sh,
-                                interlockSide = side,
-                                isHighlighted = isInterlocked,
-                                modifier = Modifier
-                                    .offset(x = if (isInterlocked) overlapStep * pIdx else 0.dp)
-                                    .size(width = pieceWidth, height = pieceHeight)
-                                    .clickable {
-                                        if (label != "؟") {
-                                            engine.playTapPop()
-                                            engine.speak(label)
-                                        }
-                                    }
-                            )
-                        }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        JigsawPuzzlePieceCanvas(
-                            text = puzzle.basePiece,
-                            pieceColor = ReadingColors.CoralOrange,
-                            shadowColor = ReadingColors.CoralShadow,
-                            interlockSide = PuzzleInterlockSide.LEFT_TAB,
-                            isHighlighted = isInterlocked,
-                            modifier = Modifier
-                                .size(width = 138.dp, height = 104.dp)
-                                .clickable {
-                                    engine.playTapPop()
-                                    engine.speak(puzzle.basePiece)
-                                }
-                        )
-
-                        Spacer(modifier = Modifier.width(slideGap.coerceAtLeast(0.dp)))
-
-                        val (branchBg, branchSh) = if (selectedBranchIdx >= 0) {
-                            branchColors[selectedBranchIdx % branchColors.size]
-                        } else {
-                            Color(0xFF94A3B8) to Color(0xFF64748B)
-                        }
-
-                        JigsawPuzzlePieceCanvas(
-                            text = selectedBranch?.attachedPiece ?: "؟",
-                            pieceColor = branchBg,
-                            shadowColor = branchSh,
-                            interlockSide = PuzzleInterlockSide.RIGHT_SOCKET,
-                            isHighlighted = isInterlocked,
-                            modifier = Modifier
-                                .offset(x = if (isInterlocked) 18.dp else 0.dp)
-                                .size(width = 138.dp, height = 104.dp)
-                        )
-                    }
-                }
-
-                if (selectedBranch != null) {
-                    Surface(
-                        shape = RoundedCornerShape(22.dp),
-                        color = ReadingColors.SunYellow,
-                        shadowElevation = 4.dp,
-                        modifier = Modifier
-                            .border(2.5.dp, Color.White, RoundedCornerShape(22.dp))
-                            .clickable {
-                                engine.playTapPop()
-                                engine.speak(selectedBranch.spokenText)
-                            }
+                            .graphicsLayer {
+                                scaleX = joyBounceAnim.value
+                                scaleY = joyBounceAnim.value
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(if (pieceCount >= 3) Modifier.horizontalScroll(rememberScrollState()) else Modifier),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            PlayfulSpeakerIcon(tint = ReadingColors.InkDark, modifier = Modifier.size(22.dp))
-                            Text(
-                                text = selectedBranch.resultWord,
-                                fontFamily = ReadingTajawalFont,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 34.sp,
-                                lineHeight = 44.sp,
-                                color = ReadingColors.InkDark
-                            )
+                            for (pIdx in 0 until pieceCount) {
+                                val label = when {
+                                    resolved != null -> resolved.getOrNull(pIdx) ?: "؟"
+                                    pIdx == 0 -> puzzle.basePiece
+                                    else -> "؟"
+                                }
+                                val (bg, sh) = when {
+                                    pIdx == 0 -> ReadingColors.CoralOrange to ReadingColors.CoralShadow
+                                    selectedBranchIdx >= 0 -> branchColors[(selectedBranchIdx + pIdx - 1) % branchColors.size]
+                                    else -> Color(0xFF94A3B8) to Color(0xFF64748B)
+                                }
+                                val side = when (pIdx) {
+                                    0 -> PuzzleInterlockSide.LEFT_TAB
+                                    pieceCount - 1 -> PuzzleInterlockSide.RIGHT_SOCKET
+                                    else -> PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
+                                }
+                                // حساب الإزاحة الفيزيائية الدقيقة (translationX لا ينعكس في RTL):
+                                // القطعة اليمنى (pIdx=0) تنزلق لليسار واليسرى لليمين حتى يطابق اللسان التجويف بفجوة 0px!
+                                val startShiftX = -(pIdx - midIdx) * unsnappedGapPx
+                                val targetShiftX = (pIdx - midIdx) * (0.28f * pieceWidthPx)
+                                val currentShiftX = startShiftX + (targetShiftX - startShiftX) * snapP
+                                val entryY = if (pIdx > 0 && isInterlocked) (1f - flyP) * 90f else 0f
+                                val entryScale = if (pIdx > 0 && isInterlocked) 0.78f + flyP * 0.22f else 1f
+
+                                JigsawPuzzlePieceCanvas(
+                                    text = label,
+                                    pieceColor = bg,
+                                    shadowColor = sh,
+                                    interlockSide = side,
+                                    isHighlighted = isInterlocked && snapP > 0.65f,
+                                    sheenProgress = if (isInterlocked) sheenP else -1f,
+                                    modifier = Modifier
+                                        .zIndex((pieceCount - pIdx).toFloat())
+                                        .graphicsLayer {
+                                            translationX = currentShiftX
+                                            translationY = entryY
+                                            scaleX = entryScale
+                                            scaleY = entryScale
+                                        }
+                                        .size(width = pieceWidthDp, height = pieceHeightDp)
+                                        .clickable {
+                                            if (label != "؟") {
+                                                engine.playTapPop()
+                                                engine.speak(label)
+                                            }
+                                        }
+                                )
+                            }
                         }
+
+                        // انفجار النجوم الموضعي فوق القطع المتعشّقة لحظة التطابق
+                        PuzzleCelebrationBurstCanvas(
+                            burstTrigger = burstTrigger,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(pieceHeightDp + 34.dp)
+                        )
                     }
-                } else {
-                    Text(
-                        text = "اختر قطعة من الأسفل لدمجها مع «${puzzle.basePiece}»",
-                        fontFamily = ReadingTajawalFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = ReadingColors.InkSoft
-                    )
+
+                    if (selectedBranch != null) {
+                        Surface(
+                            shape = RoundedCornerShape(22.dp),
+                            color = ReadingColors.SunYellow,
+                            shadowElevation = 5.dp,
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    scaleX = joyBounceAnim.value
+                                    scaleY = joyBounceAnim.value
+                                }
+                                .border(2.5.dp, Color.White, RoundedCornerShape(22.dp))
+                                .clickable {
+                                    engine.playTapPop()
+                                    engine.speak(selectedBranch.spokenText)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                PlayfulSpeakerIcon(tint = ReadingColors.InkDark, modifier = Modifier.size(22.dp))
+                                Text(
+                                    text = selectedBranch.resultWord,
+                                    fontFamily = ReadingTajawalFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 34.sp,
+                                    lineHeight = 44.sp,
+                                    color = ReadingColors.InkDark
+                                )
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = if (wrongHintText.isNotEmpty()) {
+                                wrongHintText
+                            } else {
+                                "اضغط أو اسحب قطعة من الأسفل لتتعشّق مع «${puzzle.basePiece}»"
+                            },
+                            fontFamily = ReadingTajawalFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = if (wrongHintText.isNotEmpty()) ReadingColors.CoralShadow else ReadingColors.InkSoft,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
 
-        // القطع المتفرعة القابلة للاختيار
+        // القطع القابلة للنقر أو السحب للأعلى (مع اهتزاز للقطعة الخاطئة)
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            puzzle.branches.forEachIndexed { idx, branch ->
-                val (bg, sh) = branchColors[idx % branchColors.size]
-                val isDone = idx in completedBranches
-                val pieces = branch.resolvedPieces(puzzle.basePiece)
-                val buttonTitle = if (pieces.size >= 3) {
-                    pieces.drop(1).joinToString(" + ")
-                } else {
-                    branch.attachedPiece
-                }
-                PlayfulBouncyButton(
-                    onClick = {
-                        selectedBranchIdx = idx
-                        if (idx !in completedBranches) {
-                            completedBranches.add(idx)
-                        }
-                        onPuzzleSolved(branch.resultWord)
-                    },
-                    backgroundColor = bg,
-                    shadowColor = sh,
-                    cornerRadius = 22.dp,
-                    lipDepth = 5.dp,
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    modifier = Modifier.defaultMinSize(minWidth = 96.dp, minHeight = 76.dp),
-                    testTagValue = "qiraati_puzzle_branch_$idx"
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = buttonTitle,
-                            fontFamily = ReadingTajawalFont,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = if (pieces.size >= 3) 22.sp else 28.sp,
-                            lineHeight = 34.sp,
-                            color = Color.White
-                        )
-                        if (isDone) {
-                            Text(
-                                text = branch.resultWord,
-                                fontFamily = ReadingTajawalFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp,
-                                color = Color.White.copy(alpha = 0.94f)
-                            )
+            optionChips.forEachIndexed { chipIdx, chip ->
+                val isDone = chip.validBranchIdx >= 0 && chip.validBranchIdx in completedBranches
+                val isWobbling = wrongChipUid == chip.uid
+                var dragX by remember(chip.uid) { mutableFloatStateOf(0f) }
+                var dragY by remember(chip.uid) { mutableFloatStateOf(0f) }
+                var isDragging by remember(chip.uid) { mutableStateOf(false) }
+                val snapThresholdPx = with(density) { (-38).dp.toPx() }
+                val wobblePx = with(density) { wrongWobbleAnim.value.dp.toPx() }
+
+                StaggeredSpringEntrance(index = chipIdx, delayPerItemMs = 45L) {
+                    Box(
+                        modifier = Modifier
+                            .zIndex(if (isDragging) 10f else 0f)
+                            .graphicsLayer {
+                                translationX = dragX + if (isWobbling) wobblePx else 0f
+                                translationY = dragY
+                                val s = if (isDragging) 1.09f else 1f
+                                scaleX = s
+                                scaleY = s
+                            }
+                            .pointerInput(chip.uid, puzzleIndex) {
+                                detectDragGestures(
+                                    onDragStart = {
+                                        isDragging = true
+                                        engine.playTapPop()
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragX += dragAmount.x
+                                        dragY += dragAmount.y
+                                    },
+                                    onDragEnd = {
+                                        val draggedUp = dragY <= snapThresholdPx
+                                        isDragging = false
+                                        dragX = 0f
+                                        dragY = 0f
+                                        if (draggedUp) {
+                                            handleOptionSelected(chip)
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        isDragging = false
+                                        dragX = 0f
+                                        dragY = 0f
+                                    }
+                                )
+                            }
+                    ) {
+                        PlayfulBouncyButton(
+                            onClick = { handleOptionSelected(chip) },
+                            backgroundColor = if (isWobbling) Color(0xFFEF4444) else chip.bg,
+                            shadowColor = if (isWobbling) Color(0xFFB91C1C) else chip.shadow,
+                            cornerRadius = 22.dp,
+                            lipDepth = 5.dp,
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                            modifier = Modifier.defaultMinSize(minWidth = 94.dp, minHeight = 76.dp),
+                            testTagValue = if (chip.validBranchIdx >= 0) {
+                                "qiraati_puzzle_branch_${chip.validBranchIdx}"
+                            } else {
+                                "qiraati_puzzle_distractor_$chipIdx"
+                            }
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = chip.label,
+                                    fontFamily = ReadingTajawalFont,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = if (chip.pieceCount >= 3) 22.sp else 28.sp,
+                                    lineHeight = 34.sp,
+                                    color = Color.White
+                                )
+                                if (isDone && chip.resultWordPreview != null) {
+                                    Text(
+                                        text = chip.resultWordPreview,
+                                        fontFamily = ReadingTajawalFont,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp,
+                                        color = Color.White.copy(alpha = 0.94f)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -3817,13 +4096,23 @@ private fun SentenceFillPuzzleStation(
     onSentenceCompleted: (String) -> Unit,
     onNextStation: () -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
     val items = lesson.sentenceFillItems
     var itemIdx by remember(lesson.id) { mutableIntStateOf(0) }
     val item = items[itemIdx % items.size]
 
     var filledCount by remember(lesson.id, itemIdx) { mutableIntStateOf(0) }
     var wrongTapHint by remember(lesson.id, itemIdx) { mutableStateOf("") }
+    var wrongTileOrigIdx by remember(lesson.id, itemIdx) { mutableIntStateOf(-1) }
+    var burstTrigger by remember(lesson.id, itemIdx) { mutableIntStateOf(0) }
     val completedIndices = remember(lesson.id) { mutableStateListOf<Int>() }
+
+    val snapProgressAnim = remember(lesson.id, itemIdx) { Animatable(0f) }
+    val sheenAnim = remember(lesson.id, itemIdx) { Animatable(-0.2f) }
+    val wrongWobbleAnim = remember(lesson.id, itemIdx) { Animatable(0f) }
 
     val shuffledOrder = remember(lesson.id, itemIdx) {
         val base = item.syllables.indices.toList()
@@ -3834,13 +4123,38 @@ private fun SentenceFillPuzzleStation(
 
     val isWordAssembled = filledCount >= item.syllables.size
     val leapScale by animateFloatAsState(
-        targetValue = if (isWordAssembled) 1.06f else 1f,
+        targetValue = if (isWordAssembled) 1.05f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioLowBouncy,
             stiffness = Spring.StiffnessMedium
         ),
         label = "sentence_fill_leap"
     )
+
+    LaunchedEffect(isWordAssembled) {
+        if (isWordAssembled) {
+            snapProgressAnim.snapTo(0f)
+            launch {
+                snapProgressAnim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
+            }
+            delay(110L)
+            engine.playPuzzleSnap()
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            burstTrigger++
+            sheenAnim.snapTo(0f)
+            sheenAnim.animateTo(1f, tween(durationMillis = 560, easing = FastOutSlowInEasing))
+            sheenAnim.snapTo(-0.2f)
+        } else {
+            snapProgressAnim.snapTo(0f)
+            sheenAnim.snapTo(-0.2f)
+        }
+    }
 
     val tilePalette = remember {
         listOf(
@@ -3908,7 +4222,7 @@ private fun SentenceFillPuzzleStation(
         }
 
         Text(
-            text = "ركّب المقاطع بالترتيب لتقفز الكلمة وتكمل الجملة!",
+            text = "ركّب المقاطع بالترتيب لتتعشّق وتقفز الكلمة وتكمل الجملة!",
             fontFamily = ReadingTajawalFont,
             fontWeight = FontWeight.ExtraBold,
             fontSize = 15.sp,
@@ -4002,11 +4316,14 @@ private fun SentenceFillPuzzleStation(
             }
         }
 
-        // مسرح تعشيق مقاطع الكلمة
+        // مسرح تعشيق مقاطع الكلمة بالتعشيق المغناطيسي الفيزيائي الدقيق
         val pieceCount = item.syllables.size.coerceIn(2, 4)
-        val pieceW = if (pieceCount >= 4) 82.dp else 118.dp
-        val pieceH = if (pieceCount >= 4) 80.dp else 92.dp
-        val stepOffset = if (pieceCount >= 4) 10.dp else 14.dp
+        val pieceW = if (pieceCount >= 4) 84.dp else 118.dp
+        val pieceH = if (pieceCount >= 4) 82.dp else 94.dp
+        val pieceWPx = with(density) { pieceW.toPx() }
+        val midIdx = (item.syllables.size - 1) / 2f
+        val snapP = snapProgressAnim.value
+        val unsnappedGapPx = with(density) { 8.dp.toPx() }
 
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -4022,39 +4339,56 @@ private fun SentenceFillPuzzleStation(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    item.syllables.forEachIndexed { sIdx, syl ->
-                        val isFilled = sIdx < filledCount
-                        val (bg, sh) = if (isFilled) {
-                            tilePalette[sIdx % tilePalette.size]
-                        } else {
-                            Color(0xFFCBD5E1) to Color(0xFF94A3B8)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        item.syllables.forEachIndexed { sIdx, syl ->
+                            val isFilled = sIdx < filledCount
+                            val (bg, sh) = if (isFilled) {
+                                tilePalette[sIdx % tilePalette.size]
+                            } else {
+                                Color(0xFFCBD5E1) to Color(0xFF94A3B8)
+                            }
+                            val side = when (sIdx) {
+                                0 -> PuzzleInterlockSide.LEFT_TAB
+                                item.syllables.lastIndex -> PuzzleInterlockSide.RIGHT_SOCKET
+                                else -> PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
+                            }
+                            val startShiftX = -(sIdx - midIdx) * unsnappedGapPx
+                            val targetShiftX = (sIdx - midIdx) * (0.28f * pieceWPx)
+                            val currentShiftX = startShiftX + (targetShiftX - startShiftX) * snapP
+
+                            JigsawPuzzlePieceCanvas(
+                                text = if (isFilled) syl else "${sIdx + 1}",
+                                pieceColor = bg,
+                                shadowColor = sh,
+                                interlockSide = side,
+                                isHighlighted = isWordAssembled,
+                                sheenProgress = if (isWordAssembled) sheenAnim.value else -1f,
+                                modifier = Modifier
+                                    .zIndex((item.syllables.size - sIdx).toFloat())
+                                    .graphicsLayer {
+                                        translationX = currentShiftX
+                                    }
+                                    .size(width = pieceW, height = pieceH)
+                            )
                         }
-                        val side = when (sIdx) {
-                            0 -> PuzzleInterlockSide.LEFT_TAB
-                            item.syllables.lastIndex -> PuzzleInterlockSide.RIGHT_SOCKET
-                            else -> PuzzleInterlockSide.MIDDLE_TAB_AND_SOCKET
-                        }
-                        if (sIdx > 0) {
-                            Spacer(modifier = Modifier.width(if (isWordAssembled) 0.dp else 3.dp))
-                        }
-                        JigsawPuzzlePieceCanvas(
-                            text = if (isFilled) syl else "${sIdx + 1}",
-                            pieceColor = bg,
-                            shadowColor = sh,
-                            interlockSide = side,
-                            isHighlighted = isWordAssembled,
-                            modifier = Modifier
-                                .offset(x = if (isWordAssembled) stepOffset * sIdx else 0.dp)
-                                .size(width = pieceW, height = pieceH)
-                        )
                     }
+
+                    PuzzleCelebrationBurstCanvas(
+                        burstTrigger = burstTrigger,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(pieceH + 28.dp)
+                    )
                 }
 
                 if (wrongTapHint.isNotEmpty()) {
@@ -4070,8 +4404,9 @@ private fun SentenceFillPuzzleStation(
             }
         }
 
-        // أزرار المقاطع المبعثرة للاختيار بالترتيب
+        // أزرار المقاطع المبعثرة للاختيار بالترتيب مع اهتزاز عند اختيار مقطع خاطئ
         if (!isWordAssembled) {
+            val wobblePx = with(density) { wrongWobbleAnim.value.dp.toPx() }
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
@@ -4080,12 +4415,14 @@ private fun SentenceFillPuzzleStation(
                 shuffledOrder.forEach { origIdx ->
                     val syllableText = item.syllables[origIdx]
                     val alreadyPlaced = origIdx < filledCount
+                    val isWobbling = wrongTileOrigIdx == origIdx
                     val (bg, sh) = tilePalette[origIdx % tilePalette.size]
                     PlayfulBouncyButton(
                         onClick = {
                             if (alreadyPlaced) return@PlayfulBouncyButton
                             if (origIdx == filledCount) {
                                 wrongTapHint = ""
+                                wrongTileOrigIdx = -1
                                 filledCount++
                                 if (filledCount >= item.syllables.size) {
                                     if (itemIdx !in completedIndices) {
@@ -4097,16 +4434,40 @@ private fun SentenceFillPuzzleStation(
                                     engine.speak(syllableText)
                                 }
                             } else {
+                                wrongTileOrigIdx = origIdx
                                 engine.playGentleTryAgain()
-                                wrongTapHint = "جرّب المقطع الأول بالترتيب الصحيح يا بطل!"
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                wrongTapHint = "جرّب المقطع الصحيح بالترتيب يا بطل!"
+                                scope.launch {
+                                    wrongWobbleAnim.snapTo(0f)
+                                    wrongWobbleAnim.animateTo(13f, tween(55))
+                                    wrongWobbleAnim.animateTo(-13f, tween(65))
+                                    wrongWobbleAnim.animateTo(8f, tween(55))
+                                    wrongWobbleAnim.animateTo(-8f, tween(55))
+                                    wrongWobbleAnim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+                                    delay(350L)
+                                    if (wrongTileOrigIdx == origIdx) wrongTileOrigIdx = -1
+                                }
                             }
                         },
-                        backgroundColor = if (alreadyPlaced) Color(0xFFE2E8F0) else bg,
-                        shadowColor = if (alreadyPlaced) Color(0xFFCBD5E1) else sh,
+                        backgroundColor = when {
+                            alreadyPlaced -> Color(0xFFE2E8F0)
+                            isWobbling -> Color(0xFFEF4444)
+                            else -> bg
+                        },
+                        shadowColor = when {
+                            alreadyPlaced -> Color(0xFFCBD5E1)
+                            isWobbling -> Color(0xFFB91C1C)
+                            else -> sh
+                        },
                         cornerRadius = 22.dp,
                         lipDepth = 5.dp,
                         contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
-                        modifier = Modifier.defaultMinSize(minWidth = 86.dp, minHeight = 68.dp),
+                        modifier = Modifier
+                            .defaultMinSize(minWidth = 86.dp, minHeight = 68.dp)
+                            .graphicsLayer {
+                                if (isWobbling) translationX = wobblePx
+                            },
                         testTagValue = "qiraati_sentence_syllable_$origIdx"
                     ) {
                         Text(

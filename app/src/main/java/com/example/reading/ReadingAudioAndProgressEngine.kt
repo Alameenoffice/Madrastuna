@@ -111,7 +111,11 @@ class ReadingAudioAndProgressEngine(
     private val schoolCode: String,
     private val studentId: String,
     private val studentName: String,
-    private val studentGrade: String = ""
+    private val studentGrade: String = "",
+    val isStudentParticipant: Boolean = true,
+    private val validStudentIds: Set<String> = emptySet(),
+    private val excludedStaffIds: Set<String> = emptySet(),
+    private val excludedStaffNames: Set<String> = emptySet()
 ) {
     private val appContext = context.applicationContext
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -129,16 +133,21 @@ class ReadingAudioAndProgressEngine(
     private var segmentJob: Job? = null
     private var speakingTimeoutJob: Job? = null
 
-    private val toneGenerator: ToneGenerator? = runCatching {
-        ToneGenerator(AudioManager.STREAM_MUSIC, 78)
-    }.getOrNull()
+    private val soundEngine = ReadingOasisSoundEngine(appContext)
+    val soundSettings: StateFlow<ReadingSoundSettings> = soundEngine.settings
 
-    private val _progress = MutableStateFlow(loadCachedProgress(appContext, schoolCode, studentId))
+    private val localProgressId: String = if (isStudentParticipant) {
+        studentId
+    } else {
+        "staff_preview_${sanitizeSegment(studentId, "staff")}"
+    }
+
+    private val _progress = MutableStateFlow(loadCachedProgress(appContext, schoolCode, localProgressId))
     val progress: StateFlow<ReadingProgressState> = _progress.asStateFlow()
 
     /**
      * مجموعة دائمة لمعرّفات التمارين والأنشطة التي مُنحت نجومها مسبقاً لمنع تكرار النجوم.
-     * تُحفظ محلياً في SharedPreferences وتُزامَن سحابياً داخل سجل الطالب في Firebase.
+     * تُحفظ محلياً في SharedPreferences وتُزامَن سحابياً داخل سجل الطالب في Firebase للطلبة فقط.
      */
     val awardedRewardKeys: MutableSet<String> =
         java.util.Collections.synchronizedSet(LinkedHashSet(_progress.value.awardedRewardKeys))
@@ -152,7 +161,15 @@ class ReadingAudioAndProgressEngine(
         if (ENABLE_ROBOTIC_TTS_FALLBACK) {
             initTextToSpeech()
         }
-        syncFromCloudInBackground()
+        // ربط حالة النطق بالخفض التلقائي الذكي (Audio Ducking) للموسيقى الخلفية دون المساس بصوت التعليق
+        engineScope.launch {
+            _isSpeaking.collect { speakingNow ->
+                soundEngine.setVoiceoverSpeaking(speakingNow)
+            }
+        }
+        if (isStudentParticipant) {
+            syncFromCloudInBackground()
+        }
     }
 
     private fun initTextToSpeech() {
@@ -839,38 +856,34 @@ class ReadingAudioAndProgressEngine(
         }
     }
 
+    fun setSfxEnabled(enabled: Boolean) = soundEngine.setSfxEnabled(enabled)
+
+    fun setBgMusicEnabled(enabled: Boolean) = soundEngine.setBgMusicEnabled(enabled)
+
+    fun setBgMusicVolume(volume: Float) = soundEngine.setBgMusicVolume(volume)
+
+    fun pauseBackgroundAudio() = soundEngine.pauseForLifecycle()
+
+    fun resumeBackgroundAudio() = soundEngine.resumeForLifecycle()
+
     fun playTapPop() {
-        runCatching {
-            toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 55)
-        }
+        soundEngine.playSoftTap()
     }
 
     fun playSuccessChime() {
-        engineScope.launch(Dispatchers.Default) {
-            runCatching {
-                toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 120)
-                delay(130L)
-                toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 180)
-            }
-        }
+        soundEngine.playSoftSuccessChime()
     }
 
     fun playVictoryFanfare() {
-        engineScope.launch(Dispatchers.Default) {
-            runCatching {
-                toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP, 110)
-                delay(120L)
-                toneGenerator?.startTone(ToneGenerator.TONE_PROP_ACK, 130)
-                delay(140L)
-                toneGenerator?.startTone(ToneGenerator.TONE_PROP_BEEP2, 240)
-            }
-        }
+        soundEngine.playSoftVictoryFanfare()
+    }
+
+    fun playPuzzleSnap() {
+        soundEngine.playPuzzleSnap()
     }
 
     fun playGentleTryAgain() {
-        runCatching {
-            toneGenerator?.startTone(ToneGenerator.TONE_PROP_NACK, 120)
-        }
+        soundEngine.playGentleTryAgain()
     }
 
     fun hasAwardedReward(rewardKey: String): Boolean {
@@ -958,8 +971,10 @@ class ReadingAudioAndProgressEngine(
             nextState
         }
 
-        saveLocalProgress(appContext, schoolCode, studentId, updatedState)
-        syncToCloudInBackground(updatedState)
+        saveLocalProgress(appContext, schoolCode, localProgressId, updatedState)
+        if (isStudentParticipant) {
+            syncToCloudInBackground(updatedState)
+        }
         return true
     }
 
@@ -1013,22 +1028,31 @@ class ReadingAudioAndProgressEngine(
             _progress.value = next
             next
         }
-        saveLocalProgress(appContext, schoolCode, studentId, updated)
-        engineScope.launch(Dispatchers.IO) {
-            pushProgressToCloudBlocking(
-                state = updated,
-                schoolCode = schoolCode,
-                studentId = studentId,
-                studentName = studentName,
-                studentGrade = grade
-            )
+        saveLocalProgress(appContext, schoolCode, localProgressId, updated)
+        if (isStudentParticipant) {
+            engineScope.launch(Dispatchers.IO) {
+                pushProgressToCloudBlocking(
+                    state = updated,
+                    schoolCode = schoolCode,
+                    studentId = studentId,
+                    studentName = studentName,
+                    studentGrade = grade
+                )
+            }
         }
     }
 
     suspend fun fetchGradeLeaderboard(targetGrade: String): LeaderboardFetchResult =
-        Companion.fetchGradeLeaderboard(schoolCode = schoolCode, targetGrade = targetGrade)
+        Companion.fetchGradeLeaderboard(
+            schoolCode = schoolCode,
+            targetGrade = targetGrade,
+            validStudentIds = validStudentIds,
+            excludedStaffIds = excludedStaffIds,
+            excludedStaffNames = excludedStaffNames
+        )
 
     private fun syncFromCloudInBackground() {
+        if (!isStudentParticipant) return
         engineScope.launch(Dispatchers.IO) {
             val endpoint = buildSyncUrl(schoolCode, studentId) ?: return@launch
             runCatching {
@@ -1059,6 +1083,7 @@ class ReadingAudioAndProgressEngine(
     }
 
     private fun syncToCloudInBackground(state: ReadingProgressState) {
+        if (!isStudentParticipant) return
         engineScope.launch(Dispatchers.IO) {
             pushProgressToCloudBlocking(
                 state = state,
@@ -1092,7 +1117,7 @@ class ReadingAudioAndProgressEngine(
         pendingSpeech = null
         _isSpeaking.value = false
         runCatching {
-            toneGenerator?.release()
+            soundEngine.release()
         }
         engineScope.cancel()
     }
@@ -1321,16 +1346,83 @@ class ReadingAudioAndProgressEngine(
             return normalizePrimaryGrade(recordGrade) == normalizePrimaryGrade(targetGrade)
         }
 
+        private fun isExcludedNonStudentRecord(
+            key: String,
+            studentId: String,
+            studentName: String,
+            item: JSONObject,
+            validStudentIds: Set<String>,
+            sanitizedValidStudentIds: Set<String>,
+            excludedStaffIds: Set<String>,
+            sanitizedExcludedStaffIds: Set<String>,
+            excludedStaffNames: Set<String>
+        ): Boolean {
+            if (item.has("isStudent") && !item.optBoolean("isStudent", true)) return true
+
+            val accountRole = item.optString("accountRole", "").trim().uppercase(Locale.ROOT)
+            if (accountRole.isNotEmpty() && accountRole != "STUDENT") return true
+
+            val cleanId = studentId.trim()
+            val cleanKey = key.trim()
+            val cleanLowerId = cleanId.lowercase(Locale.ROOT)
+            val cleanLowerKey = cleanKey.lowercase(Locale.ROOT)
+
+            val nonStudentMarkers = listOf(
+                "admin", "principal", "teacher", "staff", "driver", "guest_student", "dev_", "manager", "supervisor"
+            )
+            if (nonStudentMarkers.any { marker ->
+                    cleanLowerId.startsWith(marker) || cleanLowerKey.startsWith(marker) ||
+                        cleanLowerId.contains("_$marker") || cleanLowerKey.contains("_$marker")
+                }
+            ) {
+                return true
+            }
+
+            if (cleanId in excludedStaffIds || cleanKey in excludedStaffIds ||
+                sanitizeSegment(cleanId, "") in sanitizedExcludedStaffIds ||
+                sanitizeSegment(cleanKey, "") in sanitizedExcludedStaffIds
+            ) {
+                return true
+            }
+
+            if (validStudentIds.isNotEmpty()) {
+                val matchesRealStudent = cleanId in validStudentIds ||
+                    cleanKey in validStudentIds ||
+                    sanitizeSegment(cleanId, "") in sanitizedValidStudentIds ||
+                    sanitizeSegment(cleanKey, "") in sanitizedValidStudentIds
+                if (!matchesRealStudent) return true
+            } else {
+                val normalizedName = studentName.trim()
+                if (normalizedName.isNotEmpty() && normalizedName in excludedStaffNames) {
+                    return true
+                }
+            }
+            return false
+        }
+
         /**
          * جلب لوحة شرف أبطال الصف من العقدة المعزولة schools/{schoolCode}/reading_progress.json
-         * وفلترتها بدقة حسب الصف وترتيب جميع الطلبة تنازلياً مع إسناد التسلسل الحقيقي لكل طالب.
+         * وفلترتها بدقة حسب الصف واستبعاد أي حسابات غير طلابية (المدير، الكادر التدريسي والإداري، السائق)
+         * ثم ترتيب الطلبة الفعليين فقط تنازلياً وإسناد التسلسل الحقيقي لهم.
          */
         suspend fun fetchGradeLeaderboard(
             schoolCode: String,
-            targetGrade: String
+            targetGrade: String,
+            validStudentIds: Set<String> = emptySet(),
+            excludedStaffIds: Set<String> = emptySet(),
+            excludedStaffNames: Set<String> = emptySet()
         ): LeaderboardFetchResult = withContext(Dispatchers.IO) {
             val endpoint = buildSchoolLeaderboardUrl(schoolCode)
                 ?: return@withContext LeaderboardFetchResult.Error("تعذّر إعداد رابط ساحة الأبطال")
+
+            val sanitizedValidIds = validStudentIds
+                .map { sanitizeSegment(it, "") }
+                .filter { it.isNotEmpty() }
+                .toSet()
+            val sanitizedExcludedIds = excludedStaffIds
+                .map { sanitizeSegment(it, "") }
+                .filter { it.isNotEmpty() }
+                .toSet()
 
             runCatching {
                 val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
@@ -1357,11 +1449,26 @@ class ReadingAudioAndProgressEngine(
                         val recGrade = item.optString("grade", "")
                         if (!matchesGradeFlexibly(recGrade, targetGrade)) continue
 
+                        val name = item.optString("studentName", "").ifBlank { "بطل القراءة" }
+                        val sId = item.optString("studentId", key).ifBlank { key }
+                        if (isExcludedNonStudentRecord(
+                                key = key,
+                                studentId = sId,
+                                studentName = name,
+                                item = item,
+                                validStudentIds = validStudentIds,
+                                sanitizedValidStudentIds = sanitizedValidIds,
+                                excludedStaffIds = excludedStaffIds,
+                                sanitizedExcludedStaffIds = sanitizedExcludedIds,
+                                excludedStaffNames = excludedStaffNames
+                            )
+                        ) {
+                            continue
+                        }
+
                         val parsed = parseProgressJson(item.toString())
                         val stars = maxOf(item.optInt("totalStars", 0), parsed.totalStars)
                         val completed = maxOf(item.optInt("completedLessons", 0), parsed.completedLessonsCount)
-                        val name = item.optString("studentName", "").ifBlank { "بطل القراءة" }
-                        val sId = item.optString("studentId", key).ifBlank { key }
                         val avatarId = ReadingAvatarCatalog.byId(item.optString("avatarId", parsed.avatarId)).id
                         val lastUp = maxOf(item.optLong("lastUpdated", 0L), item.optLong("updatedAt", 0L))
                         val rankInfo = resolveReadingHeroTitle(stars)
@@ -1441,6 +1548,8 @@ class ReadingAudioAndProgressEngine(
             val root = JSONObject()
             root.put("schoolCode", schoolCode)
             root.put("studentId", studentId)
+            root.put("isStudent", true)
+            root.put("accountRole", "STUDENT")
             if (studentName.isNotBlank()) {
                 root.put("studentName", studentName)
             }
